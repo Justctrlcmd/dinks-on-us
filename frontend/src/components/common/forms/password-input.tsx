@@ -11,12 +11,16 @@ type Props = Omit<React.ComponentProps<typeof Input>, "type"> & { label: string;
 export function PasswordInput({ label, error, description, required, id, ...props }: Props) {
   const [visible, setVisible] = useState(false);
   const inputId = id ?? props.name ?? "password";
+  const describedBy = [description && `${inputId}-description`, error && `${inputId}-error`]
+    .filter(Boolean)
+    .join(" ") || undefined;
+
   return (
     <FormFieldWrapper id={inputId} label={label} error={error} description={description} required={required}>
       <div className="relative">
         <Input {...props} id={inputId} type={visible ? "text" : "password"} required={required}
-          aria-invalid={Boolean(error)} className="pr-10" />
-        <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0"
+          aria-invalid={Boolean(error)} aria-describedby={describedBy} className={props.className ?? "pr-10"} />
+        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2"
           onClick={() => setVisible((value) => !value)} aria-label={visible ? "Hide password" : "Show password"}>
           {visible ? <FiEyeOff aria-hidden="true" /> : <FiEye aria-hidden="true" />}
         </Button>

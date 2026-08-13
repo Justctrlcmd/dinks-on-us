@@ -4,11 +4,8 @@ use App\Http\Controllers\Api\V1\Account\PasswordController;
 use App\Http\Controllers\Api\V1\Account\ProfileController;
 use App\Http\Controllers\Api\V1\Auth\CurrentUserController;
 use App\Http\Controllers\Api\V1\Auth\EmailVerificationController;
-use App\Http\Controllers\Api\V1\Auth\ForgotPasswordController;
 use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
-use App\Http\Controllers\Api\V1\Auth\RegisterController;
-use App\Http\Controllers\Api\V1\Auth\ResetPasswordController;
 use App\Http\Controllers\Api\V1\HealthController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,14 +13,7 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/health', HealthController::class)->name('health');
 
     Route::middleware('guest')->group(function (): void {
-        Route::post('/register', RegisterController::class)->name('register');
         Route::post('/login', LoginController::class)->middleware('throttle:login')->name('login');
-        Route::post('/forgot-password', ForgotPasswordController::class)
-            ->middleware('throttle:6,1')
-            ->name('password.email');
-        Route::post('/reset-password', ResetPasswordController::class)
-            ->middleware('throttle:6,1')
-            ->name('password.update');
     });
 
     Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])

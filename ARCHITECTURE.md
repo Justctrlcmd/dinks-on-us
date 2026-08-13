@@ -12,7 +12,7 @@ Routes are versioned under `/api/v1`. Controllers are focused and use `app/Trait
 
 API responses always contain `success`, `message`, `code`, `data`, `errors`, and `meta`, except a true HTTP 204, which has no body. Human messages are safe and nontechnical. Never expose SQL, paths, exception classes, stack traces, secrets, framework internals, or infrastructure. Log technical context server-side.
 
-Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains, CORS credentials, and the `web` guard. The frontend and API must share a top-level domain in production. Registration creates only a user and sends verification—no role, permission, or account tier.
+Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains, CORS credentials, and the `web` guard. The frontend and API must share a top-level domain in production. Public registration and password recovery are disabled; authenticated management accounts are provisioned by the system and belong to one role. The system Manager role is seeded for local development and is the highest operational role defined by the business rules.
 
 ## Frontend
 
@@ -36,7 +36,7 @@ Laravel classes use PascalCase, methods camelCase, tables plural snake_case, col
 
 ## Portal and future modules
 
-The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized without permissions. The account menu owns Profile, Settings, and Logout. Phase B may extend navigation after real actors and workflows are known.
+The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized. The account menu owns Profile, Settings, and Logout. As management modules are introduced, both navigation visibility and backend authorization must use the authenticated account's assigned role and module access.
 
 Future modules create only needed pieces. Simple CRUD does not justify repositories, actions, or service layers automatically. Use transactions for multi-write invariants, eager load serialized relations, add indexes from query patterns, enforce important uniqueness in validation and the database, and choose delete behavior intentionally.
 

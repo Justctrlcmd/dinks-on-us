@@ -28,6 +28,8 @@ class LoginController extends Controller
 
         $request->session()->regenerate();
 
+        $request->user()->load('role');
+
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),
             'Welcome back.',

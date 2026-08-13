@@ -16,6 +16,8 @@ class ProfileController extends Controller
 
     public function show(Request $request): JsonResponse
     {
+        $request->user()->load('role');
+
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),
             'Profile retrieved.',
@@ -38,6 +40,8 @@ class ProfileController extends Controller
         if ($emailChanged) {
             event(new Registered($user));
         }
+
+        $user->load('role');
 
         return $this->respondSuccess(
             UserResource::make($user)->resolve($request),

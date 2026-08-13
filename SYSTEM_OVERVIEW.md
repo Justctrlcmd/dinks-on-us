@@ -1,0 +1,1436 @@
+# Dinks on Us — System Overview
+
+## 1. Business Overview
+
+**Dinks on Us** is a pickleball sports business located in **Bulacan, Philippines**.
+
+The system will serve two primary groups:
+
+### Players / Community
+
+The public website will provide access to:
+
+* Real-time court slot availability
+* Online court reservations
+* Events and announcements
+* Court rules and etiquette
+* Rates and pricing
+* Gallery
+* Location information
+* Operating information
+* Frequently asked questions
+* Business contact and social media channels
+
+Players **do not need to create an account** to make a reservation.
+
+### Manager / Staff
+
+The management system will allow authorized personnel to:
+
+* Track reservation submissions
+* Verify payments manually
+* Manage upcoming and ongoing reservations
+* Handle walk-in reservations
+* Manage court availability
+* Close dates or specific court slots
+* Manage dynamic website content
+* Manage rates and pricing
+* Manage payment methods and QR codes
+* Manage Staff accounts and roles
+* Maintain reservation history
+* Review reports and analytics
+* Convert operational data into useful business information
+
+---
+
+# 2. Public Website
+
+The public website is primarily intended for players and the pickleball community.
+
+## 2.1 Landing Page
+
+**Path:** `/`
+
+The Landing Page serves as the main public-facing page of Dinks on Us.
+
+### Header
+
+The header contains:
+
+* Dinks on Us logo
+* Main navigation
+* Staff / Manager login
+
+### Navigation
+
+1. **Home**
+
+   * Path: `/`
+   * Main public page
+
+2. **Reserve**
+
+   * Dedicated reservation page
+
+3. **Events**
+
+   * Dedicated events and announcements page
+
+4. **FAQ**
+
+   * Dedicated frequently asked questions page
+
+5. **Staff / Manager Login**
+
+   * Provides access to the management system
+
+---
+
+## 2.2 Hero Section
+
+The Hero Section showcases the Dinks on Us facility and brand.
+
+It may contain:
+
+* Facility image
+* Main headline
+* Supporting text
+* Call-to-action buttons
+
+Primary actions may include:
+
+* Reserve a Court
+* View Location
+
+Events and announcements remain available from the main navigation and the
+dedicated `/events` page; they are not duplicated in the Hero or Home sections.
+
+---
+
+## 2.3 Court Etiquette Section
+
+Displays court rules, policies, and etiquette established by Dinks on Us.
+
+These rules can be managed dynamically through the Management module.
+
+---
+
+## 2.4 How to Book Section
+
+Provides players with a clear step-by-step guide explaining how to make an online reservation.
+
+---
+
+## 2.5 About Us Section
+
+Displays business information and content provided by Dinks on Us.
+
+---
+
+## 2.6 Gallery Section
+
+Displays business and facility images uploaded through the Management system.
+
+---
+
+## 2.7 Location Section
+
+Displays the physical location of Dinks on Us through an embedded Google Map.
+
+---
+
+## 2.8 Footer
+
+The footer may contain:
+
+* Business information
+* Quick navigation
+* Operating hours
+* Contact details
+* Social media links
+* Other relevant public information
+
+---
+
+## 2.9 Floating Message Button
+
+A floating messaging button will be visible on the public website.
+
+It will redirect players to the official Dinks on Us Facebook or Messenger page.
+
+This can also be used by players for matters such as cancellation or direct communication with the business.
+
+---
+
+# 3. Reservation Page
+
+**Path:** `/reserve`
+
+The Reservation Page allows players to view available court slots and submit online reservations.
+
+Players do not need to create or log in to a customer account.
+
+---
+
+# 4. Reservation Slot Structure
+
+Every reservation slot represents:
+
+* One court
+* One specific date
+* One one-hour time period
+
+Example:
+
+```text
+Court 1
+3:00 PM – 4:00 PM
+₱500
+```
+
+Reservations are fundamentally based on **one-hour slots**.
+
+However, players may select multiple available slots under a single reservation.
+
+---
+
+# 5. Multiple Slot Reservations
+
+A single reservation may contain:
+
+* Multiple time slots
+* Non-consecutive time slots
+* Multiple courts
+* Different courts at different times
+
+Players are not required to select consecutive hours.
+
+Example:
+
+```text
+Reservation DOU-00125
+
+Court 1
+9:00 AM – 10:00 AM
+₱500
+
+Court 1
+1:00 PM – 2:00 PM
+₱500
+
+Court 2
+10:00 AM – 11:00 AM
+₱500
+
+Court 3
+6:00 PM – 7:00 PM
+₱600
+
+Total: ₱2,100
+```
+
+All selected slots belong to **one reservation** and are paid together.
+
+Internally, each court/time slot should still be tracked independently for availability purposes.
+
+---
+
+# 6. Reservation Form
+
+The reservation form should require the necessary customer and payment information.
+
+Current expected fields include:
+
+### Customer Information
+
+* Full Name
+* Email Address
+* Contact Number
+
+### Reservation Information
+
+* Selected Date
+* Selected Court or Courts
+* Selected Time Slot or Slots
+
+### Payment Information
+
+* Selected Payment Method
+* Payment Reference Number
+* Payment Receipt Image
+
+All required fields must be completed before submission.
+
+---
+
+# 7. Rates and Pricing
+
+Rates are calculated per one-hour court slot.
+
+Temporary starting rates:
+
+```text
+Day Rate
+₱500 / court / hour
+
+Night Rate
+₱600 / court / hour
+```
+
+These values are not hard-coded business rules.
+
+The Manager must be able to configure pricing dynamically.
+
+Configurable rate information may include:
+
+* Rate name
+* Start time
+* End time
+* Price per hour
+* Weekday applicability
+* Weekend applicability
+* Active / inactive status
+
+Example:
+
+```text
+Rate Name: Day Rate
+Start: 7:00 AM
+End: 5:00 PM
+Price: ₱500
+
+Rate Name: Night Rate
+Start: 5:00 PM
+End: 12:00 AM
+Price: ₱600
+```
+
+The system calculates the total reservation amount based on the rate applicable to each selected slot.
+
+---
+
+# 8. Payment Process
+
+Dinks on Us will **not use an automated online payment gateway**.
+
+Payments will be handled manually through configured e-wallet accounts.
+
+The player:
+
+1. Selects a payment method.
+2. Views the QR code associated with that payment method.
+3. Sends payment through the selected e-wallet.
+4. Uploads the payment receipt.
+5. Enters the payment reference number.
+6. Submits the reservation.
+
+The Staff or Manager manually verifies the submitted payment.
+
+---
+
+# 9. Payment Methods
+
+The Manager can configure multiple payment methods.
+
+Example:
+
+```text
+Payment Methods
+│
+├── GCash
+│   ├── Account Name
+│   ├── Account Number / Identifier
+│   ├── QR Code Image
+│   └── Active / Inactive
+│
+├── Maya
+│   ├── Account Name
+│   ├── Account Number / Identifier
+│   ├── QR Code Image
+│   └── Active / Inactive
+│
+└── Other Supported Wallets
+```
+
+When a player selects a payment method, the correct QR code and payment information should be displayed.
+
+---
+
+# 10. Reservation Submission and Slot Locking
+
+Once a player successfully submits a complete reservation:
+
+* The reservation status becomes **Waiting for Verification**.
+* Every selected court/time slot immediately becomes unavailable to other players.
+* The slots remain blocked while payment verification is pending.
+
+This prevents multiple players from paying for the same slot.
+
+If the reservation is later rejected, the selected slots immediately become available again.
+
+---
+
+# 11. Reservation Status Lifecycle
+
+The primary reservation flow is:
+
+```text
+AVAILABLE SLOT
+      │
+      │ Reservation Submitted
+      ▼
+WAITING FOR VERIFICATION
+      │
+      ├──────────────► REJECTED
+      │                   │
+      │                   └── Slots become available again
+      │
+      ▼
+VERIFIED
+      │
+      ├──► RESCHEDULED
+      │
+      ├──► CANCELLED
+      │
+      ├──► NO-SHOW
+      │
+      └──► COMPLETED
+```
+
+---
+
+# 12. Waiting for Verification
+
+A submitted online reservation begins with:
+
+**Waiting for Verification**
+
+The reservation remains in this state until an authorized Staff member or Manager reviews the payment information.
+
+---
+
+# 13. Verified Reservation
+
+Once payment is confirmed, the reservation becomes:
+
+**Verified**
+
+A verified reservation is considered an accepted upcoming reservation.
+
+Its associated slots remain unavailable.
+
+---
+
+# 14. Rejected Reservation
+
+If the payment cannot be verified or the reservation is invalid, the reservation becomes:
+
+**Rejected**
+
+When rejected:
+
+* The reservation becomes finalized.
+* All selected court/time slots are released.
+* The slots become publicly available again.
+* The record is moved into History.
+
+---
+
+# 15. Rescheduling
+
+A verified reservation may be rescheduled when permitted.
+
+Rescheduling should preserve the history of the previous schedule.
+
+Conceptually:
+
+```text
+Original:
+Court 1
+August 15
+3:00 PM – 4:00 PM
+
+Rescheduled:
+Court 2
+August 16
+5:00 PM – 6:00 PM
+
+Current Status:
+Verified
+```
+
+Rescheduling should be treated primarily as an operational action with historical tracking rather than permanently leaving the reservation in a `Rescheduled` state.
+
+The new selected slots must be available before the reschedule can be completed.
+
+---
+
+# 16. No-Show
+
+A reservation may be marked:
+
+**No-show**
+
+This is performed manually by authorized Staff or the Manager.
+
+The system should not automatically mark customers as no-show because the business may allow some arrival grace period.
+
+The exact late-arrival or no-show policy is still subject to client confirmation.
+
+---
+
+# 17. Cancellation
+
+A verified reservation may be cancelled.
+
+For the current assumed process:
+
+* The customer contacts Dinks on Us through Facebook / Messenger.
+* The business handles the cancellation request outside the customer website.
+* The **Manager** performs the cancellation inside the management system.
+
+Cancelled reservations become finalized records and are moved to History.
+
+The following policies are still subject to client confirmation:
+
+* Cancellation deadline
+* Refund eligibility
+* Cancellation fees
+* Rescheduling versus cancellation rules
+
+---
+
+# 18. Reservation Email Notifications
+
+The system should send emails for important reservation events.
+
+## Submission Confirmation
+
+Immediately after successful submission, the player should receive an acknowledgment email.
+
+Example information:
+
+```text
+Reservation Received
+
+Reference:
+DOU-20260811-0012
+
+Status:
+Waiting for Verification
+
+Court:
+Court 2
+
+Date:
+August 15, 2026
+
+Time:
+5:00 PM – 6:00 PM
+
+Amount:
+₱600
+```
+
+The purpose is to confirm that the reservation was received successfully.
+
+## Status Updates
+
+Additional emails should be sent for important status changes such as:
+
+* Verified
+* Rejected
+* Rescheduled
+* Cancelled
+
+A completed reservation does not necessarily require a customer email because it is primarily an internal operational status.
+
+---
+
+# 19. Walk-In Reservations
+
+Walk-in customers are supported.
+
+Authorized Staff can manually create a reservation for customers who arrive directly at the facility.
+
+Walk-in reservations must use the same availability system as online reservations.
+
+Example:
+
+```text
++ Add Walk-In
+
+Customer Name
+Contact Number
+Court
+Date
+Time Slot(s)
+Payment Information
+Additional Information
+```
+
+Once the walk-in reservation is saved, the selected court/time slots immediately become unavailable online.
+
+The system should distinguish reservation sources such as:
+
+```text
+ONLINE
+WALK-IN
+```
+
+Online and walk-in reservations must share the same court availability source.
+
+---
+
+# 20. Court Availability Management
+
+Management must support both complete date closures and specific court/time blocking.
+
+## Close Entire Date
+
+Authorized users can close an entire date.
+
+Example:
+
+```text
+August 20
+CLOSED
+
+Reason:
+Private Facility Use
+```
+
+No normal reservations can be created for that date.
+
+---
+
+## Block Specific Court / Time Slot
+
+Authorized users can block only selected slots.
+
+Example:
+
+```text
+August 22
+Court 3
+2:00 PM – 4:00 PM
+
+BLOCKED
+
+Reason:
+Maintenance
+```
+
+Blocking a specific court/time should not affect other available courts or time slots.
+
+---
+
+# 21. Events Page
+
+**Path:** `/events`
+
+The Events Page displays announcements and event-related information published by Dinks on Us.
+
+Events follow a blog or announcement-style structure.
+
+Events are informational only.
+
+Creating an event does **not automatically block reservation dates or courts**.
+
+If an event requires court closure, Staff or Manager must separately use availability management to close the required dates or slots.
+
+---
+
+# 22. FAQ Page
+
+**Path:** `/faq`
+
+The FAQ Page contains frequently asked questions and answers for players and the community.
+
+---
+
+# 23. Management System
+
+The Management System is the authenticated administrative area of Dinks on Us.
+
+It is used by:
+
+* Manager
+* Staff
+
+---
+
+# 24. Roles
+
+## Manager
+
+The Manager has access to all management modules.
+
+The Manager can:
+
+* Access all modules
+* Manage reservations
+* Manage business configuration
+* Manage website content
+* Manage payment methods
+* Manage court availability
+* Create roles
+* Configure module access
+* Create Staff accounts
+* Assign roles
+* View reports and analytics
+* Manage account settings
+* Handle reservation cancellation
+
+---
+
+## Staff
+
+Staff access is controlled through assigned roles.
+
+Staff members do not receive permissions individually.
+
+Instead:
+
+```text
+Staff Account
+      │
+      ▼
+Assigned Role
+      │
+      ▼
+Accessible Modules
+```
+
+Each Staff account is assigned **one role**.
+
+---
+
+# 25. Role Management
+
+The Manager creates roles before creating or assigning Staff accounts.
+
+Example:
+
+```text
+Role: Front Desk
+
+Dashboard       ✓
+Reservation     ✓
+History         ✓
+Management      ✗
+Reports         ✗
+```
+
+Another example:
+
+```text
+Role: Supervisor
+
+Dashboard       ✓
+Reservation     ✓
+History         ✓
+Management      ✓
+Reports         ✓
+```
+
+The system uses **module-level access control**.
+
+Fine-grained permissions such as separate `View`, `Edit`, `Verify`, or `Delete` permissions are not part of the current scope.
+
+---
+
+# 26. Management Modules
+
+## 26.1 Dashboard
+
+The Dashboard provides a business and operational overview.
+
+It may display:
+
+* Important KPIs
+* Verified reservations
+* Upcoming reservations
+* Current reservation activity
+* Available slots
+* Reserved slots
+* Weekly court availability
+* Date-based reservation browsing
+
+Authorized users should be able to browse different dates and inspect court availability within a week.
+
+Possible slot states include:
+
+```text
+Available
+Waiting for Verification
+Verified
+Blocked
+Ongoing
+```
+
+---
+
+# 27. Reservation Module
+
+The Reservation module contains reservations that still require operational attention.
+
+This includes:
+
+* Waiting for Verification
+* Verified
+* Upcoming
+* Ongoing
+
+The module allows authorized users to:
+
+* Review reservation details
+* Inspect uploaded receipts
+* Inspect payment reference numbers
+* Verify payment
+* Reject reservation submissions
+* Manage ongoing reservations
+* Perform allowed rescheduling
+* Perform extensions
+* Mark reservations as completed
+* Mark reservations as no-show
+
+Cancellation is currently assumed to be Manager-only.
+
+---
+
+# 28. Reservation Extension
+
+Only Staff or the Manager can extend an ongoing reservation.
+
+Players cannot extend reservations directly through the public website.
+
+Before an extension is added:
+
+* The requested next slot must be available.
+* The selected court must still be available for that slot.
+
+Example:
+
+```text
+Current Reservation
+
+Court 1
+3:00 PM – 4:00 PM
+
+Next Slot
+4:00 PM – 5:00 PM
+AVAILABLE
+
+Staff:
+Extend +1 Hour
+```
+
+Once confirmed:
+
+* The new slot becomes unavailable.
+* The reservation total is updated.
+* The additional court charge is included in final billing.
+
+---
+
+# 29. Add-Ons and Final Reservation Amount
+
+A verified reservation may incur additional charges during actual play.
+
+Possible examples include:
+
+* Additional players
+* Court extensions
+* Other business add-ons
+
+The original submitted amount is therefore not always the final amount.
+
+Before completing a reservation, Staff should be able to review the final charge.
+
+Example:
+
+```text
+Reservation DOU-0012
+
+Original Court Fee
+₱1,000
+
+Additional Player
+₱100
+
+1-Hour Extension
+₱600
+
+------------------
+Final Amount
+₱1,700
+```
+
+Once the reservation is finalized as **Completed**, the final amount becomes the primary value used for business revenue reporting.
+
+---
+
+# 30. History Module
+
+The History module contains finalized reservation records.
+
+Current finalized statuses include:
+
+* Completed
+* Cancelled
+* Rejected
+* No-show
+
+Operational reservations such as Waiting for Verification, Verified, Upcoming, and Ongoing remain in the Reservation module.
+
+History records are considered finalized operational records.
+
+They should not normally be reopened or casually modified.
+
+---
+
+# 31. Management Module
+
+The Management module controls dynamic business configuration and website information.
+
+It may contain the following areas:
+
+```text
+Management
+│
+├── Rates & Pricing
+├── Payment Methods
+├── Events
+├── Staff Accounts
+├── Roles
+├── Gallery
+├── Rules
+├── Closed Dates
+├── Blocked Slots
+└── Other Dynamic Business Information
+```
+
+---
+
+# 32. Rates and Pricing Management
+
+The Manager can:
+
+* Create rates
+* Modify prices
+* Configure time ranges
+* Configure weekday/weekend applicability
+* Activate or deactivate rates
+
+---
+
+# 33. Payment Method Management
+
+The Manager can:
+
+* Add supported payment methods
+* Edit payment information
+* Upload or replace QR code images
+* Activate or deactivate payment methods
+
+---
+
+# 34. Events Management
+
+The Manager can:
+
+* Create announcements/events
+* Edit events
+* Publish events
+* Manage event content
+
+Events are displayed on the public Events page.
+
+---
+
+# 35. Staff Account Management
+
+The Manager can:
+
+* Create Staff accounts
+* Assign one role to each Staff account
+* Update Staff information
+* Disable Staff accounts when necessary
+
+---
+
+# 36. Role Management
+
+The Manager can:
+
+* Create roles
+* Rename roles
+* Assign accessible modules
+* Update role access
+
+Staff permissions are inherited from their assigned role.
+
+---
+
+# 37. Gallery Management
+
+Authorized management users can add and manage gallery images displayed on the public website.
+
+---
+
+# 38. Rules Management
+
+Authorized users can manage court rules, etiquette, and relevant business policies.
+
+Changes should be reflected dynamically on the public website.
+
+---
+
+# 39. Closed Dates and Blocked Slots
+
+Management can control availability through:
+
+* Entire date closure
+* Specific court blocking
+* Specific time-slot blocking
+
+Optional reasons may be recorded for administrative reference.
+
+---
+
+# 40. Reports and Analytics
+
+The Reports and Analytics module converts operational system data into useful business information.
+
+The primary revenue source for analytics should be:
+
+**Completed Reservations → Final Amount**
+
+Verified reservation amounts should not automatically be treated as final revenue because the reservation may later contain:
+
+* Additional players
+* Extensions
+* Additional charges
+* Other adjustments
+
+Possible reports and KPIs may eventually include:
+
+* Completed reservations
+* Total revenue
+* Revenue by date
+* Revenue by week
+* Revenue by month
+* Court utilization
+* Most booked courts
+* Most popular booking times
+* Day vs night usage
+* Weekday vs weekend usage
+* No-show records
+* Cancellation records
+* Reservation trends
+* Walk-in vs online reservations
+
+Exact reporting requirements can be refined later.
+
+---
+
+# 41. Settings
+
+The Settings module allows the Manager to manage personal account information and credentials.
+
+---
+
+# 42. Logout
+
+The Logout function securely terminates the authenticated Staff or Manager session.
+
+---
+
+# 43. High-Level Online Reservation Flow
+
+```text
+Player
+  │
+  ▼
+Public Website
+  │
+  ▼
+Reserve Page
+  │
+  ▼
+Select One or More Available Slots
+  │
+  ├── Different Courts Allowed
+  ├── Different Times Allowed
+  └── Non-Consecutive Times Allowed
+  │
+  ▼
+Enter Customer Information
+  │
+  ▼
+Choose Payment Method
+  │
+  ▼
+View E-Wallet QR Code
+  │
+  ▼
+Pay Externally
+  │
+  ▼
+Upload Receipt
+  │
+  ▼
+Enter Payment Reference Number
+  │
+  ▼
+Submit Reservation
+  │
+  ├── Selected Slots Immediately Become Unavailable
+  │
+  ▼
+WAITING FOR VERIFICATION
+  │
+  ├───────────────┐
+  ▼               ▼
+VERIFIED        REJECTED
+  │               │
+  │               └── Slots Released
+  │
+  ▼
+Upcoming Reservation
+  │
+  ▼
+Ongoing
+  │
+  ├── Add-On
+  ├── Extension
+  ├── Reschedule
+  │
+  ▼
+Final Outcome
+  │
+  ├── COMPLETED
+  ├── CANCELLED
+  └── NO-SHOW
+  │
+  ▼
+History
+```
+
+---
+
+# 44. Walk-In Flow
+
+```text
+Walk-In Customer
+      │
+      ▼
+Staff Opens Reservation Module
+      │
+      ▼
+Create Walk-In Reservation
+      │
+      ▼
+Select Available Court / Time Slot(s)
+      │
+      ▼
+Record Customer / Payment Information
+      │
+      ▼
+Save Reservation
+      │
+      ▼
+Selected Slots Become Unavailable Online
+      │
+      ▼
+Ongoing Reservation
+      │
+      ▼
+Finalization
+      │
+      ▼
+Completed / Cancelled / No-show
+      │
+      ▼
+History
+```
+
+---
+
+# 45. Core Availability Rule
+
+The system must maintain **one shared source of truth for court availability**.
+
+Availability must consider:
+
+* Online reservations waiting for verification
+* Verified reservations
+* Walk-in reservations
+* Ongoing reservations
+* Closed dates
+* Blocked courts
+* Blocked time slots
+* Extensions
+
+A court/time slot is only publicly selectable when no active record is currently occupying or blocking that slot.
+
+---
+
+# 46. Website Customization Scope
+
+The Management system is intended to manage business content and configuration.
+
+Current expected editable information includes:
+
+* About Us
+* Court Rules / Etiquette
+* Gallery
+* Events
+* Rates and Pricing
+* Payment Methods
+* QR Code Images
+* Operating Information
+* Contact Information
+* Social Links
+* Closed Dates
+* Blocked Slots
+
+The current scope does **not require a full visual page builder or CMS** for modifying:
+
+* Website layout
+* Component placement
+* Typography
+* Color palette
+* Page architecture
+
+unless explicitly added to the project requirements later.
+
+---
+
+# 47. Pending Client Confirmation
+
+The following business policies are not yet finalized and should be confirmed during a future client meeting.
+
+## Cancellation Policy
+
+Confirm:
+
+* How customers request cancellation
+* Cancellation deadline
+* Refund eligibility
+* Refund amount
+* Cancellation fees
+* Whether selected Staff roles may eventually cancel reservations
+
+Current temporary assumption:
+
+* Customer requests cancellation through Facebook / Messenger
+* Manager performs the cancellation in the management system
+
+---
+
+## Rescheduling Policy
+
+Confirm:
+
+* Who can request rescheduling
+* How close to the reservation schedule it can be requested
+* Whether there is a rescheduling limit
+* Any applicable fees
+
+---
+
+## No-Show / Late Arrival Policy
+
+Confirm:
+
+* Grace period for late arrivals
+* When Staff may officially mark a reservation as no-show
+
+---
+
+## Add-Ons
+
+Confirm:
+
+* Supported add-ons
+* Additional-player pricing
+* Other charges available during play
+
+---
+
+## Operating Hours and Rate Boundaries
+
+Confirm:
+
+* Exact opening and closing hours
+* Exact Day Rate time range
+* Exact Night Rate time range
+* Weekend rates if different
+* Special-day pricing if applicable
+
+Current temporary values:
+
+```text
+Day Rate: ₱500/hour
+Night Rate: ₱600/hour
+```
+
+---
+
+## Payment Methods
+
+Confirm the exact supported:
+
+* E-wallet providers
+* Account information
+* QR codes
+
+---
+
+## Required Customer Information
+
+Current expected information:
+
+* Full Name
+* Email Address
+* Contact Number
+* Selected Court/Slots
+* Payment Method
+* Payment Reference Number
+* Payment Receipt
+
+Confirm whether additional information is required.
+
+---
+
+## Walk-In Payment Information
+
+Confirm whether Staff must record:
+
+* Payment method
+* Payment reference number
+* Receipt
+* Cash payment
+* Other payment details
+
+for walk-in reservations.
+
+---
+
+# 48. System Structure Summary
+
+```text
+DINKS ON US
+│
+├── PUBLIC WEBSITE
+│   │
+│   ├── Home
+│   │   ├── Header
+│   │   ├── Hero
+│   │   ├── Court Etiquette
+│   │   ├── How to Book
+│   │   ├── About Us
+│   │   ├── Gallery
+│   │   ├── Location
+│   │   ├── Footer
+│   │   └── Floating Messenger Button
+│   │
+│   ├── Reserve
+│   ├── Events
+│   └── FAQ
+│
+└── MANAGEMENT SYSTEM
+    │
+    ├── Manager
+    │   └── All Modules
+    │
+    ├── Staff
+    │   └── One Assigned Role
+    │
+    └── Modules
+        │
+        ├── Dashboard
+        ├── Reservation
+        ├── History
+        ├── Management
+        │   ├── Rates & Pricing
+        │   ├── Payment Methods
+        │   ├── Events
+        │   ├── Staff Accounts
+        │   ├── Roles
+        │   ├── Gallery
+        │   ├── Rules
+        │   ├── Closed Dates
+        │   └── Blocked Slots
+        │
+        ├── Reports & Analytics
+        ├── Settings
+        └── Logout
+```
+
+---
+
+# 49. Current Scope Principle
+
+The Dinks on Us system has two major sides.
+
+## Public Side
+
+Focused on allowing players and the community to:
+
+* View business information
+* Check real-time court availability
+* Select one or more court/time slots
+* Make online reservations without an account
+* Pay through configured e-wallet QR codes
+* Upload payment proof
+* Receive reservation updates through email
+* View events
+* View court rules
+* View the gallery
+* View location information
+* Access FAQ
+* Contact the business through Facebook / Messenger
+
+## Management Side
+
+Focused on allowing authorized Staff and Managers to:
+
+* Verify reservation payments
+* Manage active reservations
+* Handle walk-ins
+* Manage court availability
+* Extend ongoing reservations
+* Manage add-ons and final charges
+* Reschedule reservations
+* Record no-shows
+* Handle cancellations
+* Maintain immutable operational history
+* Manage business content
+* Manage pricing
+* Manage payment methods
+* Manage Staff roles and accounts
+* Review reports and analytics
+
+---
+
+# 50. Document Purpose
+
+This document represents the **current agreed and clarified system overview and business behavior** of the Dinks on Us website.
+
+It should serve as a primary reference for:
+
+* Requirement planning
+* Database design
+* API design
+* Frontend architecture
+* Authorization rules
+* Business-rule implementation
+* AI-assisted development
+* Future project documentation
+
+Rules listed under **Pending Client Confirmation** should not be treated as finalized business policies until confirmed by the client.
+
+Future architectural or implementation decisions should preserve the business behavior defined in this document unless the project requirements are explicitly updated.

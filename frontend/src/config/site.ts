@@ -1,4 +1,4 @@
 export const siteConfig = {
   name: "Dinks on Us",
-  description: "A reusable Laravel API and Next.js application foundation.",
+  description: "Your home court for pickleball, good energy, and community in Bulacan.",
 } as const;

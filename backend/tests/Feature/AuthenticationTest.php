@@ -3,52 +3,19 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_user_can_register_without_a_role_or_permission(): void
+    public function test_self_service_account_routes_are_not_available(): void
     {
-        Notification::fake();
-
-        $response = $this->withHeader('Origin', 'http://localhost:3000')->postJson('/api/v1/register', [
-            'name' => '  Jane   Doe  ',
-            'email' => ' JANE@EXAMPLE.COM ',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ]);
-
-        $response->assertCreated()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.name', 'Jane Doe')
-            ->assertJsonPath('data.email', 'jane@example.com')
-            ->assertJsonMissingPath('data.role')
-            ->assertJsonMissingPath('data.permissions');
-
-        $user = User::query()->firstOrFail();
-        $this->assertAuthenticatedAs($user);
-        $this->assertTrue(Hash::check('password123', $user->password));
-        Notification::assertSentTo($user, VerifyEmail::class);
-    }
-
-    public function test_registration_validation_uses_the_standard_contract(): void
-    {
-        $this->postJson('/api/v1/register', [])
-            ->assertUnprocessable()
-            ->assertJson([
-                'success' => false,
-                'message' => 'The provided information is invalid.',
-                'code' => 'VALIDATION_FAILED',
-                'data' => null,
-                'meta' => null,
-            ])
-            ->assertJsonValidationErrors(['name', 'email', 'password'], 'errors');
+        foreach (['register', 'forgot-password', 'reset-password'] as $endpoint) {
+            $this->postJson("/api/v1/{$endpoint}")->assertNotFound();
+        }
     }
 
     public function test_a_user_can_login_and_retrieve_their_account(): void
@@ -86,6 +53,23 @@ class AuthenticationTest extends TestCase
             ->postJson('/api/v1/logout')
             ->assertOk()
             ->assertJsonPath('message', 'You have been signed out.');
+    }
+
+    public function test_local_database_seeder_creates_the_default_manager(): void
+    {
+        $this->seed();
+
+        $manager = User::query()
+            ->with('role')
+            ->where('email', config('manager.default.email'))
+            ->firstOrFail();
+
+        $this->assertSame(config('manager.default.name'), $manager->name);
+        $this->assertSame('manager', $manager->role?->slug);
+        $this->assertTrue($manager->role?->is_protected);
+        $this->assertTrue($manager->role?->is_full_access);
+        $this->assertNotNull($manager->email_verified_at);
+        $this->assertTrue(Hash::check(config('manager.default.password'), $manager->password));
     }
 
     public function test_guest_access_to_account_endpoints_returns_401(): void

@@ -14,6 +14,8 @@ class CurrentUserController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
+        $request->user()->load('role');
+
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),
             'Authenticated user retrieved.',
