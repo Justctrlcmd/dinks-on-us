@@ -19,7 +19,6 @@ export function getPortalNavigation(user: User) {
 
 export function getRequiredPortalModule(pathname: string): PortalModule | null {
   if (pathname === "/portal/profile") return null;
-  if (pathname === "/portal/settings") return "SETTINGS";
 
   const item = [...portalNavigation]
     .sort((left, right) => right.href.length - left.href.length)

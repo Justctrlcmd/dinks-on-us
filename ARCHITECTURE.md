@@ -36,7 +36,7 @@ Laravel classes use PascalCase, methods camelCase, tables plural snake_case, col
 
 ## Portal and future modules
 
-The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized. The account menu owns Profile, Settings, and Logout. As management modules are introduced, both navigation visibility and backend authorization must use the authenticated account's assigned role and module access.
+The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized. The account menu owns Profile, an in-place light/dark mode control, and Logout. As management modules are introduced, both navigation visibility and backend authorization must use the authenticated account's assigned role and module access.
 
 Future modules create only needed pieces. Simple CRUD does not justify repositories, actions, or service layers automatically. Use transactions for multi-write invariants, eager load serialized relations, add indexes from query patterns, enforce important uniqueness in validation and the database, and choose delete behavior intentionally.
 

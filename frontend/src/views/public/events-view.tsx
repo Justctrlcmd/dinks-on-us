@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FiArrowUpRight, FiBell, FiCalendar } from "react-icons/fi";
+import { FiArrowUpRight, FiCalendar } from "react-icons/fi";
 import { PublicSiteFrame } from "@/components/public/public-site-frame";
 import { Button } from "@/components/ui/button";
 
@@ -28,17 +28,17 @@ export function EventsView() {
   return (
     <PublicSiteFrame>
       <main className="min-h-svh bg-background pt-28 sm:pt-32">
-        <div className="mx-auto max-w-[96rem] px-6 pb-10 sm:px-10 sm:pb-12 lg:px-30">
+        <div className="mx-auto max-w-[76rem] px-6 pb-10 sm:px-10 sm:pb-12">
           <h1 className="mt-6 max-w-3xl font-heading text-4xl font-extrabold leading-[.98] tracking-[-.055em] text-foreground sm:text-5xl">
             Find more ways to play together.
           </h1>
           <p className="mt-5 max-w-2xl leading-7 text-muted-foreground sm:text-lg">
             Events are informational and do not automatically change court
-            availability. Check the reserve page for bookable slots.
+            availability. Check the reserve page for reservable slots.
           </p>
         </div>
         <section>
-          <div className="mx-auto max-w-[96rem] px-6 pb-12 sm:px-10 lg:px-30">
+          <div className="mx-auto max-w-[76rem] px-6 pb-12 sm:px-10">
             <div className="grid gap-4 lg:grid-cols-3">
               {previewEvents.map((event) => (
                 <article

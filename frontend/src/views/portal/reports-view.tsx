@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 const reports = [
   { title: "Revenue", description: "Completed reservations and their final amounts, grouped by day, week, or month.", icon: FiDollarSign },
   { title: "Reservation trends", description: "Completed, rejected, cancelled, no-show, online, and walk-in activity.", icon: FiTrendingUp },
-  { title: "Court utilization", description: "Booked and completed hours for each court across a selected period.", icon: FiGrid },
-  { title: "Popular times", description: "Frequently used booking hours derived from reservation slots.", icon: FiClock },
+  { title: "Court utilization", description: "Reserved and completed hours for each court across a selected period.", icon: FiGrid },
+  { title: "Popular times", description: "Frequently used reservation hours derived from reservation slots.", icon: FiClock },
 ] as const;
 
 export function ReportsView() {

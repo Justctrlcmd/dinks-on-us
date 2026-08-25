@@ -113,7 +113,7 @@ It contains the authoritative operational rules for:
 * Multi-court reservations
 * Slot availability
 * Slot locking
-* Double-booking prevention
+* Duplicate-reservation prevention
 * Reservation statuses
 * Payment verification
 * Rejection
@@ -151,6 +151,7 @@ It contains conceptual entities such as:
 * Reservation Slots
 * Payments
 * Rates
+* Rental Equipment
 * Payment Methods
 * Adjustments
 * Status History
@@ -158,8 +159,8 @@ It contains conceptual entities such as:
 * Closed Dates
 * Availability Blocks
 * Events
-* Gallery
-* Rules
+* Gallery Tabs and Images
+* Rules & Policy
 * FAQ
 * Website Settings
 * Audit Logs
@@ -354,7 +355,6 @@ Dinks on Us
     ├── History
     ├── Management
     ├── Reports & Analytics
-    ├── Settings
     └── Logout
 ```
 
@@ -500,7 +500,7 @@ Never maintain a separate online-only slot inventory.
 
 ---
 
-# 16. Double-Booking Protection
+# 16. Duplicate-Reservation Protection
 
 The backend/database must prevent two active reservations from occupying the same:
 
@@ -583,13 +583,13 @@ Night Rate
 
 These values are configurable and are not permanent hard-coded rates.
 
-The Manager must be able to configure applicable pricing rules.
+The Manager must be able to configure applicable pricing rules, each court's player limit and operating hours, and rentable equipment with its pricing.
 
 ---
 
 # 20. Historical Price Preservation
 
-The price applied when a slot is booked must be preserved.
+The price applied when a slot is reserved must be preserved.
 
 Example:
 
@@ -629,7 +629,7 @@ WALK_IN
 
 # 22. Extensions
 
-Players cannot extend bookings themselves online.
+Players cannot extend reservations themselves online.
 
 Only authorized Staff/Manager can perform an extension.
 
@@ -686,7 +686,7 @@ Do not treat every verified reservation amount as final business revenue.
 
 # 25. Court Closures
 
-The management system supports:
+The **Availability & Closures** management workspace lets a user select a court and choose a full-date closure or a slot-only closure:
 
 ## Entire date closure
 
@@ -715,6 +715,8 @@ Existing active reservations must not be silently invalidated by creating a clos
 # 26. Events
 
 Events are announcement/content records.
+
+Each event contains a header, image, description, and date.
 
 Events do not automatically control court availability.
 
@@ -797,9 +799,10 @@ Responsible for:
 * No-show
 * Cancellation
 * Availability control
-* Roles
-* Staff
-* Content
+* Courts & Pricing, including rentable equipment
+* Team & Access for roles and Staff accounts
+* Availability & Closures
+* Public Events, FAQs, Gallery, Payment Methods, and Reservation Policies content
 * Reports
 
 ---
@@ -976,7 +979,7 @@ When implementing Dinks on Us:
 
 9. Do not separate walk-in availability from online availability.
 
-10. Do not allow frontend-only double-booking prevention.
+10. Do not allow frontend-only duplicate-reservation prevention.
 
 11. Do not trust client-calculated reservation prices.
 

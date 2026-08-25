@@ -56,6 +56,8 @@ MANAGER / STAFF
 │
 ├── Rates
 │
+├── Rental Equipment
+│
 ├── Availability Blocks
 │
 ├── Closed Dates
@@ -64,9 +66,13 @@ MANAGER / STAFF
 │
 ├── Events
 │
-├── Gallery
+├── Gallery Tabs
 │
-├── Rules
+├── Gallery Images
+│
+├── Policy Sections
+│
+├── Policy Bullets
 │
 ├── Website Settings
 │
@@ -281,10 +287,8 @@ Court 3
 
 ```text
 id
-name
-description
-status
-display_order
+court_number
+is_active
 created_at
 updated_at
 ```
@@ -300,6 +304,25 @@ INACTIVE
 
 * An inactive court should not produce publicly reservable slots.
 * Court records should not normally be deleted once they are referenced by reservation history.
+* Court numbers are assigned sequentially and are never reused after deactivation.
+* Operating hours, rates, and player rules come from the singleton `court_configurations` record rather than individual courts.
+
+## Shared Court Configuration
+
+`court_configurations` stores the one rule set used by every existing and future court.
+
+```text
+id
+opening_hour
+closing_hour
+included_players_per_court
+additional_player_price
+updated_by_user_id
+created_at
+updated_at
+```
+
+`opening_hour` uses `0` through `23`. `closing_hour` uses `1` through `24`, allowing `24` to represent midnight as the ending boundary.
 
 ---
 
@@ -549,24 +572,12 @@ Stores configurable court pricing.
 
 ```text
 id
-name
-
-start_time
-end_time
-
+court_configuration_id
+day_type
+start_hour
+end_hour
 price
-
-applies_monday
-applies_tuesday
-applies_wednesday
-applies_thursday
-applies_friday
-applies_saturday
-applies_sunday
-
-is_active
-
-created_by_user_id
+display_order
 created_at
 updated_at
 ```
@@ -574,14 +585,12 @@ updated_at
 ### Example
 
 ```text
-Name: Day Rate
 Start: 7:00 AM
 End: 5:00 PM
 Price: ₱500
 ```
 
 ```text
-Name: Night Rate
 Start: 5:00 PM
 End: 12:00 AM
 Price: ₱600
@@ -605,9 +614,36 @@ The matched rate is then copied into the reservation slot as a snapshot.
 
 ---
 
+# 18.1 Rental Equipment
+
+## Entity
+
+`rental_equipment`
+
+Stores equipment that players may rent with a court reservation.
+
+### Suggested Fields
+
+```text
+id
+name
+description
+price
+total_quantity
+is_active
+created_at
+updated_at
+```
+
+Inactive equipment must not be offered to players. Equipment price is charged once per selected unit for the whole reservation. If equipment rentals are included in a reservation, the reservation must retain the item name, price, and quantity snapshot used at checkout.
+
+Pending reservations do not reduce equipment availability. Only verified reservations consume inventory during their overlapping selected hours. Availability is derived rather than stored as a permanently decreasing counter.
+
+---
+
 # 19. Rate Conflict Rule
 
-The Manager should not be allowed to create ambiguous overlapping active rate rules for the same applicable day/time combination.
+The Manager should not be allowed to create ambiguous or incomplete shared rate periods. Weekday and weekend periods must each cover every operating hour without gaps or overlaps.
 
 Example of problematic configuration:
 
@@ -654,7 +690,7 @@ Maya
 id
 name
 account_name
-account_identifier
+account_number
 qr_image_path
 instructions
 is_active
@@ -1202,11 +1238,11 @@ Stores public announcements/events.
 
 ```text
 id
-title
+header
 slug
-summary
-content
-cover_image_path
+description
+image_path
+event_date
 
 status
 published_at
@@ -1233,16 +1269,28 @@ Events do not control reservation availability.
 
 # 40. Gallery
 
-## Entity
+## Entities
 
-`gallery_images`
+`gallery_tabs` stores the public tabs and `gallery_images` stores images in a selected tab.
 
-Stores images displayed on the public website.
-
-### Suggested Fields
+### Gallery Tab Fields
 
 ```text
 id
+name
+display_order
+is_active
+created_at
+updated_at
+```
+
+### Gallery Image Fields
+
+Images are displayed on the public website inside their assigned tab.
+
+```text
+id
+gallery_tab_id
 image_path
 caption
 alt_text
@@ -1255,27 +1303,35 @@ updated_at
 
 ---
 
-# 41. Court Rules
+# 41. Rules & Policy
 
-## Entity
+## Entities
 
-`court_rules`
+`policy_sections` stores the three fixed cards and `policy_bullets` stores the ordered content in each card.
 
-Stores public rules and etiquette.
-
-### Suggested Fields
+### Policy Section Fields
 
 ```text
 id
+key (RESERVATION, RESCHEDULE, CANCEL)
 title
-description
+display_order
+is_active
+```
+
+### Policy Bullet Fields
+
+```text
+id
+policy_section_id
+content
 display_order
 is_active
 created_at
 updated_at
 ```
 
-This allows the Manager to update rules without changing frontend code.
+The three sections are seeded as Reservation, Reschedule, and Cancel. Individual bullets can be edited, deleted, and reordered without changing frontend code.
 
 ---
 
@@ -1285,7 +1341,7 @@ This allows the Manager to update rules without changing frontend code.
 
 `faqs`
 
-Although FAQ management was not explicitly listed in the original Management module, the public FAQ page requires a content source.
+Stores public FAQ cards managed through the Management module.
 
 Suggested fields:
 
@@ -1299,7 +1355,7 @@ created_at
 updated_at
 ```
 
-If the client wants FAQ to remain static, this table may be omitted and FAQ content may remain code-managed.
+The saved `display_order` is the public display order. Each record supports create, edit, delete, and drag-to-reorder behavior.
 
 ---
 
@@ -1456,6 +1512,8 @@ role_modules
 
 courts
 
+rental_equipment
+
 reservations
 reservation_slots
 reservation_payments
@@ -1475,8 +1533,10 @@ Content/configuration entities:
 
 ```text
 events
+gallery_tabs
 gallery_images
-court_rules
+policy_sections
+policy_bullets
 faqs
 website_settings
 ```
@@ -1511,6 +1571,9 @@ reservation_schedule_histories
 courts
   ├──< reservation_slots
   └──< availability_blocks
+
+gallery_tabs
+  └──< gallery_images
 
 rates
   └──< reservation_slots
@@ -1775,6 +1838,12 @@ Store:
 ```text
 payment_method_name_snapshot
 ```
+
+## Policy Acceptance
+
+The current public reservation checkout is a client-side mock and does not create a reservation record. Its acknowledgment checkbox therefore has no historical persistence.
+
+When the real reservation model is introduced, each submitted reservation must persist a policy acceptance snapshot (or an immutable policy version reference) together with the acceptance timestamp. The snapshot must cover the Rules & Policies, Reschedule Policy, and Cancellation Policy shown at submission time so later edits do not rewrite the historical agreement.
 
 ## Customer
 
@@ -2046,7 +2115,7 @@ The following must remain true:
 
 9. Rejected and Cancelled reservations release future availability.
 
-10. Walk-ins use the same reservation and slot tables as online bookings.
+10. Walk-ins use the same reservation and slot tables as online reservations.
 
 11. Historical pricing must survive future rate changes.
 
@@ -2060,7 +2129,7 @@ The following must remain true:
 
 16. Availability is derived from transactional and blocking records.
 
-17. Backend/database enforcement must prevent double booking.
+17. Backend/database enforcement must prevent duplicate reservations.
 
 18. Rescheduling must preserve previous schedule history.
 
@@ -2121,9 +2190,7 @@ If pricing eventually requires:
 * Holiday rates
 * Date-specific rates
 * Promotional rates
-* Court-specific rates
-
-the rate model may need to be expanded.
+the rate model may need to be expanded beyond its configured per-court rates.
 
 The current model should not assume these requirements until confirmed.
 
@@ -2141,27 +2208,30 @@ The database can later be implemented approximately in this dependency order:
 4. courts
 
 5. rates
-6. payment_methods
+6. rental_equipment
+7. payment_methods
 
-7. reservations
-8. reservation_slots
-9. reservation_payments
-10. reservation_adjustments
+8. reservations
+9. reservation_slots
+10. reservation_payments
+11. reservation_adjustments
 
-11. reservation_status_histories
-12. reservation_schedule_histories
-13. reservation_schedule_history_items
+12. reservation_status_histories
+13. reservation_schedule_histories
+14. reservation_schedule_history_items
 
-14. closed_dates
-15. availability_blocks
+15. closed_dates
+16. availability_blocks
 
-16. events
-17. gallery_images
-18. court_rules
-19. faqs
-20. website_settings
+17. events
+18. gallery_tabs
+19. gallery_images
+20. policy_sections
+21. policy_bullets
+22. faqs
+23. website_settings
 
-21. audit_logs
+24. audit_logs
 ```
 
 ---
@@ -2175,7 +2245,7 @@ This distinction is fundamental.
 ```text
 Reservation
 =
-Customer transaction / booking
+Customer transaction / reservation
 
 Reservation Slot
 =

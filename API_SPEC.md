@@ -298,13 +298,13 @@ Possible response:
 
 ---
 
-# 12. Public Court Rules
+# 12. Public Rules & Policy
 
 ```http
-GET /api/v1/public/rules
+GET /api/v1/public/policies
 ```
 
-Returns active court rules ordered by display order.
+Returns the four system-defined policy sections—Court Rules & Policy, Reservation Rules & Policy, Reschedule Policy, and Cancellation Policy—with sub-headers and rules ordered for public display.
 
 ---
 
@@ -359,49 +359,42 @@ Draft or archived events must not be publicly accessible.
 
 ---
 
-# 16. Public Courts
+# 16. Public Reservation Options
 
 ```http
-GET /api/v1/public/courts
+GET /api/v1/public/reservation-options?date=2026-08-25
 ```
 
-Returns active courts available for reservation.
+Returns the shared court configuration, active courts, the selected date's configured one-hour price slots, active rental equipment, and the verified-only equipment confirmation message.
 
 Example:
 
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "Court 1"
+  "data": {
+    "date": "2026-08-25",
+    "configuration": {
+      "opening_hour": 7,
+      "closing_hour": 24,
+      "included_players_per_court": 4,
+      "additional_player_price": 100
     },
-    {
-      "id": 2,
-      "name": "Court 2"
-    },
-    {
-      "id": 3,
-      "name": "Court 3"
-    }
-  ]
+    "courts": [{ "id": 1, "name": "Court 1" }],
+    "slots": [{ "start_hour": 7, "end_hour": 8, "price": 500 }],
+    "equipment": [{ "id": 1, "name": "Paddle", "price": 100, "available_quantity": 12 }],
+    "equipment_confirmation": "Equipment availability is confirmed when your reservation is verified."
+  }
 }
 ```
 
 ---
 
-# 17. Public Rates
-
-```http
-GET /api/v1/public/rates
-```
-
-Returns active rate configuration required for display purposes.
+# 17. Public Pricing Authority
 
 The frontend may display pricing information, but the frontend must not be trusted to calculate the authoritative reservation amount.
 
-The backend calculates the final booking price.
+The backend calculates the final reservation price.
 
 ---
 
@@ -1162,7 +1155,7 @@ source = WALK_IN
 
 and the selected slots become unavailable publicly.
 
-Walk-ins must never bypass double-booking protection.
+Walk-ins must never bypass duplicate-reservation protection.
 
 ---
 
@@ -1560,7 +1553,7 @@ should exist.
 
 ---
 
-# 62. Rates Management
+# 62. Courts & Pricing Management
 
 Requires:
 
@@ -1571,39 +1564,44 @@ MANAGEMENT
 Suggested routes:
 
 ```http
-GET    /api/v1/management/rates
-POST   /api/v1/management/rates
-GET    /api/v1/management/rates/{rate}
-PUT    /api/v1/management/rates/{rate}
-PATCH  /api/v1/management/rates/{rate}
+GET    /api/v1/management/courts
+POST   /api/v1/management/courts
+DELETE /api/v1/management/courts/{court}
+
+GET    /api/v1/management/court-configuration
+PUT    /api/v1/management/court-configuration
+
+GET    /api/v1/management/rental-equipment
+POST   /api/v1/management/rental-equipment
+PATCH  /api/v1/management/rental-equipment/{rentalEquipment}
+DELETE /api/v1/management/rental-equipment/{rentalEquipment}
 ```
 
-Prefer deactivation over destructive deletion when a rate has historical references.
+Court names are generated from permanent sequential numbers. The shared configuration applies to all courts. Delete operations deactivate records so historical references remain meaningful.
 
 ---
 
-# 63. Create Rate
+# 63. Update Shared Court Configuration
 
 Example payload:
 
 ```json
 {
-  "name": "Day Rate",
-  "start_time": "07:00",
-  "end_time": "17:00",
-  "price": 500,
-  "days": [
-    "MONDAY",
-    "TUESDAY",
-    "WEDNESDAY",
-    "THURSDAY",
-    "FRIDAY"
+  "opening_hour": 7,
+  "closing_hour": 24,
+  "included_players_per_court": 4,
+  "additional_player_price": 100,
+  "weekday_rates": [
+    { "start_hour": 7, "end_hour": 17, "price": 500 },
+    { "start_hour": 17, "end_hour": 24, "price": 600 }
   ],
-  "is_active": true
+  "weekend_rates": [
+    { "start_hour": 7, "end_hour": 24, "price": 700 }
+  ]
 }
 ```
 
-Backend must prevent ambiguous overlapping active rate rules.
+Backend must enforce whole-hour boundaries and complete, consecutive coverage from opening through closing for both weekday and weekend periods.
 
 ---
 
@@ -1620,7 +1618,7 @@ A multipart request may be used when changing the QR code image.
 
 Manager should be able to:
 
-* Add payment method
+* Add a supported e-wallet payment method with its name and account number
 * Update account information
 * Replace QR image
 * Activate
@@ -1641,7 +1639,7 @@ DELETE /api/v1/management/closed-dates/{closedDate}
 
 Before creating a closure, backend must check for conflicts with active reservations.
 
-It must not silently invalidate existing bookings.
+It must not silently invalidate existing reservations.
 
 ---
 
@@ -1688,6 +1686,8 @@ PUBLISHED
 ARCHIVED
 ```
 
+Event create and update requests include a public `header`, `image`, `description`, and `event_date`.
+
 Deleting published historical content may instead be implemented as archive where appropriate.
 
 Events must not affect court availability.
@@ -1697,11 +1697,18 @@ Events must not affect court availability.
 # 68. Gallery Management
 
 ```http
+GET    /api/v1/management/gallery-tabs
+POST   /api/v1/management/gallery-tabs
+PATCH  /api/v1/management/gallery-tabs/{galleryTab}
+DELETE /api/v1/management/gallery-tabs/{galleryTab}
+
 GET    /api/v1/management/gallery
 POST   /api/v1/management/gallery
 PATCH  /api/v1/management/gallery/{image}
 DELETE /api/v1/management/gallery/{image}
 ```
+
+An image belongs to a selected gallery tab. Tab and image display order are persisted and determine their public order.
 
 Image upload endpoints should validate:
 
@@ -1711,38 +1718,35 @@ Image upload endpoints should validate:
 
 ---
 
-# 69. Court Rules Management
+# 69. Reservation Policies Management
 
 ```http
-GET    /api/v1/management/rules
-POST   /api/v1/management/rules
-PATCH  /api/v1/management/rules/{rule}
-DELETE /api/v1/management/rules/{rule}
+GET    /api/v1/management/policy-sections
+POST   /api/v1/management/policy-sections/{section}/subheaders
+PATCH  /api/v1/management/policy-subheaders/{subheader}
+DELETE /api/v1/management/policy-subheaders/{subheader}
+PATCH  /api/v1/management/policy-sections/{section}/subheader-order
+POST   /api/v1/management/policy-sections/{section}/rules
+PATCH  /api/v1/management/policy-rules/{rule}
+DELETE /api/v1/management/policy-rules/{rule}
+PATCH  /api/v1/management/policy-subheaders/{subheader}/rule-order
 ```
 
-Rules support:
-
-```text
-title
-description
-display_order
-is_active
-```
+The fixed section slugs are `court-rules`, `reservation-rules`, `reschedule-policy`, and `cancellation-policy`. Management cannot create, rename, or delete sections. Sub-headers can only be deleted when empty; rules can be moved to another sub-header in the same section by editing them. Ordering endpoints require the complete owned list and persist drag-and-drop changes transactionally.
 
 ---
 
 # 70. FAQ Management
-
-If FAQ is dynamic:
 
 ```http
 GET    /api/v1/management/faqs
 POST   /api/v1/management/faqs
 PATCH  /api/v1/management/faqs/{faq}
 DELETE /api/v1/management/faqs/{faq}
+PATCH  /api/v1/management/faqs/display-order
 ```
 
-If FAQ remains static, these endpoints may be omitted.
+Each FAQ is a public question-and-answer card. The display-order endpoint persists drag-and-drop reordering.
 
 ---
 
@@ -2140,7 +2144,7 @@ but the backend must independently enforce:
 * Payment requirements
 * Rate rules
 * Cancellation authority
-* Double-booking prevention
+* Duplicate-reservation prevention
 
 ---
 
@@ -2467,17 +2471,17 @@ GET /api/v1/management/history/{reservation}
 ## Management
 
 ```text
-Rates
+Courts & Pricing
+  - Courts, rates, player limits, operating hours, rental equipment
+Availability & Closures
+  - Closed dates and availability blocks
 Payment Methods
-Closed Dates
-Availability Blocks
+Team & Access
+  - Roles and Staff accounts
+Reservation Policies
 Events
 Gallery
-Rules
-FAQ
-Site Settings
-Roles
-Staff
+FAQs
 ```
 
 ---
@@ -2515,7 +2519,7 @@ The following API rules must always remain true:
 
 8. Walk-ins use the same availability system.
 
-9. Double booking must be prevented by backend/database enforcement.
+9. Duplicate reservations must be prevented by backend/database enforcement.
 
 10. Important reservation changes use explicit action endpoints.
 

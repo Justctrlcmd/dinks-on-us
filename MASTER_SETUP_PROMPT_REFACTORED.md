@@ -156,7 +156,7 @@ Triggered continuously by feature requests.
 
 Examples:
 
-> Create a booking module.
+> Create a reservation module.
 
 > Add vehicle inspections.
 
@@ -585,7 +585,7 @@ Admin hierarchy
 User levels
 Business modules
 Appointments
-Bookings
+Reservations
 Inventory
 Reports
 Analytics
@@ -1810,7 +1810,7 @@ Services contain API requests only.
 Example future file:
 
 ```text
-services/bookings/booking-service.ts
+services/reservations/reservation-service.ts
 ```
 
 Prefer named functions such as:
@@ -1867,7 +1867,7 @@ plural snake_case:
 
 ```text
 users
-bookings
+reservations
 booking_items
 vehicle_inspections
 ```
@@ -1933,9 +1933,9 @@ Use kebab-case filenames:
 ```text
 login-form.tsx
 portal-sidebar.tsx
-booking-service.ts
-booking-schema.ts
-use-bookings.ts
+reservation-service.ts
+reservation-schema.ts
+use-reservations.ts
 ```
 
 React components:
@@ -1957,7 +1957,7 @@ useCreateBooking
 Schemas:
 
 ```text
-create-booking-schema.ts
+create-reservation-schema.ts
 ```
 
 Export:
@@ -1999,7 +1999,7 @@ Example pattern:
 
 ```ts
 export const bookingKeys = {
-  all: ["bookings"] as const,
+  all: ["reservations"] as const,
 
   lists: () =>
     [...bookingKeys.all, "list"] as const,
@@ -2127,7 +2127,7 @@ Use foreign keys when a genuine relational dependency exists.
 Example:
 
 ```text
-bookings.user_id → users.id
+reservations.user_id → users.id
 ```
 
 Do not create relationships without constraints when integrity matters.
@@ -2226,11 +2226,11 @@ historical state at transaction time
 
 Example:
 
-A service costs ₱150 when booked.
+A service costs ₱150 when reserved.
 
 Later it becomes ₱200.
 
-A historical booking may need to retain:
+A historical reservation may need to retain:
 
 ```text
 price_snapshot = 150
@@ -3384,4 +3384,3 @@ Unless configuration-only output was explicitly requested, finish by
 provisioning and verifying the selected local database, generating both actual
 ignored environment files, running the documented backend and frontend startup
 commands, and completing the operational acceptance gate.
-

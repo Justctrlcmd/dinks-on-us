@@ -27,12 +27,18 @@ describe("PortalNavigation", () => {
     const user = userEvent.setup();
     render(<PortalNavigation user={manager} />);
 
-    expect(screen.queryByRole("link", { name: "Rates & Pricing" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Courts & Pricing" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Management" }));
 
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/portal/management");
-    expect(screen.getByRole("link", { name: "Rates & Pricing" })).toHaveAttribute("href", "/portal/management/rates");
-    expect(screen.getByRole("link", { name: "Website Settings" })).toHaveAttribute("href", "/portal/management/site-settings");
+    expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Courts & Pricing" })).toHaveAttribute("href", "/portal/management/court-pricing");
+    expect(screen.getByRole("link", { name: "Availability & Closures" })).toHaveAttribute("href", "/portal/management/close-date-slot");
+    expect(screen.getByRole("link", { name: "Payment Methods" })).toHaveAttribute("href", "/portal/management/payment-method");
+    expect(screen.getByRole("link", { name: "Team & Access" })).toHaveAttribute("href", "/portal/management/staff-accounts");
+    expect(screen.getByRole("link", { name: "Rules & Policies" })).toHaveAttribute("href", "/portal/management/rules-policy");
+    expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute("href", "/portal/management/events");
+    expect(screen.getByRole("link", { name: "FAQs" })).toHaveAttribute("href", "/portal/management/faqs");
+    expect(screen.getByRole("link", { name: "Gallery" })).toHaveAttribute("href", "/portal/management/gallery");
   });
 });

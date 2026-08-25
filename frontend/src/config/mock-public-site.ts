@@ -43,8 +43,8 @@ export const mockPublicSite = {
       },
     ],
   },
-  booking: {
-    eyebrow: "How booking works",
+  reservation: {
+    eyebrow: "How reservations work",
     title: "Less planning. More playing.",
     steps: [
       { title: "Find your slot", description: "Choose your date, then check live court availability for the times that work best for your crew." },
@@ -58,7 +58,7 @@ export const mockPublicSite = {
     title: "Made for the love of the rally.",
     description:
       "Dinks on Us is a pickleball home in Bulacan where first-time players, regular crews, and everyone in between can share great court time.",
-    statement: "Book a court. Bring your people. Build your community.",
+    statement: "Reserve a court. Bring your people. Build your community.",
   },
   gallery: {
     eyebrow: "Inside the courts",

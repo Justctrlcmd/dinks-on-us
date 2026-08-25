@@ -46,6 +46,6 @@ describe("portal navigation authorization", () => {
     expect(getRequiredPortalModule("/portal/management/rates")).toBe("MANAGEMENT");
     expect(getRequiredPortalModule("/portal/reservations/DOU-0012")).toBe("RESERVATION");
     expect(getRequiredPortalModule("/portal/profile")).toBeNull();
-    expect(getRequiredPortalModule("/portal/settings")).toBe("SETTINGS");
+    expect(getRequiredPortalModule("/portal/settings")).toBeNull();
   });
 });

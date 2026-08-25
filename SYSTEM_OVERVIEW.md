@@ -34,7 +34,7 @@ The management system will allow authorized personnel to:
 * Manage court availability
 * Close dates or specific court slots
 * Manage dynamic website content
-* Manage rates and pricing
+* Create courts and configure their rates, player limits, operating hours, and rentable equipment
 * Manage payment methods and QR codes
 * Manage Staff accounts and roles
 * Maintain reservation history
@@ -115,7 +115,7 @@ These rules can be managed dynamically through the Management module.
 
 ---
 
-## 2.4 How to Book Section
+## 2.4 How to Reserve Section
 
 Provides players with a clear step-by-step guide explaining how to make an online reservation.
 
@@ -281,25 +281,23 @@ These values are not hard-coded business rules.
 
 The Manager must be able to configure pricing dynamically.
 
-Configurable rate information may include:
+The Manager maintains one court configuration shared by every existing and future court. Configurable information includes:
 
-* Rate name
-* Start time
-* End time
+* Opening and closing time
+* Consecutive start and end times
 * Price per hour
-* Weekday applicability
-* Weekend applicability
-* Active / inactive status
+* Weekday price periods
+* Weekend price periods
+* Players included per court
+* Additional-player price
 
 Example:
 
 ```text
-Rate Name: Day Rate
 Start: 7:00 AM
 End: 5:00 PM
 Price: ₱500
 
-Rate Name: Night Rate
 Start: 5:00 PM
 End: 12:00 AM
 Price: ₱600
@@ -892,110 +890,70 @@ They should not normally be reopened or casually modified.
 
 # 31. Management Module
 
-The Management module controls dynamic business configuration and website information.
-
-It may contain the following areas:
+The Management module groups dynamic business configuration and public website information into the following workspaces:
 
 ```text
 Management
 │
-├── Rates & Pricing
+├── Courts & Pricing
+├── Availability & Closures
 ├── Payment Methods
+├── Team & Access
+├── Reservation Policies
 ├── Events
-├── Staff Accounts
-├── Roles
 ├── Gallery
-├── Rules
-├── Closed Dates
-├── Blocked Slots
-└── Other Dynamic Business Information
+└── FAQs
 ```
 
 ---
 
-# 32. Rates and Pricing Management
+# 32. Courts & Pricing
 
-The Manager can:
+The Manager can create sequentially numbered courts and maintain one shared configuration for operating hours, weekday/weekend rates, players included per court, and the additional-player price. This workspace also manages rentable equipment, its reservation-wide unit price, and total quantity.
 
-* Create rates
-* Modify prices
-* Configure time ranges
-* Configure weekday/weekend applicability
-* Activate or deactivate rates
+Rates remain configurable rather than hard-coded. Pending reservations do not hold equipment; available quantity is reduced only by overlapping verified reservations. An inactive court or rental item must not be offered to players.
 
 ---
 
-# 33. Payment Method Management
+# 33. Team & Access
 
-The Manager can:
-
-* Add supported payment methods
-* Edit payment information
-* Upload or replace QR code images
-* Activate or deactivate payment methods
+The Manager can create and edit reusable roles, configure their module access, and create Staff accounts. Each Staff account is assigned exactly one role; Staff permissions are inherited from that role. Accounts may be disabled when access is no longer required.
 
 ---
 
-# 34. Events Management
+# 34. Availability & Closures
 
-The Manager can:
-
-* Create announcements/events
-* Edit events
-* Publish events
-* Manage event content
-
-Events are displayed on the public Events page.
+Management can select a court and close either an entire business date or only the affected time slots. The system must show and resolve active-reservation conflicts before saving so an existing reservation is never silently invalidated. Optional reasons may be recorded for administrative reference.
 
 ---
 
-# 35. Staff Account Management
+# 35. Events
 
-The Manager can:
-
-* Create Staff accounts
-* Assign one role to each Staff account
-* Update Staff information
-* Disable Staff accounts when necessary
+Management can create, edit, publish, archive, or remove public events. Each event includes a header, image, description, and date. Events are displayed on the public Events page and do not automatically block court availability.
 
 ---
 
-# 36. Role Management
+# 36. FAQs
 
-The Manager can:
-
-* Create roles
-* Rename roles
-* Assign accessible modules
-* Update role access
-
-Staff permissions are inherited from their assigned role.
+Management can create a question-and-answer card, edit or delete it, and drag cards to control their public display order. Active cards are displayed on the public FAQ page in that order.
 
 ---
 
-# 37. Gallery Management
+# 37. Gallery
 
-Authorized management users can add and manage gallery images displayed on the public website.
-
----
-
-# 38. Rules Management
-
-Authorized users can manage court rules, etiquette, and relevant business policies.
-
-Changes should be reflected dynamically on the public website.
+Authorized management users can create and manage gallery tabs, then add, order, or remove public images within each tab.
 
 ---
 
-# 39. Closed Dates and Blocked Slots
+# 38. Payment Methods
 
-Management can control availability through:
+Management can add and edit supported e-wallet payment methods, including the wallet name, account number, and QR image. Only active methods are available for player payment selection.
 
-* Entire date closure
-* Specific court blocking
-* Specific time-slot blocking
+---
 
-Optional reasons may be recorded for administrative reference.
+# 39. Reservation Policies
+
+Management maintains four fixed public policy sections: **Court Rules & Policy**, **Reservation Rules & Policy**, **Reschedule Policy**, and **Cancellation Policy**. Each section contains ordered sub-headers and individually editable rules. Users can add, edit, delete, and drag sub-headers or rules to control public display order.
 
 ---
 
@@ -1022,8 +980,8 @@ Possible reports and KPIs may eventually include:
 * Revenue by week
 * Revenue by month
 * Court utilization
-* Most booked courts
-* Most popular booking times
+* Most reserved courts
+* Most popular reservation times
 * Day vs night usage
 * Weekday vs weekend usage
 * No-show records
@@ -1035,9 +993,9 @@ Exact reporting requirements can be refined later.
 
 ---
 
-# 41. Settings
+# 41. Profile and Appearance
 
-The Settings module allows the Manager to manage personal account information and credentials.
+The Profile screen allows the Manager to manage personal account information and credentials. The account menu provides an in-place Light Mode or Dark Mode action; it changes the interface immediately and does not open a separate page.
 
 ---
 
@@ -1184,17 +1142,17 @@ The Management system is intended to manage business content and configuration.
 Current expected editable information includes:
 
 * About Us
-* Court Rules / Etiquette
-* Gallery
+* Courts & Pricing, including court player limits, operating hours, and rental equipment
+* Availability & Closures
+* Team & Access, including roles
 * Events
-* Rates and Pricing
-* Payment Methods
-* QR Code Images
+* FAQ cards
+* Gallery tabs and images
+* Payment Methods e-wallet details and QR Code Images
+* Reservation, Reschedule, and Cancel policy bullets
 * Operating Information
 * Contact Information
 * Social Links
-* Closed Dates
-* Blocked Slots
 
 The current scope does **not require a full visual page builder or CMS** for modifying:
 
@@ -1330,7 +1288,7 @@ DINKS ON US
 │   │   ├── Header
 │   │   ├── Hero
 │   │   ├── Court Etiquette
-│   │   ├── How to Book
+│   │   ├── How to Reserve
 │   │   ├── About Us
 │   │   ├── Gallery
 │   │   ├── Location
@@ -1355,18 +1313,16 @@ DINKS ON US
         ├── Reservation
         ├── History
         ├── Management
-        │   ├── Rates & Pricing
+        │   ├── Courts & Pricing
+        │   ├── Availability & Closures
         │   ├── Payment Methods
+        │   ├── Team & Access
+        │   ├── Reservation Policies
         │   ├── Events
-        │   ├── Staff Accounts
-        │   ├── Roles
         │   ├── Gallery
-        │   ├── Rules
-        │   ├── Closed Dates
-        │   └── Blocked Slots
+        │   └── FAQs
         │
         ├── Reports & Analytics
-        ├── Settings
         └── Logout
 ```
 

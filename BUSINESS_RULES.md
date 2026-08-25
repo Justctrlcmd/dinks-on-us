@@ -366,14 +366,20 @@ Rates must be configurable by the Manager.
 
 Pricing should not be permanently hard-coded into the system.
 
-A rate may define:
+One global court configuration defines the operating hours, players included per court, additional-player price, and weekday/weekend rate periods for every existing and future court. Individual courts do not override these shared rules. Rentable equipment is a separately managed catalog with its own reservation-wide unit price and total quantity. Inactive courts or rental equipment must not be offered in the public reservation flow.
 
-* Rate name
+A shared rate period defines:
+
 * Applicable start time
 * Applicable end time
 * Price
 * Weekday/weekend applicability
-* Active/inactive status
+
+Rate periods must use whole-hour boundaries, cover every operating hour, and remain consecutive without gaps or overlaps.
+
+The configured player count is the number included per court. Each additional player is charged once for the whole reservation. Equipment is also charged once per selected unit for the whole reservation.
+
+Pending reservations do not hold equipment. Publicly displayed equipment availability is reduced only by verified reservations that overlap a selected reservation time. Equipment must be checked again transactionally when verification is implemented; insufficient stock prevents verification until the equipment request is adjusted.
 
 Current temporary example:
 
@@ -391,14 +397,14 @@ These values remain subject to client confirmation.
 
 # 22. Rate Snapshot Rule
 
-Once a reservation is submitted, the system should preserve the price applied to each selected slot at the time of booking.
+Once a reservation is submitted, the system should preserve the price applied to each selected slot at the time of reservation.
 
 Future changes to configured rates must not silently change the price of an existing reservation.
 
 Example:
 
 ```text
-Booked on August 11:
+Reserved on August 11:
 3 PM – 4 PM = ₱500
 
 Manager later changes rate:
@@ -428,7 +434,7 @@ When Staff creates a walk-in reservation:
 
 * Every selected slot must first be available.
 * Once saved, those slots immediately become unavailable online.
-* Walk-ins must not bypass double-booking protection.
+* Walk-ins must not bypass duplicate-reservation protection.
 
 ---
 
@@ -449,7 +455,7 @@ This should be retained for operational tracking and reporting.
 
 # 26. Closed Date Rule
 
-Authorized management users may close an entire date.
+Authorized management users may select a court and close an entire business date. A full-date closure applies to every court; the court selection is required only when the user chooses a slot-only closure.
 
 When a date is closed:
 
@@ -470,7 +476,7 @@ Private Facility Use
 
 # 27. Specific Slot Blocking Rule
 
-Authorized users may block specific court/time slots without closing the entire date.
+Authorized users may select a court and block specific court/time slots without closing the entire date.
 
 A block may target:
 
@@ -491,6 +497,16 @@ Maintenance
 ```
 
 Other courts and unaffected times remain available.
+
+---
+
+# 28.1 Public Content Ordering Rule
+
+FAQ entries are public question-and-answer cards. Each card can be created, edited, deleted, and moved by drag-and-drop; the saved display order determines the order on the public FAQ page.
+
+Gallery images belong to a gallery tab. Management can add and order tabs, then add, remove, and order images within the selected tab.
+
+Rules and policy are maintained as three public sections: **Reservation**, **Reschedule**, and **Cancel**. Each section contains individual bullets that can be added, edited, deleted, and reordered. The public reservation experience must display those bullets in their configured order.
 
 ---
 
@@ -596,7 +612,7 @@ from:
 Final Reservation Amount
 ```
 
-The original amount represents the price submitted during booking.
+The original amount represents the price submitted during reservation.
 
 The final amount includes all valid adjustments and additional charges.
 
@@ -690,6 +706,8 @@ Any ongoing or already-used slots should remain preserved as historical data.
 # 42. Event Rule
 
 Events are informational announcements.
+
+Each event contains a public header, image, description, and date.
 
 Creating, editing, publishing, or deleting an event does not automatically modify court availability.
 
@@ -974,7 +992,7 @@ The system must avoid maintaining separate conflicting availability records for 
 
 ---
 
-# 60. Double-Booking Prevention Rule
+# 60. Duplicate-Reservation Prevention Rule
 
 The system must prevent two active reservations from occupying the same:
 
@@ -1103,13 +1121,13 @@ The following should always remain true:
 
 7. Pricing is calculated per one-hour slot.
 
-8. Existing reservations retain the price applied at booking time.
+8. Existing reservations retain the price applied at reservation time.
 
 9. Players do not need accounts.
 
 10. Payment verification is manual.
 
-11. Payment receipt and reference number are required for online booking.
+11. Payment receipt and reference number are required for an online reservation.
 
 12. Only available slots can be added through reservation, rescheduling, or extension.
 

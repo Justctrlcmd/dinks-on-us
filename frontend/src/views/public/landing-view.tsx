@@ -157,16 +157,16 @@ export function LandingView() {
           </div>
         </section>
 
-        <section id="how-to-book" className="border-y border-border bg-card py-20 text-foreground dark:bg-card dark:text-card-foreground sm:py-28">
+        <section id="how-to-reserve" className="border-y border-border bg-card py-20 text-foreground dark:bg-card dark:text-card-foreground sm:py-28">
           <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
             <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
               <div className="max-w-2xl">
                 <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-energy">
                   <span className="h-px w-8 bg-energy" aria-hidden="true" />
-                  {mockPublicSite.booking.eyebrow}
+                  {mockPublicSite.reservation.eyebrow}
                 </p>
                 <h2 className="mt-4 font-heading text-4xl font-extrabold leading-[0.98] tracking-[-0.05em] text-foreground sm:text-5xl">
-                  {mockPublicSite.booking.title}
+                  {mockPublicSite.reservation.title}
                 </h2>
               </div>
               <Button
@@ -175,14 +175,14 @@ export function LandingView() {
                 className="h-13 w-fit rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90"
                 render={<Link href="/reserve" />}
               >
-                Book A Court
+                Reserve a Court
                 <span className="ml-2 flex size-8 items-center justify-center rounded-full bg-brand-surface text-white">
                   <FiArrowUpRight aria-hidden="true" />
                 </span>
               </Button>
             </div>
             <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {mockPublicSite.booking.steps.map((step, index) => (
+              {mockPublicSite.reservation.steps.map((step, index) => (
                 <li
                   key={step.title}
                   className="relative overflow-hidden rounded-2xl border border-border bg-background p-6 shadow-sm shadow-black/3"

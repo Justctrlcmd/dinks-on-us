@@ -1,8 +1,6 @@
-import Link from "next/link";
-import { FiArrowLeft, FiCheck } from "react-icons/fi";
+import { FiCheck } from "react-icons/fi";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ManagementArea } from "@/config/management";
 
@@ -11,23 +9,18 @@ export function ManagementAreaView({ area }: { area: ManagementArea }) {
 
   return (
     <div className="grid gap-8">
-      <Button className="w-fit" variant="ghost" render={<Link href="/portal/management" />}>
-        <FiArrowLeft aria-hidden="true" />
-        Back to management
-      </Button>
-
       <PageHeader title={area.title} description={area.description} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.7fr)]">
         <Card>
           <CardHeader>
-            <CardTitle>{area.title} records</CardTitle>
-            <CardDescription>This dedicated workspace is prepared for its management API and forms.</CardDescription>
+            <CardTitle>{area.title} workspace</CardTitle>
+            <CardDescription>This dedicated workspace is prepared for its management API, forms, ordering controls, and record actions.</CardDescription>
           </CardHeader>
           <CardContent>
             <EmptyState
               title={`No ${area.title.toLowerCase()} data connected yet.`}
-              description="Records will appear here with module-specific search, filters, pagination, and actions when the backend workflow is implemented."
+              description="Records will appear here with the actions and ordering controls appropriate to this workspace when its backend workflow is implemented."
             />
           </CardContent>
         </Card>

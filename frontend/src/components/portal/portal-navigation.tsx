@@ -79,17 +79,6 @@ export function PortalNavigation({
 
               {!collapsed && managementOpen && (
                 <div id="management-subnavigation" className="mt-1 ml-[21px] grid gap-0.5 border-l border-sidebar-border pl-2">
-                  <Link
-                    href="/portal/management"
-                    onClick={onNavigate}
-                    aria-current={pathname === "/portal/management" ? "page" : undefined}
-                    className={cn(
-                      "flex min-h-9 items-center rounded-md px-3 text-[13px] text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      pathname === "/portal/management" && "bg-sidebar-primary font-medium text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",
-                    )}
-                  >
-                    Overview
-                  </Link>
                   {managementAreas.map((area) => {
                     const href = `/portal/management/${area.slug}`;
                     const subitemActive = pathname === href;

@@ -9,7 +9,7 @@ export function ManagementView() {
     <div className="grid gap-8">
       <PageHeader
         title="Management"
-        description="Configure business operations, staff access, availability, and public website content."
+        description="Choose an operational workspace to configure courts, staff access, availability, payments, and public website content."
       />
 
       <section aria-label="Management areas" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

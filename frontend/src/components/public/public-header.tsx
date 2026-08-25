@@ -15,6 +15,7 @@ const publicNavigation = [
   { label: "Reserve", href: "/reserve" },
   { label: "Events", href: "/events" },
   { label: "FAQ", href: "/faq" },
+  { label: "Policies", href: "/policies" },
 ] as const;
 
 function Brand({ onHero }: { onHero: boolean }) {

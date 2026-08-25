@@ -21,7 +21,7 @@ export function PortalAccessBoundary({ children, user }: { children: React.React
         <p className="mt-2 text-sm text-muted-foreground">
           Ask a Manager to update your assigned role if you need access to this area.
         </p>
-        <Button className="mt-5" variant="outline" render={<Link href="/portal" />}>
+        <Button className="mt-5" variant="outline" nativeButton={false} render={<Link href="/portal" />}>
           <FiArrowLeft aria-hidden="true" />
           Back to dashboard
         </Button>

@@ -19,13 +19,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  MOCK_RESERVATION_STORAGE_KEY,
-  mockEquipment,
-  type MockReservationDraft,
-  type MockSlot,
-} from "@/config/mock-reservation";
 import { cn } from "@/lib/utils";
+import { usePublicPolicies } from "@/hooks/queries/use-policies";
+import { formatHourRange } from "@/lib/time";
+import { RESERVATION_DRAFT_STORAGE_KEY, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
 
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -47,48 +44,33 @@ const paymentMethods = [
   { id: "gotyme", name: "GoTyme", account: "Dinks on Us", detail: "Mobile account", accent: "bg-[#16ad74] text-white" },
 ] as const;
 
-const conditions = [
-  "Court rental covers up to 8 players, with a maximum of 15 players per court.",
-  "Each player beyond the included 8 players is charged ₱100.",
-  "Guests and visitors have no entrance fee.",
-  "Bring your own ball, or add a ball to your equipment rental.",
-  "Party trays and group meals are subject to a ₱100 corkage fee per person.",
-  "Outside alcoholic beverages are prohibited.",
-] as const;
-
 function parseDateOnly(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
 }
 
-function formatHour(hour: number) {
-  const normalized = hour % 24;
-  const suffix = normalized >= 12 ? "PM" : "AM";
-  return `${normalized % 12 || 12}:00 ${suffix}`;
+function formatTimeRange(slot: ReservationSlot) {
+  return formatHourRange(slot.startHour, slot.endHour);
 }
 
-function formatTimeRange(slot: MockSlot) {
-  return `${formatHour(slot.startHour)} – ${formatHour(slot.endHour)}`;
-}
-
-function isReservationDraft(value: unknown): value is MockReservationDraft {
+function isReservationDraft(value: unknown): value is ReservationDraft {
   if (!value || typeof value !== "object") return false;
-  const draft = value as Partial<MockReservationDraft>;
-  return Array.isArray(draft.selectedSlots) && Boolean(draft.equipmentQuantities);
+  const draft = value as Partial<ReservationDraft>;
+  return Array.isArray(draft.selectedSlots) && Array.isArray(draft.equipment) && typeof draft.additionalPlayers === "number";
 }
 
 const subscribeToNothing = () => () => {};
 
 type SummaryGroup = {
   date: string;
-  courts: Array<{ courtId: number; courtName: string; slots: MockSlot[] }>;
+  courts: Array<{ courtId: number; courtName: string; slots: ReservationSlot[] }>;
 };
 
-function groupSelectedSlots(slots: MockSlot[]): SummaryGroup[] {
-  const byDate = new Map<string, Map<number, MockSlot[]>>();
+function groupSelectedSlots(slots: ReservationSlot[]): SummaryGroup[] {
+  const byDate = new Map<string, Map<number, ReservationSlot[]>>();
 
   for (const slot of slots) {
-    const courts = byDate.get(slot.date) ?? new Map<number, MockSlot[]>();
+    const courts = byDate.get(slot.date) ?? new Map<number, ReservationSlot[]>();
     const courtSlots = courts.get(slot.courtId) ?? [];
     courtSlots.push(slot);
     courts.set(slot.courtId, courtSlots);
@@ -119,21 +101,20 @@ function SectionHeading({ id, eyebrow, title, description }: { id?: string; eyeb
   );
 }
 
-function BookingSummary({ draft }: { draft: MockReservationDraft }) {
+function ReservationSummary({ draft }: { draft: ReservationDraft }) {
   const groups = groupSelectedSlots(draft.selectedSlots);
   const courtSubtotal = draft.selectedSlots.reduce((total, slot) => total + slot.price, 0);
-  const equipmentLines = mockEquipment
-    .map((item) => ({ ...item, quantity: draft.equipmentQuantities[item.id] ?? 0 }))
-    .filter((item) => item.quantity > 0);
+  const equipmentLines = draft.equipment.filter((item) => item.quantity > 0);
   const equipmentSubtotal = equipmentLines.reduce((total, item) => total + item.price * item.quantity, 0);
-  const total = courtSubtotal + equipmentSubtotal;
+  const additionalPlayerSubtotal = draft.additionalPlayers * draft.additionalPlayerUnitPrice;
+  const total = courtSubtotal + equipmentSubtotal + additionalPlayerSubtotal;
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="booking-summary-title">
+    <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="reservation-summary-title">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[.18em] text-energy">Booking summary</p>
-          <h2 id="booking-summary-title" className="mt-2 font-heading text-xl font-extrabold tracking-[-.035em] sm:text-2xl">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-energy">Reservation summary</p>
+          <h2 id="reservation-summary-title" className="mt-2 font-heading text-xl font-extrabold tracking-[-.035em] sm:text-2xl">
             {draft.selectedSlots.length} {draft.selectedSlots.length === 1 ? "court slot" : "court slots"}
           </h2>
         </div>
@@ -181,29 +162,43 @@ function BookingSummary({ draft }: { draft: MockReservationDraft }) {
             </ul>
           </div>
         ) : null}
+
+        {draft.additionalPlayers > 0 ? (
+          <div>
+            <h3 className="font-heading text-base font-extrabold">Additional players</h3>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 text-sm sm:p-4">
+              <span className="text-muted-foreground">{draft.additionalPlayers} × {currency.format(draft.additionalPlayerUnitPrice)}</span>
+              <span className="font-semibold">{currency.format(additionalPlayerSubtotal)}</span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <dl className="mt-5 grid gap-3 border-t border-border pt-5 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Court rental</dt><dd className="font-bold">{currency.format(courtSubtotal)}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Equipment rental</dt><dd className="font-bold">{currency.format(equipmentSubtotal)}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Additional players</dt><dd className="font-bold">{currency.format(additionalPlayerSubtotal)}</dd></div>
         <div className="flex items-end justify-between gap-4 border-t border-border pt-4"><dt className="font-heading text-lg font-extrabold">Amount to pay</dt><dd className="font-heading text-2xl font-extrabold text-primary">{currency.format(total)}</dd></div>
+        {equipmentLines.length > 0 ? <p className="text-xs leading-5 text-muted-foreground">Equipment availability is confirmed when your reservation is verified. Pending reservations do not hold equipment.</p> : null}
       </dl>
     </section>
   );
 }
 
 function ConditionsCard() {
+  const query = usePublicPolicies();
+  const rules = query.data?.filter((section) => section.slug === "court-rules" || section.slug === "reservation-rules").flatMap((section) => section.subheaders).flatMap((subheader) => subheader.rules) ?? [];
   return (
     <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="conditions-title">
-      <SectionHeading id="conditions-title" eyebrow="Conditions" title="Please review before paying" description="These mock policies will be replaced by the final court rules configured by management." />
-      <ul className="mt-5 grid gap-3 text-sm leading-6 sm:text-base">
-        {conditions.map((condition) => (
-          <li key={condition} className="flex gap-3">
+      <SectionHeading id="conditions-title" eyebrow="Rules & policies" title="Please review before paying" description="These current rules are managed by Dinks on Us and apply to your reservation." />
+      {query.isPending ? <p className="mt-5 text-sm text-muted-foreground">Loading current rules and policies…</p> : query.isError ? <p className="mt-5 text-sm text-muted-foreground">Current rules could not be loaded. Review the linked policy pages before submitting.</p> : <ul className="mt-5 grid gap-3 text-sm leading-6 sm:text-base">
+        {rules.map((rule) => (
+          <li key={rule.id} className="flex gap-3">
             <FiCheck className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-            <span>{condition}</span>
+            <span>{rule.content}</span>
           </li>
         ))}
-      </ul>
+      </ul>}
       <div className="mt-5 flex gap-3 rounded-xl border border-energy/35 bg-energy/8 p-4 text-sm leading-6">
         <FiAlertTriangle className="mt-1 size-4 shrink-0 text-energy" aria-hidden="true" />
         <p><strong>Important:</strong> Your selected slots are not held until the reservation is successfully submitted with complete payment proof.</p>
@@ -244,7 +239,7 @@ export function ReservationCheckout() {
     if (!loaded) return null;
 
     try {
-      const stored = window.sessionStorage.getItem(MOCK_RESERVATION_STORAGE_KEY);
+      const stored = window.sessionStorage.getItem(RESERVATION_DRAFT_STORAGE_KEY);
       const parsed: unknown = stored ? JSON.parse(stored) : null;
       return isReservationDraft(parsed) && parsed.selectedSlots.length > 0 ? parsed : null;
     } catch {
@@ -269,16 +264,16 @@ export function ReservationCheckout() {
   }
 
   if (!loaded) {
-    return <div className="mx-auto min-h-[40svh] max-w-5xl px-4 sm:px-10"><div className="h-64 animate-pulse rounded-2xl bg-muted" /></div>;
+    return <div className="mx-auto min-h-[40svh] max-w-[76rem] px-6 sm:px-10"><div className="h-64 animate-pulse rounded-2xl bg-muted" /></div>;
   }
 
   if (!draft) {
     return (
-      <section className="mx-auto max-w-xl px-4 text-center sm:px-10">
+      <section className="mx-auto max-w-xl px-6 text-center sm:px-10">
         <div className="rounded-2xl border border-border bg-card p-7 sm:p-10">
           <FiFileText className="mx-auto size-10 text-primary" aria-hidden="true" />
-          <h1 className="mt-4 font-heading text-2xl font-extrabold tracking-[-.04em]">No booking selected yet</h1>
-          <p className="mt-3 leading-7 text-muted-foreground">Choose at least one available court slot before completing your booking.</p>
+          <h1 className="mt-4 font-heading text-2xl font-extrabold tracking-[-.04em]">No reservation selected yet</h1>
+          <p className="mt-3 leading-7 text-muted-foreground">Choose at least one available court slot before completing your reservation.</p>
           <Button nativeButton={false} className="mt-6 h-12 rounded-full px-6 font-extrabold" render={<Link href="/reserve" />}>
             <FiArrowLeft aria-hidden="true" /> Choose court times
           </Button>
@@ -289,12 +284,12 @@ export function ReservationCheckout() {
 
   if (submitted) {
     return (
-      <section className="mx-auto max-w-2xl px-4 text-center sm:px-10">
+      <section className="mx-auto max-w-2xl px-6 text-center sm:px-10">
         <div className="rounded-2xl border border-primary/35 bg-card p-7 sm:p-12">
           <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/12 text-primary"><FiCheckCircle className="size-8" aria-hidden="true" /></span>
           <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Mock submission complete</p>
           <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-[-.045em]">Payment proof received</h1>
-          <p className="mx-auto mt-4 max-w-lg leading-7 text-muted-foreground">Your reservation will be held while staff reviews the submitted payment. The connected backend will provide the final booking reference here.</p>
+          <p className="mx-auto mt-4 max-w-lg leading-7 text-muted-foreground">Your reservation will be held while staff reviews the submitted payment. The connected backend will provide the final reservation reference here.</p>
           <Button nativeButton={false} variant="outline" className="mt-7 h-12 rounded-full px-6 font-extrabold" render={<Link href="/" />}>Return home</Button>
         </div>
       </section>
@@ -302,22 +297,22 @@ export function ReservationCheckout() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pb-20 sm:px-10">
+    <div className="mx-auto max-w-[76rem] px-6 pb-20 sm:px-10">
       <header className="mb-6">
         <Link href="/reserve" className="inline-flex min-h-11 items-center gap-2 rounded-full text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
           <FiArrowLeft aria-hidden="true" /> Back to availability
         </Link>
-        <p className="mt-4 text-xs font-bold uppercase tracking-[.18em] text-energy">Final booking step</p>
-        <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-[-.05em] sm:text-5xl">Complete <span className="text-primary">booking</span></h1>
+        <p className="mt-4 text-xs font-bold uppercase tracking-[.18em] text-energy">Final reservation step</p>
+        <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-[-.05em] sm:text-5xl">Complete <span className="text-primary">reservation</span></h1>
         <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">Review your costs, add your details, then send payment proof for staff verification.</p>
       </header>
 
       <form className="grid min-w-0 gap-5" onSubmit={submitReservation}>
-        <BookingSummary draft={draft} />
+        <ReservationSummary draft={draft} />
         <ConditionsCard />
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="customer-information-title">
-          <SectionHeading id="customer-information-title" eyebrow="Your information" title="Who is making this reservation?" description="We will use these details for the booking acknowledgment and payment review." />
+          <SectionHeading id="customer-information-title" eyebrow="Your information" title="Who is making this reservation?" description="We will use these details for the reservation acknowledgment and payment review." />
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="full-name" className="font-bold">Full name</Label>
@@ -393,10 +388,11 @@ export function ReservationCheckout() {
           <div className="flex gap-3">
             <Checkbox id="acknowledgment" checked={acknowledged} onCheckedChange={setAcknowledged} className="mt-1 size-5" />
             <Label htmlFor="acknowledgment" className="block cursor-pointer text-sm leading-6">
-              <strong className="block font-heading text-base">Booking acknowledgment</strong>
-              <span className="mt-1 block font-normal text-muted-foreground">I reviewed the booking summary and conditions. I confirm that my information and payment proof are accurate, and I understand that staff must verify the payment before the reservation is confirmed.</span>
+              <strong className="block font-heading text-base">Reservation acknowledgment</strong>
+              <span className="mt-1 block font-normal text-muted-foreground">I reviewed the reservation summary and conditions. I confirm that my information and payment proof are accurate, and I understand that staff must verify the payment before the reservation is confirmed.</span>
             </Label>
           </div>
+          <p className="mt-2 pl-8 text-sm leading-6 text-muted-foreground">I have read and agree to the <Link href="/policies/court-rules" className="font-semibold text-primary underline underline-offset-3">Court Rules &amp; Policy</Link>, <Link href="/policies/reservation-rules" className="font-semibold text-primary underline underline-offset-3">Reservation Rules &amp; Policy</Link>, <Link href="/policies/reschedule-policy" className="font-semibold text-primary underline underline-offset-3">Reschedule Policy</Link>, and <Link href="/policies/cancellation-policy" className="font-semibold text-primary underline underline-offset-3">Cancellation Policy</Link>.</p>
           <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground"><FiLock aria-hidden="true" /> Your payment proof is intended only for reservation verification.</div>
           <Button type="submit" disabled={!acknowledged} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
             <FiShield aria-hidden="true" /> Submit reservation
