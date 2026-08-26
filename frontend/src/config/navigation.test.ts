@@ -10,6 +10,9 @@ const baseUser: User = {
   id: 1,
   name: "Front Desk",
   email: "frontdesk@example.com",
+  contact_number: "09123456789",
+  is_active: true,
+  last_login_at: null,
   role: {
     id: 2,
     name: "Front Desk",
@@ -43,7 +46,8 @@ describe("portal navigation authorization", () => {
   });
 
   it("maps nested routes to their parent authorization module", () => {
-    expect(getRequiredPortalModule("/portal/management/rates")).toBe("MANAGEMENT");
+    expect(getRequiredPortalModule("/portal/management/court-pricing")).toBe("MANAGEMENT_COURT_PRICING");
+    expect(getRequiredPortalModule("/portal/management/staff-accounts")).toBe("MANAGEMENT_TEAM_ACCESS");
     expect(getRequiredPortalModule("/portal/reservations/DOU-0012")).toBe("RESERVATION");
     expect(getRequiredPortalModule("/portal/profile")).toBeNull();
     expect(getRequiredPortalModule("/portal/settings")).toBeNull();

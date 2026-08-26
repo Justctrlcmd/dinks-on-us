@@ -1,10 +1,17 @@
+"use client";
+
 import Link from "next/link";
 import { FiArrowUpRight } from "react-icons/fi";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { managementAreas } from "@/config/management";
+import { canAccessPortalModule } from "@/config/navigation";
+import { useCurrentUser } from "@/hooks/queries/use-current-user";
 
 export function ManagementView() {
+  const { data: user } = useCurrentUser();
+  const availableAreas = user ? managementAreas.filter((area) => canAccessPortalModule(user, area.module)) : [];
+
   return (
     <div className="grid gap-8">
       <PageHeader
@@ -13,7 +20,7 @@ export function ManagementView() {
       />
 
       <section aria-label="Management areas" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {managementAreas.map(({ slug, title, description, icon: Icon }) => (
+        {availableAreas.map(({ slug, title, description, icon: Icon }) => (
           <Link key={slug} href={`/portal/management/${slug}`} className="group rounded-xl focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <Card className="h-full transition-colors group-hover:bg-muted/60">
               <CardHeader>

@@ -63,20 +63,7 @@ export const mockPublicSite = {
   gallery: {
     eyebrow: "Inside the courts",
     title: "A glimpse of your next game.",
-    description:
-      "These facility previews will be replaced by staff-managed gallery photos when the content system is connected.",
-    images: [
-      {
-        src: "/images/pickleball-courts-hero.png",
-        alt: "Wide preview of the indoor Dinks on Us court facility",
-        label: "Three-court facility",
-      },
-      {
-        src: "/images/pickleball-courts-hero.png",
-        alt: "Court-side preview of an indoor pickleball court",
-        label: "Court-side view",
-      },
-    ],
+    description: "Explore the spaces, equipment, and court-side moments that make Dinks on Us feel like home.",
   },
   location: {
     eyebrow: "Location",

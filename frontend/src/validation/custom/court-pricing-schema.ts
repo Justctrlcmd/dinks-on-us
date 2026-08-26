@@ -43,3 +43,39 @@ export const rentalEquipmentSchema = z.object({
 
 export type CourtConfigurationValues = z.infer<typeof courtConfigurationSchema>;
 export type RentalEquipmentValues = z.infer<typeof rentalEquipmentSchema>;
+
+const closurePeriodSchema = z.object({
+  start_hour: z.number().int(),
+  end_hour: z.number().int(),
+});
+
+export const availabilityClosureSchema = z.object({
+  type: z.enum(["entire_operation", "court_time"]),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a closure date."),
+  court_id: z.number().int().positive().optional(),
+  periods: z.array(closurePeriodSchema).min(1),
+  reason: z.string().trim().min(1, "Enter an internal reason.").max(1000),
+}).superRefine((values, context) => {
+  if (values.type === "court_time" && !values.court_id) {
+    context.addIssue({ code: "custom", path: ["court_id"], message: "Choose a court." });
+  }
+
+  if (values.type !== "court_time") return;
+
+  const periods = values.periods
+    .map((period, index) => ({ ...period, index }))
+    .sort((left, right) => left.start_hour - right.start_hour);
+  let previousEnd: number | undefined;
+
+  periods.forEach((period) => {
+    if (period.end_hour <= period.start_hour) {
+      context.addIssue({ code: "custom", path: ["periods", period.index, "end_hour"], message: "Choose a later ending time." });
+    }
+    if (previousEnd !== undefined && period.start_hour < previousEnd) {
+      context.addIssue({ code: "custom", path: ["periods", period.index, "start_hour"], message: "Time ranges cannot overlap." });
+    }
+    previousEnd = Math.max(previousEnd ?? period.end_hour, period.end_hour);
+  });
+});
+
+export type AvailabilityClosureValues = z.infer<typeof availabilityClosureSchema>;

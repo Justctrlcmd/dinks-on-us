@@ -20,6 +20,8 @@ Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains,
 
 Services contain API calls only. Query/mutation hooks add caching and invalidation. Query keys are centralized and hierarchical. Components must not call raw `fetch`; browser requests use `lib/api.ts`. Server-only reads use `lib/server-api.ts`, forward relevant cookies, and explicitly choose cache behavior. Browser CSRF logic must never be imported into Server Components.
 
+API mutation result messages are presented by the shared TanStack Query mutation cache through the global bottom-right Sonner toast provider. Forms must not duplicate success, error, warning, or informational results inline. Zod validation stays beside its control; API validation and other action results remain in toasts rather than being mapped back into dialog fields.
+
 `authFetch` dispatches `auth:unauthorized` and normalizes 401, 403, 404, 409, 422, 429, 500, network failures, and 204 responses. Do not duplicate query data in a client store. Zustand is intentionally absent.
 
 ## Validation and generated schemas

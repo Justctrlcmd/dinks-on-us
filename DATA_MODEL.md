@@ -1097,21 +1097,38 @@ ROLLBACK
 
 ## Entity
 
-`closed_dates`
+`availability_closures`
 
-Represents dates when the entire facility is unavailable.
+Represents grouped availability closures. A closure is either the entire facility for one date or one court with one or more time ranges, so all ranges saved together can be reopened together.
 
 ### Suggested Fields
 
 ```text
 id
+type (ENTIRE_OPERATION or COURT_TIME)
 date
+court_id (nullable for ENTIRE_OPERATION)
 reason
 is_active
 created_by_user_id
+reopened_by_user_id
+reopened_at
 created_at
 updated_at
 ```
+
+`availability_closure_periods` stores the one or more time ranges owned by a `COURT_TIME` closure:
+
+```text
+id
+availability_closure_id
+start_hour
+end_hour
+created_at
+updated_at
+```
+
+The internal reason is required. Reopening deactivates the record rather than deleting it, preserving its operational history.
 
 ### Example
 
@@ -1126,27 +1143,18 @@ Private Facility Use
 
 ## Entity
 
-`availability_blocks`
+`availability_closures` with `type = COURT_TIME` plus its `availability_closure_periods`.
 
-Represents more specific court/time closures.
+Represents a specific court closure with one or more non-overlapping time ranges.
 
 ### Suggested Fields
 
 ```text
-id
-
 court_id
 date
-
-start_time
-end_time
-
+start_hour / end_hour (on each owned period)
 reason
 is_active
-
-created_by_user_id
-created_at
-updated_at
 ```
 
 ### Example
@@ -1155,6 +1163,7 @@ updated_at
 Court 3
 August 22
 2:00 PM – 4:00 PM
+6:00 PM – 8:00 PM
 Maintenance
 ```
 
@@ -1279,7 +1288,6 @@ Events do not control reservation availability.
 id
 name
 display_order
-is_active
 created_at
 updated_at
 ```
@@ -1292,14 +1300,14 @@ Images are displayed on the public website inside their assigned tab.
 id
 gallery_tab_id
 image_path
-caption
 alt_text
 display_order
-is_active
 uploaded_by_user_id
 created_at
 updated_at
 ```
+
+`display_order` is maintained internally through drag-and-drop ordering; it is not entered as a numeric form field. New tabs and images are appended to the end of their current collection. Deleting a gallery tab cascades to its image records, and the application removes the corresponding stored files.
 
 ---
 
@@ -1422,17 +1430,19 @@ Stores important Manager and Staff actions.
 
 ```text
 id
-user_id
+actor_id
 
 action
-entity_type
-entity_id
+target_type
+target_id
 
-old_values
-new_values
+before
+after
 
-metadata
+ip_address
+user_agent
 created_at
+updated_at
 ```
 
 ### Important Audited Actions

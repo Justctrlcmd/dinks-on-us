@@ -16,7 +16,7 @@ class ProfileController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        $request->user()->load('role');
+        $request->user()->load('role.modules');
 
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),
@@ -41,7 +41,7 @@ class ProfileController extends Controller
             event(new Registered($user));
         }
 
-        $user->load('role');
+        $user->load('role.modules');
 
         return $this->respondSuccess(
             UserResource::make($user)->resolve($request),

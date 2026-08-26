@@ -46,6 +46,7 @@ class DatabaseSeeder extends Seeder
         }
 
         $manager->role()->associate($managerRole);
+        $manager->is_active = true;
         $manager->save();
 
         $configuration = CourtConfiguration::query()->find(1);

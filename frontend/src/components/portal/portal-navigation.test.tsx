@@ -10,6 +10,9 @@ const manager: User = {
   id: 1,
   name: "Manager",
   email: "manager@example.com",
+  contact_number: null,
+  is_active: true,
+  last_login_at: null,
   role: {
     id: 1,
     name: "Manager",

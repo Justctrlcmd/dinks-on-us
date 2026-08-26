@@ -6,6 +6,7 @@ import type {
   CourtList,
   RentalEquipment,
   RentalEquipmentInput,
+  ReservationClosedDates,
   ReservationOptions,
 } from "@/types/court-pricing";
 
@@ -56,3 +57,6 @@ export const deleteRentalEquipment = (id: number) =>
 
 export const getReservationOptions = (date: string, signal?: AbortSignal) =>
   publicFetch<ReservationOptions>(`/api/v1/public/reservation-options?date=${encodeURIComponent(date)}`, { signal });
+
+export const getReservationClosedDates = (signal?: AbortSignal) =>
+  publicFetch<ReservationClosedDates>("/api/v1/public/closed-dates", { signal });

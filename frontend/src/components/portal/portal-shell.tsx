@@ -62,7 +62,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
                 alt=""
                 width={36}
                 height={36}
-                className="size-9 shrink-0 rounded-lg object-cover"
+                className="size-9 shrink-0 rounded-lg object-contain"
                 priority
               />
               <span className="truncate font-heading font-semibold">{siteConfig.name}</span>

@@ -3,7 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReservationExperience } from "@/components/public/reservation/reservation-experience";
 
-const { pushMock, reservationOptionsMock } = vi.hoisted(() => ({
+const { closedDatesMock, policySectionsMock, pushMock, reservationOptionsMock } = vi.hoisted(() => ({
+  closedDatesMock: [] as string[],
+  policySectionsMock: [
+    { id: 1, slug: "reservation-rules", name: "Reservation Rules & Policy", subheaders: [{ id: 11, title: "Reservation submission", rules: [{ id: 111, content: "Reservations are subject to availability." }] }] },
+    { id: 2, slug: "court-rules", name: "Court Rules & Policy", subheaders: [{ id: 21, title: "Court use", rules: [{ id: 211, content: "Use the court responsibly." }] }] },
+    { id: 3, slug: "reschedule-policy", name: "Reschedule Policy", subheaders: [{ id: 31, title: "Rescheduling", rules: [{ id: 311, content: "Requests are subject to approval." }] }] },
+    { id: 4, slug: "cancellation-policy", name: "Cancellation Policy", subheaders: [{ id: 41, title: "Cancellations", rules: [{ id: 411, content: "Confirmed reservations follow the cancellation policy." }] }] },
+  ],
   pushMock: vi.fn(),
   reservationOptionsMock: {
     date: "2026-08-25",
@@ -20,6 +27,8 @@ const { pushMock, reservationOptionsMock } = vi.hoisted(() => ({
     },
     courts: [{ id: 1, court_number: 1, name: "Court 1", created_at: "2026-08-25T00:00:00.000Z", updated_at: "2026-08-25T00:00:00.000Z" }],
     slots: [{ start_hour: 7, end_hour: 8, price: 500 }, { start_hour: 8, end_hour: 9, price: 500 }],
+    is_date_closed: false,
+    unavailable_slots: [] as { court_id: number; start_hour: number }[],
     equipment: [{ id: 1, name: "Paddle", price: 100, total_quantity: 12, available_quantity: 12, created_at: "2026-08-25T00:00:00.000Z", updated_at: "2026-08-25T00:00:00.000Z" }],
     equipment_confirmation: "Equipment availability is confirmed when your reservation is verified.",
   },
@@ -30,10 +39,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/hooks/queries/use-policies", () => ({
-  usePublicPolicies: () => ({ data: [], isPending: false, isError: false }),
+  usePublicPolicies: () => ({ data: policySectionsMock, isPending: false, isError: false }),
 }));
 
 vi.mock("@/hooks/queries/use-court-pricing", () => ({
+  useReservationClosedDates: () => ({ data: closedDatesMock, isPending: false, isError: false }),
   useReservationOptions: () => ({
     data: reservationOptionsMock,
     isPending: false,
@@ -46,6 +56,9 @@ afterEach(() => {
   cleanup();
   pushMock.mockClear();
   window.sessionStorage.clear();
+  reservationOptionsMock.is_date_closed = false;
+  reservationOptionsMock.unavailable_slots.length = 0;
+  closedDatesMock.length = 0;
 });
 
 describe("ReservationExperience", () => {
@@ -74,14 +87,47 @@ describe("ReservationExperience", () => {
     expect(screen.queryByRole("complementary", { name: "Current reservation selection" })).not.toBeInTheDocument();
   });
 
-  it("opens the reservation rules dialog", async () => {
+  it("opens the Reservation Rules & Policy dialog", async () => {
     const user = userEvent.setup();
     render(<ReservationExperience />);
 
-    await user.click(screen.getByRole("button", { name: "View reservation rules" }));
+    await user.click(screen.getByRole("button", { name: "Review the rules" }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Court rules and reservation reminders" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog").scrollTop).toBe(0);
+    expect(screen.getByRole("heading", { name: "Reservation Rules & Policy" })).toBeInTheDocument();
+  });
+
+  it("switches between related policies inside the dialog", async () => {
+    const user = userEvent.setup();
+    render(<ReservationExperience />);
+
+    await user.click(screen.getByRole("button", { name: "Review the rules" }));
+    const dialog = screen.getByRole("dialog");
+    dialog.scrollTop = 500;
+    await user.click(screen.getByRole("button", { name: "Review Court Rules & Policy" }));
+
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.scrollTop).toBe(0);
+    expect(screen.getByRole("heading", { name: "Court Rules & Policy" })).toBeInTheDocument();
+    expect(screen.getByText("Use the court responsibly.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Review Reschedule Policy" }));
+    expect(screen.getByRole("heading", { name: "Reschedule Policy" })).toBeInTheDocument();
+    expect(screen.getByText("Requests are subject to approval.")).toBeInTheDocument();
+  });
+
+  it("opens the policy dialog at the top", async () => {
+    const user = userEvent.setup();
+    render(<ReservationExperience />);
+
+    await user.click(screen.getByRole("button", { name: "Review the rules" }));
+    const dialog = screen.getByRole("dialog");
+    dialog.scrollTop = 500;
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Review the rules" }));
+
+    expect(screen.getByRole("dialog").scrollTop).toBe(0);
   });
 
   it("shows the equipment time reminder before revealing equipment options", async () => {
@@ -118,5 +164,20 @@ describe("ReservationExperience", () => {
 
     expect(window.sessionStorage.getItem("dinks-on-us:reservation-draft")).toContain('"courtName":"Court 1"');
     expect(pushMock).toHaveBeenCalledWith("/reserve/checkout");
+  });
+
+  it("marks a blocked court time as unavailable", () => {
+    reservationOptionsMock.unavailable_slots.push({ court_id: 1, start_hour: 7 });
+    render(<ReservationExperience />);
+
+    screen.getAllByRole("button", { name: "Court 1, 7:00 AM – 8:00 AM, closed" }).forEach((slot) => expect(slot).toBeDisabled());
+  });
+
+  it("disables whole-operation closed dates without highlighting today", () => {
+    closedDatesMock.push("2026-08-26");
+    render(<ReservationExperience />);
+
+    expect(screen.getByRole("button", { name: "Wed 26, Closed" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Tue 25" })).not.toHaveClass("bg-primary");
   });
 });

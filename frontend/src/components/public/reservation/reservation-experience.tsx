@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FiCalendar, FiCheck, FiChevronDown, FiChevronLeft, FiChevronRight, FiInfo, FiMinus, FiPlus, FiTrash2, FiUsers } from "react-icons/fi";
+import { FiCheck, FiChevronDown, FiChevronLeft, FiChevronRight, FiMinus, FiPlus, FiTrash2, FiUsers } from "react-icons/fi";
 import { FaTableTennisPaddleBall } from "react-icons/fa6";
+import { CalendarDatePicker } from "@/components/common/calendar-date-picker";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
-import { usePublicPolicies } from "@/hooks/queries/use-policies";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useReservationClosedDates, useReservationOptions } from "@/hooks/queries/use-court-pricing";
+import { ReservationPolicyBanner } from "@/components/public/reservation/reservation-policy-banner";
+import { addDays, parseDateOnly, todayInTimeZone, weekStartFor } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { ReservationOptions } from "@/types/court-pricing";
@@ -17,78 +19,28 @@ const currency = new Intl.NumberFormat("en-PH", { style: "currency", currency: "
 const shortDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const longDate = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" });
-
-function parseDateOnly(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function toDateOnly(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function todayInManila() {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}-${value.month}-${value.day}`;
-}
-
-function addDays(value: string, amount: number) {
-  const date = parseDateOnly(value);
-  date.setDate(date.getDate() + amount);
-  return toDateOnly(date);
-}
-
-function weekStartFor(value: string) {
-  const date = parseDateOnly(value);
-  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-  return toDateOnly(date);
-}
-
 function slotKey(slot: Pick<ReservationSlot, "date" | "courtId" | "startHour">) {
   return `${slot.date}-${slot.courtId}-${slot.startHour}`;
 }
 
-function RulesDialog() {
-  const query = usePublicPolicies();
-  const sections = query.data?.filter((section) => section.slug === "court-rules" || section.slug === "reservation-rules") ?? [];
-  return (
-    <Dialog>
-      <DialogTrigger render={<Button variant="outline" className="h-10 rounded-full border-primary/40 bg-card px-3 text-xs font-extrabold text-primary hover:border-primary hover:bg-muted sm:h-11 sm:px-5 sm:text-sm" />}>
-        <FiInfo aria-hidden="true" />View reservation rules
-      </DialogTrigger>
-      <DialogContent className="max-h-[min(42rem,calc(100svh-2rem))] overflow-y-auto p-6 sm:max-w-2xl sm:p-8">
-        <DialogHeader className="pr-8 text-left">
-          <p className="text-xs font-bold uppercase tracking-[.18em] text-energy">Before you reserve</p>
-          <DialogTitle className="font-heading text-2xl font-extrabold tracking-[-.04em] sm:text-3xl">Court rules and reservation reminders</DialogTitle>
-          <DialogDescription className="leading-6">Review the current Dinks on Us policies before choosing your court time.</DialogDescription>
-        </DialogHeader>
-        <div className="mt-2 grid gap-4">
-          {query.isPending ? <p className="text-sm text-muted-foreground">Loading current policies…</p> : query.isError ? <p className="text-sm text-muted-foreground">Current policies could not be loaded. Please visit the Rules &amp; Policies page before submitting.</p> : sections.flatMap((section) => section.subheaders).map((group, index) => (
-            <section key={group.id} className="rounded-xl border border-border bg-background p-5" aria-labelledby={`rule-group-${index}`}>
-              <h2 id={`rule-group-${index}`} className="font-heading text-base font-extrabold">{group.title}</h2>
-              <ul className="mt-3 grid gap-3 text-sm leading-6 text-muted-foreground">{group.rules.map((rule) => <li key={rule.id} className="flex gap-3"><FiCheck className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" /><span>{rule.content}</span></li>)}</ul>
-            </section>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+function firstOpenDate(start: string, min: string, closedDates: ReadonlySet<string>): string {
+  let date = start < min ? min : start;
+  for (let day = 0; day < 3660; day += 1) {
+    if (!closedDates.has(date)) return date;
+    date = addDays(date, 1);
+  }
+  return start < min ? min : start;
 }
 
-function WeekSelector({ selectedDate, weekStart, today, availableCount, onSelectDate, onChangeWeek }: { selectedDate: string; weekStart: string; today: string; availableCount: number; onSelectDate: (date: string) => void; onChangeWeek: (amount: number) => void }) {
+function WeekSelector({ selectedDate, weekStart, today, closedDates, availableCount, onSelectDate, onChangeWeek }: { selectedDate: string; weekStart: string; today: string; closedDates: ReadonlySet<string>; availableCount: number; onSelectDate: (date: string) => void; onChangeWeek: (amount: number) => void }) {
   const dates = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   const weekEnd = dates.at(-1) ?? weekStart;
-  const dateInputRef = useRef<HTMLInputElement>(null);
   return (
     <section className="rounded-2xl border border-border bg-card p-3 sm:p-6" aria-labelledby="weekly-availability-title">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 text-xs font-bold uppercase tracking-[.16em] text-energy">Choose your date<input ref={dateInputRef} type="date" min={today} value={selectedDate} onChange={(event) => onSelectDate(event.target.value)} className="sr-only" aria-label="Choose reservation date" /></div>
+        <div className="min-w-0 text-xs font-bold uppercase tracking-[.16em] text-energy">Choose your date</div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button type="button" variant="outline" size="icon-sm" aria-label="Choose a date from calendar" onClick={() => dateInputRef.current?.showPicker?.()}><FiCalendar aria-hidden="true" /></Button>
+          <CalendarDatePicker iconOnly value={selectedDate} min={today} disabledDates={closedDates} onChange={onSelectDate} />
           <Button type="button" variant="outline" size="icon-sm" aria-label="Previous week" disabled={weekStart <= weekStartFor(today)} onClick={() => onChangeWeek(-7)}><FiChevronLeft aria-hidden="true" /></Button>
           <Button type="button" variant="outline" size="icon-sm" aria-label="Next week" onClick={() => onChangeWeek(7)}><FiChevronRight aria-hidden="true" /></Button>
         </div>
@@ -98,9 +50,10 @@ function WeekSelector({ selectedDate, weekStart, today, availableCount, onSelect
         {dates.map((date) => {
           const parsed = parseDateOnly(date);
           const isPast = date < today;
+          const isClosed = closedDates.has(date);
           const selected = date === selectedDate;
-          return <button key={date} type="button" disabled={isPast} aria-pressed={selected} onClick={() => onSelectDate(date)} className={cn("min-w-0 rounded-lg border px-1 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed sm:min-h-28 sm:rounded-xl sm:px-3 sm:py-3", selected && "border-primary bg-primary text-primary-foreground shadow-sm", !selected && !isPast && "border-border bg-background hover:border-primary/55 hover:bg-muted", isPast && "border-border/60 bg-muted/45 text-muted-foreground opacity-55")}>
-            <span className="block text-[0.58rem] font-bold uppercase tracking-[.08em] opacity-75 sm:text-xs sm:tracking-[.14em]">{weekday.format(parsed)}</span><span className="mt-0.5 block font-heading text-lg font-extrabold sm:mt-1 sm:text-2xl">{parsed.getDate()}</span><span className="mt-1 hidden text-xs font-bold sm:block">{isPast ? "Past" : selected ? `${availableCount} available` : "View slots"}</span>
+          return <button key={date} type="button" disabled={isPast || isClosed} aria-label={`${weekday.format(parsed)} ${parsed.getDate()}${isClosed ? ", Closed" : ""}`} aria-pressed={selected} onClick={() => onSelectDate(date)} className={cn("min-w-0 rounded-lg border px-1 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed sm:min-h-28 sm:rounded-xl sm:px-3 sm:py-3", selected && date !== today && "border-primary bg-primary text-primary-foreground shadow-sm", (!selected || date === today) && !isPast && !isClosed && "border-border bg-background hover:border-primary/55 hover:bg-muted", isPast && "border-border/60 bg-muted/45 text-muted-foreground opacity-55", isClosed && "border-destructive/35 bg-destructive/10 text-destructive")}>
+            <span className="block text-[0.58rem] font-bold uppercase tracking-[.08em] opacity-75 sm:text-xs sm:tracking-[.14em]">{weekday.format(parsed)}</span><span className="mt-0.5 block font-heading text-lg font-extrabold sm:mt-1 sm:text-2xl">{parsed.getDate()}</span><span className="mt-1 hidden text-xs font-bold sm:block">{isClosed ? "Closed" : isPast ? "Past" : selected ? `${availableCount} available` : "View slots"}</span>
           </button>;
         })}
       </div>
@@ -110,22 +63,24 @@ function WeekSelector({ selectedDate, weekStart, today, availableCount, onSelect
 
 function SlotButton({ slot, selected, compact = false, onToggle }: { slot: ReservationSlot; selected: boolean; compact?: boolean; onToggle: (slot: ReservationSlot) => void }) {
   const label = `${selected ? "Remove" : "Select"} ${slot.courtName}, ${formatHourRange(slot.startHour, slot.endHour)}, ${currency.format(slot.price)}`;
-  return <button type="button" disabled={!slot.available} aria-pressed={selected} aria-label={slot.available ? label : `${slot.courtName}, ${formatHourRange(slot.startHour, slot.endHour)}, unavailable`} onClick={() => onToggle(slot)} className={cn("relative flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border px-2 text-sm font-extrabold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", slot.available && !selected && "border-primary/30 bg-card text-foreground hover:border-primary hover:bg-muted", selected && "border-primary bg-primary text-primary-foreground", !slot.available && "cursor-not-allowed border-border/70 bg-muted/55 text-muted-foreground opacity-70", compact && "min-h-18 flex-col gap-1 px-1 text-xs")}>
+  return <button type="button" disabled={!slot.available} aria-pressed={selected} aria-label={slot.available ? label : `${slot.courtName}, ${formatHourRange(slot.startHour, slot.endHour)}, closed`} onClick={() => onToggle(slot)} className={cn("relative flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border px-2 text-sm font-extrabold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", slot.available && !selected && "border-primary/30 bg-card text-foreground hover:border-primary hover:bg-muted", selected && "border-primary bg-primary text-primary-foreground", !slot.available && "cursor-not-allowed border-destructive/30 bg-destructive/10 text-destructive", compact && "min-h-18 flex-col gap-1 px-1 text-xs")}>
     {selected ? <span className="absolute -top-2 -right-2 z-10 flex size-5 items-center justify-center rounded-full bg-energy text-energy-foreground shadow-sm ring-2 ring-card"><FiCheck className="size-3.5" aria-hidden="true" /></span> : null}
-    {compact ? <span className="text-center font-heading text-sm font-extrabold uppercase tracking-[.08em]">{slot.courtName}</span> : null}<span>{slot.available ? currency.format(slot.price) : "Unavailable"}</span>
+    {compact ? <span className="text-center font-heading text-sm font-extrabold uppercase tracking-[.08em]">{slot.courtName}</span> : null}<span>{slot.available ? currency.format(slot.price) : "Closed"}</span>
   </button>;
 }
 
 function Availability({ date, options, loading, error, selectedSlots, onToggle, onRetry }: { date: string; options?: ReservationOptions; loading: boolean; error: boolean; selectedSlots: ReservationSlot[]; onToggle: (slot: ReservationSlot) => void; onRetry: () => void }) {
   const selectedKeys = new Set(selectedSlots.map(slotKey));
-  const rows = (options?.slots ?? []).map((period) => ({ hour: period.start_hour, slots: (options?.courts ?? []).map((court) => ({ courtId: court.id, courtName: court.name, date, startHour: period.start_hour, endHour: period.end_hour, price: period.price, available: true })) }));
+  const unavailableSlots = new Set((options?.unavailable_slots ?? []).map((slot) => `${slot.court_id}-${slot.start_hour}`));
+  const rows = (options?.slots ?? []).map((period) => ({ hour: period.start_hour, slots: (options?.courts ?? []).map((court) => ({ courtId: court.id, courtName: court.name, date, startHour: period.start_hour, endHour: period.end_hour, price: period.price, available: !unavailableSlots.has(`${court.id}-${period.start_hour}`) })) }));
   return (
     <section className="rounded-2xl border border-border bg-card p-4 sm:p-6" aria-labelledby="court-times-title">
-      <div className="grid gap-3 border-b border-border pb-4 sm:flex sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.2em] text-energy">Choose your time</p><h2 id="court-times-title" className="mt-1 font-heading text-xl font-extrabold tracking-[-.035em] sm:text-2xl">{longDate.format(parseDateOnly(date))}</h2></div><p className="text-xs font-semibold text-muted-foreground">Prices shown per court, per hour</p></div>
+      <div className="flex items-end justify-between gap-3 border-b border-border pb-4"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-[.2em] text-energy">Choose your time</p><h2 id="court-times-title" className="mt-1 truncate font-heading text-xl font-extrabold tracking-[-.035em] sm:text-2xl">{longDate.format(parseDateOnly(date))}</h2></div><p className="shrink-0 whitespace-nowrap text-[.68rem] font-semibold text-muted-foreground sm:text-xs">Prices shown per court, per hour</p></div>
       {loading ? <p className="py-10 text-center text-sm text-muted-foreground">Loading court availability…</p> : error ? <div className="grid justify-items-center gap-3 py-10 text-center"><p className="text-sm text-muted-foreground">Court availability could not be loaded.</p><Button variant="outline" onClick={onRetry}>Try again</Button></div> : !options?.configuration || options.courts.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">Court availability has not been configured yet.</p> : (
         <>
+          {options.is_date_closed ? <p role="status" className="mt-5 rounded-xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm font-medium text-foreground">The entire operation is closed for this date. All court times are unavailable.</p> : null}
           <div className="mt-5 hidden overflow-x-auto md:block"><table className="w-full min-w-[42rem] table-fixed border-separate border-spacing-y-1" aria-label={`Court availability for ${longDate.format(parseDateOnly(date))}`}><thead><tr><th scope="col" className="w-40 px-2 pb-2 text-left text-xs font-bold uppercase tracking-[.16em] text-muted-foreground">Time</th>{options.courts.map((court) => <th key={court.id} scope="col" className="px-1 pb-2 text-center"><span className="flex min-h-12 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 px-3 font-heading text-base font-extrabold uppercase tracking-[.1em] text-primary">{court.name}</span></th>)}</tr></thead><tbody>{rows.map(({ hour, slots }) => <tr key={hour}><th scope="row" className="whitespace-nowrap px-2 text-left text-xs font-semibold text-muted-foreground xl:text-sm">{formatHourRange(hour, hour + 1)}</th>{slots.map((slot) => <td key={slotKey(slot)} className="px-1"><SlotButton slot={slot} selected={selectedKeys.has(slotKey(slot))} onToggle={onToggle} /></td>)}</tr>)}</tbody></table></div>
-          <div className="mt-5 grid gap-3 md:hidden">{rows.map(({ hour, slots }) => <article key={hour} className="rounded-xl border border-border bg-background p-3"><h3 className="text-sm font-extrabold">{formatHourRange(hour, hour + 1)}</h3><div className="mt-3 grid grid-cols-2 gap-2">{slots.map((slot) => <SlotButton key={slotKey(slot)} slot={slot} selected={selectedKeys.has(slotKey(slot))} compact onToggle={onToggle} />)}</div></article>)}</div>
+          <div className="mt-5 grid gap-3 md:hidden">{rows.map(({ hour, slots }) => <article key={hour} className="rounded-xl border border-border bg-background p-3"><h3 className="text-sm font-extrabold">{formatHourRange(hour, hour + 1)}</h3><div className="mt-3 grid grid-cols-1 gap-2">{slots.map((slot) => <SlotButton key={slotKey(slot)} slot={slot} selected={selectedKeys.has(slotKey(slot))} compact onToggle={onToggle} />)}</div></article>)}</div>
         </>
       )}
     </section>
@@ -160,7 +115,7 @@ function StickyReservationBar({ selectedSlots, total, onClear, onContinue }: { s
 
 export function ReservationExperience() {
   const router = useRouter();
-  const [today] = useState(todayInManila);
+  const [today] = useState(todayInTimeZone);
   const [selectedDate, setSelectedDate] = useState(today);
   const [weekStart, setWeekStart] = useState(() => weekStartFor(today));
   const [selectedSlots, setSelectedSlots] = useState<ReservationSlot[]>([]);
@@ -168,14 +123,19 @@ export function ReservationExperience() {
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [equipmentReminderOpen, setEquipmentReminderOpen] = useState(false);
   const [equipmentQuantities, setEquipmentQuantities] = useState<Record<number, number>>({});
-  const optionsQuery = useReservationOptions(selectedDate);
+  const closedDatesQuery = useReservationClosedDates();
+  const closedDates = useMemo(() => new Set(closedDatesQuery.data ?? []), [closedDatesQuery.data]);
+  const effectiveSelectedDate = closedDates.has(selectedDate) ? firstOpenDate(addDays(selectedDate, 1), today, closedDates) : selectedDate;
+  const effectiveWeekStart = closedDates.has(selectedDate) ? weekStartFor(effectiveSelectedDate) : weekStart;
+  const optionsQuery = useReservationOptions(effectiveSelectedDate);
   const options = optionsQuery.data;
+  const effectiveSelectedSlots = useMemo(() => selectedSlots.filter((slot) => !closedDates.has(slot.date)), [closedDates, selectedSlots]);
 
-  const courtSubtotal = useMemo(() => selectedSlots.reduce((total, slot) => total + slot.price, 0), [selectedSlots]);
+  const courtSubtotal = useMemo(() => effectiveSelectedSlots.reduce((total, slot) => total + slot.price, 0), [effectiveSelectedSlots]);
   const effectiveEquipmentQuantities = useMemo(() => Object.fromEntries((options?.equipment ?? []).map((item) => [item.id, Math.min(equipmentQuantities[item.id] ?? 0, item.available_quantity)])), [equipmentQuantities, options]);
   const equipmentSubtotal = useMemo(() => (options?.equipment ?? []).reduce((total, item) => total + (effectiveEquipmentQuantities[item.id] ?? 0) * item.price, 0), [effectiveEquipmentQuantities, options]);
   const additionalSubtotal = additionalPlayers * (options?.configuration?.additional_player_price ?? 0);
-  const availableCount = (options?.slots.length ?? 0) * (options?.courts.length ?? 0);
+  const availableCount = Math.max(0, (options?.slots.length ?? 0) * (options?.courts.length ?? 0) - (options?.unavailable_slots.length ?? 0));
 
   function toggleSlot(slot: ReservationSlot) {
     setSelectedSlots((current) => current.some((selected) => slotKey(selected) === slotKey(slot)) ? current.filter((selected) => slotKey(selected) !== slotKey(slot)) : [...current, slot]);
@@ -201,7 +161,7 @@ export function ReservationExperience() {
   function continueToReservation() {
     if (!options?.configuration) return;
     const draft: ReservationDraft = {
-      selectedSlots,
+      selectedSlots: effectiveSelectedSlots,
       equipment: options.equipment.filter((item) => (effectiveEquipmentQuantities[item.id] ?? 0) > 0).map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: effectiveEquipmentQuantities[item.id] })),
       additionalPlayers,
       additionalPlayerUnitPrice: options.configuration.additional_player_price,
@@ -211,15 +171,15 @@ export function ReservationExperience() {
     router.push("/reserve/checkout");
   }
 
-  return <div className={cn("mx-auto max-w-[76rem] px-6 pb-16 sm:px-10", selectedSlots.length > 0 && "pb-56 lg:pb-40")}>
-    <section className="rounded-2xl border border-primary/35 bg-card p-3 sm:p-6" aria-labelledby="reserve-title"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><h1 id="reserve-title" className="whitespace-nowrap font-heading text-base font-extrabold tracking-[-.025em] text-primary sm:text-xl">Court reservation</h1><p className="mt-1 hidden max-w-3xl leading-7 text-muted-foreground sm:block">Availability and pricing come from the current court configuration. Review the rules before choosing your time.</p></div><RulesDialog /></div></section>
+  return <div className={cn("mx-auto max-w-[76rem] px-6 pb-16 sm:px-10", effectiveSelectedSlots.length > 0 && "pb-56 lg:pb-40")}>
+    <ReservationPolicyBanner titleId="reserve-title" headingLevel="h1" />
     <div className="mt-5 grid gap-5">
-      <WeekSelector selectedDate={selectedDate} weekStart={weekStart} today={today} availableCount={availableCount} onSelectDate={selectDate} onChangeWeek={(amount) => { const next = addDays(weekStart, amount); setWeekStart(next); setSelectedDate(Array.from({ length: 7 }, (_, index) => addDays(next, index)).find((date) => date >= today) ?? next); }} />
-      <Availability date={selectedDate} options={options} loading={optionsQuery.isPending} error={optionsQuery.isError} selectedSlots={selectedSlots} onToggle={toggleSlot} onRetry={() => void optionsQuery.refetch()} />
-      {options?.configuration ? <AdditionalPlayers included={options.configuration.included_players_per_court} price={options.configuration.additional_player_price} quantity={additionalPlayers} disabled={selectedSlots.length === 0} onChange={(amount) => setAdditionalPlayers((current) => Math.max(0, current + amount))} /> : null}
-      {options ? <EquipmentRental open={equipmentOpen} options={options} quantities={effectiveEquipmentQuantities} selectedSlotCount={selectedSlots.length} onToggleOpen={() => equipmentOpen ? setEquipmentOpen(false) : setEquipmentReminderOpen(true)} onChangeQuantity={changeEquipmentQuantity} /> : null}
+      <WeekSelector selectedDate={effectiveSelectedDate} weekStart={effectiveWeekStart} today={today} closedDates={closedDates} availableCount={availableCount} onSelectDate={selectDate} onChangeWeek={(amount) => { const nextDate = firstOpenDate(addDays(effectiveWeekStart, amount), today, closedDates); setWeekStart(weekStartFor(nextDate)); setSelectedDate(nextDate); }} />
+      <Availability date={effectiveSelectedDate} options={options} loading={optionsQuery.isPending} error={optionsQuery.isError} selectedSlots={effectiveSelectedSlots} onToggle={toggleSlot} onRetry={() => void optionsQuery.refetch()} />
+      {options?.configuration ? <AdditionalPlayers included={options.configuration.included_players_per_court} price={options.configuration.additional_player_price} quantity={additionalPlayers} disabled={effectiveSelectedSlots.length === 0} onChange={(amount) => setAdditionalPlayers((current) => Math.max(0, current + amount))} /> : null}
+      {options ? <EquipmentRental open={equipmentOpen} options={options} quantities={effectiveEquipmentQuantities} selectedSlotCount={effectiveSelectedSlots.length} onToggleOpen={() => equipmentOpen ? setEquipmentOpen(false) : setEquipmentReminderOpen(true)} onChangeQuantity={changeEquipmentQuantity} /> : null}
     </div>
     <Dialog open={equipmentReminderOpen} onOpenChange={setEquipmentReminderOpen}><DialogContent showCloseButton={false} className="gap-5 p-6 sm:max-w-md sm:p-8"><DialogHeader className="text-left"><p className="text-xs font-bold uppercase tracking-[.18em] text-energy">Equipment reminder</p><DialogTitle className="font-heading text-2xl font-extrabold tracking-[-.04em]">Equipment is confirmed during verification</DialogTitle><DialogDescription className="leading-6">Pending reservations do not hold equipment. Available quantity is reduced only by verified reservations.</DialogDescription></DialogHeader><Button type="button" className="h-12 w-full rounded-full bg-energy font-extrabold text-energy-foreground hover:bg-energy/90" onClick={() => { setEquipmentReminderOpen(false); setEquipmentOpen(true); }}>Okay, I understand</Button></DialogContent></Dialog>
-    {selectedSlots.length > 0 ? <StickyReservationBar selectedSlots={selectedSlots} total={courtSubtotal + equipmentSubtotal + additionalSubtotal} onClear={clearReservation} onContinue={continueToReservation} /> : null}
+    {effectiveSelectedSlots.length > 0 ? <StickyReservationBar selectedSlots={effectiveSelectedSlots} total={courtSubtotal + equipmentSubtotal + additionalSubtotal} onClear={clearReservation} onContinue={continueToReservation} /> : null}
   </div>;
 }

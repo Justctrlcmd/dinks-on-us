@@ -21,6 +21,18 @@ export interface ApiFetchOptions extends RequestInit {
   csrf?: boolean;
 }
 
+function networkError(cause: unknown): NormalizedApiError {
+  return new NormalizedApiError({
+    status: 0,
+    message: cause instanceof DOMException && cause.name === "AbortError"
+      ? "The request was cancelled."
+      : process.env.NODE_ENV === "development"
+        ? "The local API is unavailable. Start the project with npm run dev, then try again."
+        : "We couldn't connect to the service. Check your connection and try again.",
+    code: "NETWORK_ERROR",
+  });
+}
+
 function getApiUrl(path: string): string {
   if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured.");
   return `${apiUrl}${path.startsWith("/") ? path : `/${path}`}`;
@@ -42,7 +54,7 @@ async function ensureCsrfCookie(signal?: AbortSignal): Promise<void> {
       if (!response.ok) throw new Error("Unable to initialize a secure session.");
     }).catch((error) => {
       csrfRequest = null;
-      throw error;
+      throw networkError(error);
     });
   }
   return csrfRequest;
@@ -64,13 +76,7 @@ async function request<T>(path: string, options: ApiFetchOptions = {}): Promise<
   try {
     response = await fetch(getApiUrl(path), { ...init, credentials: "include", headers });
   } catch (cause) {
-    throw new NormalizedApiError({
-      status: 0,
-      message: cause instanceof DOMException && cause.name === "AbortError"
-        ? "The request was cancelled."
-        : "We couldn't connect to the service. Check your connection and try again.",
-      code: "NETWORK_ERROR",
-    });
+    throw networkError(cause);
   }
 
   if (response.status === 204) {

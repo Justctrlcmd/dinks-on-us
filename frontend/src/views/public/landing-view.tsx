@@ -11,6 +11,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import { PublicSiteFrame } from "@/components/public/public-site-frame";
+import { LandingGallerySection } from "@/components/public/landing-gallery-section";
 import { Button } from "@/components/ui/button";
 import { mockPublicSite } from "@/config/mock-public-site";
 
@@ -46,7 +47,7 @@ function SectionHeading({
       <h2 className="mt-4 font-heading text-4xl font-extrabold leading-[0.98] tracking-[-0.05em] text-foreground sm:text-5xl">
         {title}
       </h2>
-      <p className="mt-5 max-w-xl leading-7 text-muted-foreground">{description}</p>
+      <p className="mt-3 max-w-xl leading-7 text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -129,7 +130,7 @@ export function LandingView() {
               title={mockPublicSite.etiquette.title}
               description={mockPublicSite.etiquette.description}
             />
-            <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3">
                 {mockPublicSite.etiquette.rules.map((rule, index) => {
                   const Icon = etiquetteIcons[index];
                   const hasTabletRightDivider = index % 2 === 0;
@@ -216,7 +217,7 @@ export function LandingView() {
                 title={mockPublicSite.about.title}
                 description={mockPublicSite.about.description}
               />
-              <div className="mt-8 border-l-2 border-energy pl-6">
+              <div className="mt-6 border-l-2 border-energy pl-6">
                 <p className="font-heading text-2xl font-extrabold leading-tight tracking-[-0.04em] text-foreground">
                   {mockPublicSite.about.statement}
                 </p>
@@ -225,35 +226,7 @@ export function LandingView() {
           </div>
         </section>
 
-        <section id="gallery" className="border-y border-border bg-card py-20 sm:py-28">
-          <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
-            <SectionHeading
-              eyebrow={mockPublicSite.gallery.eyebrow}
-              title={mockPublicSite.gallery.title}
-              description={mockPublicSite.gallery.description}
-            />
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              {mockPublicSite.gallery.images.map((galleryImage, index) => (
-                <figure
-                  key={galleryImage.label}
-                  className={`group relative min-h-80 overflow-hidden rounded-2xl ${index === 0 ? "md:col-span-2" : ""}`}
-                >
-                  <Image
-                    src={galleryImage.src}
-                    alt={galleryImage.alt}
-                    fill
-                    sizes={index === 0 ? "(min-width: 768px) 66vw, 100vw" : "(min-width: 768px) 33vw, 100vw"}
-                    className={`object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-[1.02] ${index === 1 ? "object-[72%_center]" : ""}`}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/62 via-transparent to-transparent" />
-                  <figcaption className="absolute bottom-5 left-5 rounded-full border border-white/20 bg-black/25 px-4 py-2 text-sm font-extrabold text-white backdrop-blur-md">
-                    {galleryImage.label}
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
-          </div>
-        </section>
+        <LandingGallerySection />
 
         <section id="location" className="bg-background py-20 sm:py-28">
           <div className="mx-auto grid max-w-[96rem] gap-6 px-6 sm:px-10 lg:grid-cols-[.82fr_1.18fr] lg:items-stretch lg:px-30">
@@ -263,7 +236,7 @@ export function LandingView() {
                 title={mockPublicSite.location.title}
                 description={mockPublicSite.location.description}
               />
-              <div className="mt-8 flex gap-4 rounded-xl bg-muted p-5 text-sm">
+              <div className="mt-6 flex gap-4 rounded-xl bg-muted p-5 text-sm">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-energy/15 text-energy">
                   <FiMapPin className="size-4" aria-hidden="true" />
                 </span>

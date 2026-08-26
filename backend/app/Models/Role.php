@@ -21,6 +21,14 @@ class Role extends Model
     }
 
     /**
+     * @return HasMany<RoleModule, $this>
+     */
+    public function modules(): HasMany
+    {
+        return $this->hasMany(RoleModule::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

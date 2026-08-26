@@ -5,7 +5,57 @@ import { ReservationCheckout } from "@/components/public/reservation/reservation
 import { RESERVATION_DRAFT_STORAGE_KEY } from "@/types/reservation";
 
 vi.mock("@/hooks/queries/use-policies", () => ({
-  usePublicPolicies: () => ({ data: [], isPending: false, isError: false }),
+  usePublicPolicies: () => ({
+    data: [{
+      id: 2,
+      slug: "court-rules",
+      name: "Court Rules & Policy",
+      sort_order: 1,
+      created_at: "2026-08-25T00:00:00.000Z",
+      updated_at: "2026-08-25T00:00:00.000Z",
+      subheaders: [{
+        id: 20,
+        policy_section_id: 2,
+        title: "Court Use",
+        sort_order: 1,
+        created_at: "2026-08-25T00:00:00.000Z",
+        updated_at: "2026-08-25T00:00:00.000Z",
+        rules: [{
+          id: 200,
+          policy_subheader_id: 20,
+          content: "Use the courts responsibly.",
+          sort_order: 1,
+          created_at: "2026-08-25T00:00:00.000Z",
+          updated_at: "2026-08-25T00:00:00.000Z",
+        }],
+      }],
+    }],
+    isPending: false,
+    isError: false,
+  }),
+}));
+
+vi.mock("@/hooks/queries/use-payment-methods", () => ({
+  usePublicPaymentMethods: () => ({
+    data: [
+      {
+        id: 1,
+        name: "GCash",
+        qr_image_url: "http://localhost:8000/storage/payment-methods/gcash.png",
+        account_name: "Dinks on Us",
+        account_number: "09123456789",
+      },
+      {
+        id: 2,
+        name: "BPI",
+        qr_image_url: "http://localhost:8000/storage/payment-methods/bpi.png",
+        account_name: "Dinks on Us PH",
+        account_number: "0011223344",
+      },
+    ],
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 beforeEach(() => {
@@ -37,14 +87,32 @@ describe("ReservationCheckout", () => {
 
     const summary = screen.getByRole("heading", { name: "1 court slot" }).closest("section");
     expect(summary).not.toBeNull();
+    const policyHeading = screen.getByRole("heading", { name: "Court Rules & Policy" });
+    expect(summary!.compareDocumentPosition(policyHeading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByRole("button", { name: "Review the rules" })).toBeInTheDocument();
     expect(within(summary!).getByText("Court 1")).toBeInTheDocument();
+    expect(within(summary!).getByText("₱500", { selector: "span" })).toBeInTheDocument();
     expect(within(summary!).getByText("Paddle × 1")).toBeInTheDocument();
     expect(within(summary!).getByText("₱700", { selector: "dd" })).toBeInTheDocument();
+    const total = summary!.querySelector("dl");
+    expect(total).not.toBeNull();
+    expect(within(total!).queryByText("Court rental")).not.toBeInTheDocument();
+    expect(within(total!).queryByText("Equipment rental")).not.toBeInTheDocument();
+    expect(within(total!).queryByText("Additional players")).not.toBeInTheDocument();
 
     const submit = screen.getByRole("button", { name: "Submit reservation" });
     expect(submit).toBeDisabled();
 
-    expect(screen.getByRole("combobox", { name: "E-wallet or bank" })).toHaveTextContent("GCash");
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toHaveTextContent("GCash");
+    expect(screen.getByRole("img", { name: "GCash payment QR code" })).toHaveAttribute("src", expect.stringContaining("gcash.png"));
+    expect(screen.getByText("09123456789")).toBeInTheDocument();
+    expect(screen.getByText("Dinks on Us", { selector: "dd" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "E-wallet or Bank" }));
+    await user.click(screen.getByRole("option", { name: "BPI" }));
+    expect(screen.getByRole("img", { name: "BPI payment QR code" })).toHaveAttribute("src", expect.stringContaining("bpi.png"));
+    expect(screen.getByText("0011223344")).toBeInTheDocument();
+    expect(screen.getByText("Dinks on Us PH")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
     expect(submit).toBeEnabled();

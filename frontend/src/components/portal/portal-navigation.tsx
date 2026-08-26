@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { FiChevronDown } from "react-icons/fi";
 import { managementAreas } from "@/config/management";
-import { getPortalNavigation } from "@/config/navigation";
+import { canAccessPortalModule, getPortalNavigation } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { User } from "@/types/user";
@@ -79,7 +79,7 @@ export function PortalNavigation({
 
               {!collapsed && managementOpen && (
                 <div id="management-subnavigation" className="mt-1 ml-[21px] grid gap-0.5 border-l border-sidebar-border pl-2">
-                  {managementAreas.map((area) => {
+                  {managementAreas.filter((area) => canAccessPortalModule(user, area.module)).map((area) => {
                     const href = `/portal/management/${area.slug}`;
                     const subitemActive = pathname === href;
 

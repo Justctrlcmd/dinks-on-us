@@ -1,4 +1,5 @@
 import { icons } from "@/config/icons";
+import { getManagementArea } from "@/config/management";
 import type { PortalModule, User } from "@/types/user";
 
 export const portalNavigation = [
@@ -10,7 +11,10 @@ export const portalNavigation = [
 ] as const;
 
 export function canAccessPortalModule(user: User, module: PortalModule) {
-  return user.role?.is_full_access === true || user.modules?.includes(module) === true;
+  if (user.role?.is_full_access === true) return true;
+  if (module === "MANAGEMENT") return user.modules?.some((assigned) => assigned.startsWith("MANAGEMENT_")) === true;
+  if (module === "SETTINGS") return false;
+  return user.modules?.includes(module) === true;
 }
 
 export function getPortalNavigation(user: User) {
@@ -19,6 +23,12 @@ export function getPortalNavigation(user: User) {
 
 export function getRequiredPortalModule(pathname: string): PortalModule | null {
   if (pathname === "/portal/profile") return null;
+
+  if (pathname.startsWith("/portal/management/")) {
+    const slug = pathname.split("/")[3];
+    const area = getManagementArea(slug);
+    if (area) return area.module;
+  }
 
   const item = [...portalNavigation]
     .sort((left, right) => right.href.length - left.href.length)

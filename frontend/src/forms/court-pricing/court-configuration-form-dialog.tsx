@@ -1,12 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { FiSettings } from "react-icons/fi";
 import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,9 +16,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { applyApiErrors } from "@/forms/apply-api-errors";
 import { useUpdateCourtConfiguration } from "@/hooks/mutations/use-court-pricing-mutations";
 import { formatHour } from "@/lib/time";
+import { addTimeRange, canAddTimeRange, changeTimeRangeEnd, removeLastTimeRange } from "@/lib/time-ranges";
 import type { CourtConfiguration } from "@/types/court-pricing";
 import {
   courtConfigurationSchema,
@@ -88,9 +86,7 @@ function RateEditor({
   const groupError = form.formState.errors[field]?.root?.message ?? form.formState.errors[field]?.message;
 
   function changeEnd(index: number, endHour: number) {
-    const next = periods.slice(0, index + 1).map((period) => ({ ...period }));
-    next[index].end_hour = endHour;
-    form.setValue(field, next, { shouldDirty: true, shouldValidate: true });
+    form.setValue(field, changeTimeRangeEnd(periods, index, endHour), { shouldDirty: true, shouldValidate: true });
   }
 
   function addPeriod() {
@@ -99,21 +95,14 @@ function RateEditor({
       form.setValue(field, [{ start_hour: openingHour, end_hour: closingHour, price: 0 }], { shouldDirty: true, shouldValidate: true });
       return;
     }
-    if (last.end_hour >= closingHour) return;
-    form.setValue(field, [
-      ...periods,
-      { start_hour: last.end_hour, end_hour: closingHour, price: last.price },
-    ], { shouldDirty: true, shouldValidate: true });
+    form.setValue(field, addTimeRange(periods, closingHour, (start_hour, end_hour, previous) => ({ start_hour, end_hour, price: previous.price })), { shouldDirty: true, shouldValidate: true });
   }
 
   function removeLastPeriod() {
-    if (periods.length <= 1) return;
-    const next = periods.slice(0, -1).map((period) => ({ ...period }));
-    next[next.length - 1].end_hour = closingHour;
-    form.setValue(field, next, { shouldDirty: true, shouldValidate: true });
+    form.setValue(field, removeLastTimeRange(periods, closingHour), { shouldDirty: true, shouldValidate: true });
   }
 
-  const canAdd = periods.length === 0 || Boolean(periods.at(-1) && periods.at(-1)!.end_hour < closingHour);
+  const canAdd = periods.length === 0 || canAddTimeRange(periods, closingHour);
 
   return (
     <section className="grid gap-4 rounded-xl border border-border bg-background p-4" aria-labelledby={`${field}-title`}>
@@ -149,7 +138,7 @@ function RateEditor({
         })}
       </div>
 
-      {groupError ? <p role="alert" className="text-sm text-destructive">{groupError}</p> : null}
+      {groupError ? <p role="alert" className="text-xs leading-4 text-destructive">{groupError}</p> : null}
 
       <div className="flex flex-wrap gap-3">
         <Button type="button" variant="link" className="h-auto p-0" disabled={!canAdd} onClick={addPeriod}>
@@ -173,7 +162,6 @@ export function CourtConfigurationFormDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const mutation = useUpdateCourtConfiguration();
-  const [message, setMessage] = useState<string>();
   const form = useForm<CourtConfigurationValues>({
     resolver: zodResolver(courtConfigurationSchema),
     defaultValues: initialValues(configuration),
@@ -192,13 +180,10 @@ export function CourtConfigurationFormDialog({
   const openingHour = useWatch({ control: form.control, name: "opening_hour" });
   const closingHour = useWatch({ control: form.control, name: "closing_hour" });
   const submit = form.handleSubmit(async (values) => {
-    setMessage(undefined);
     try {
       await mutation.mutateAsync(values);
       onOpenChange(false);
-    } catch (error) {
-      setMessage(applyApiErrors(error, form.setError));
-    }
+    } catch {}
   });
 
   return (
@@ -210,8 +195,6 @@ export function CourtConfigurationFormDialog({
         </DialogHeader>
 
         <form id="court-configuration-form" className="grid gap-5 py-2" onSubmit={submit} noValidate>
-          {message ? <Alert variant="destructive"><AlertDescription>{message}</AlertDescription></Alert> : null}
-
           <div className="grid gap-4 sm:grid-cols-2">
             <TimeSelect
               id="opening-hour"

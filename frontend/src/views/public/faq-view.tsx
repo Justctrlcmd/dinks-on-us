@@ -15,11 +15,11 @@ export function FaqView() {
   return (
     <PublicSiteFrame>
       <main className="min-h-svh bg-background pt-28 sm:pt-32">
-        <div className="mx-auto max-w-[76rem] px-6 pb-10 sm:px-10 sm:pb-12">
+        <div className="mx-auto max-w-[76rem] px-6 pb-6 sm:px-10 sm:pb-8">
           <h1 className="mt-6 max-w-3xl font-heading text-4xl font-extrabold leading-[.98] tracking-[-.055em] text-foreground sm:text-5xl">
             Everything you need before you play.
           </h1>
-          <p className="mt-5 max-w-2xl leading-7 text-muted-foreground sm:text-lg">
+          <p className="mt-3 max-w-2xl leading-7 text-muted-foreground sm:text-lg">
             Find quick answers about reservations, payments, court time, and your visit.
           </p>
         </div>
@@ -54,25 +54,28 @@ export function FaqView() {
                 ))}
               </div>
             )}
-            <div className="mt-12 rounded-2xl border border-energy/40 bg-card p-7 text-card-foreground shadow-sm sm:p-9">
-              <FiHelpCircle className="size-8 text-energy" aria-hidden="true" />
-              <h2 className="mt-6 font-heading text-2xl font-extrabold">
-                Still have a question?
-              </h2>
-              <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
-                Official Messenger contact details will be published by Dinks on
-                Us for direct questions and cancellation requests.
-              </p>
-              <Button
-                nativeButton={false}
-                className="mt-7 h-12 rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90"
-                render={<Link href="#contact" />}
-              >
-                Contact details{" "}
-                <span className="ml-1 flex size-7 items-center justify-center rounded-full bg-brand-surface text-white">
-                  <FiArrowUpRight className="size-3.5" aria-hidden="true" />
-                </span>
-              </Button>
+            <div className="mt-12 rounded-2xl border border-energy/40 bg-card p-7 text-card-foreground shadow-sm sm:p-9 lg:flex lg:items-center lg:justify-between lg:gap-12">
+              <div className="max-w-xl">
+                <FiHelpCircle className="size-8 text-energy lg:hidden" aria-hidden="true" />
+                <h2 className="mt-6 font-heading text-2xl font-extrabold lg:mt-0">
+                  Still have a question?
+                </h2>
+                <p className="mt-3 leading-7 text-muted-foreground">
+                  Official Messenger contact details will be published by Dinks on
+                  Us for direct questions and cancellation requests.
+                </p>
+                <Button
+                  nativeButton={false}
+                  className="mt-7 h-12 rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90"
+                  render={<Link href="#contact" />}
+                >
+                  Contact details{" "}
+                  <span className="ml-1 flex size-7 items-center justify-center rounded-full bg-brand-surface text-white">
+                    <FiArrowUpRight className="size-3.5" aria-hidden="true" />
+                  </span>
+                </Button>
+              </div>
+              <FiHelpCircle className="hidden size-32 shrink-0 text-energy lg:block xl:size-36" aria-hidden="true" />
             </div>
           </div>
         </section>

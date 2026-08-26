@@ -35,10 +35,9 @@ cp .env.example .env
 php artisan key:generate
 # Create the configured MySQL database, then:
 php artisan migrate
-php artisan serve
 ```
 
-In another terminal:
+Then start the complete local application from the frontend directory:
 
 ```bash
 cd frontend
@@ -47,7 +46,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Default development URLs are `http://localhost:8000` and `http://localhost:3000`. Keep `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, CORS, and cookie settings aligned.
+`npm run dev` starts both Laravel and Next.js and stops them together if either service fails. Use `npm run dev:frontend` only when Laravel is intentionally managed in another terminal. The canonical development URLs are `http://127.0.0.1:8000` and `http://127.0.0.1:3000`. Always open the app through `127.0.0.1` so the frontend and API share one hostname and browser cookie rules remain predictable. Localhost ports remain accepted by CORS and Sanctum for separately managed tools. Keep `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, CORS, and cookie settings aligned.
 
 ## Authentication flow
 

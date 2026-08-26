@@ -21,4 +21,16 @@ describe("API helpers", () => {
     const { authFetch } = await import("./api");
     await expect(authFetch("/api/v1/example")).resolves.toMatchObject({ success: true, data: null });
   });
+
+  it("normalizes a failed API connection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    const { publicFetch } = await import("./api");
+    await expect(publicFetch("/api/v1/health")).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
+  });
+
+  it("normalizes a failed CSRF initialization", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    const { publicFetch } = await import("./api");
+    await expect(publicFetch("/api/v1/login", { method: "POST", csrf: true })).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
+  });
 });

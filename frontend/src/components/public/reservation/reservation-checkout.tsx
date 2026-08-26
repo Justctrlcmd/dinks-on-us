@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState, useSyncExternalStore } from "react";
 import {
-  FiAlertTriangle,
   FiArrowLeft,
-  FiCheck,
   FiCheckCircle,
   FiFileText,
   FiImage,
@@ -14,14 +12,15 @@ import {
   FiSmartphone,
   FiUploadCloud,
 } from "react-icons/fi";
+import { ReservationPolicyBanner } from "@/components/public/reservation/reservation-policy-banner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { usePublicPolicies } from "@/hooks/queries/use-policies";
+import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { formatHourRange } from "@/lib/time";
+import type { PublicPaymentMethod } from "@/types/payment-method";
 import { RESERVATION_DRAFT_STORAGE_KEY, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
 
 const currency = new Intl.NumberFormat("en-PH", {
@@ -30,19 +29,14 @@ const currency = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
+const noPaymentMethods: PublicPaymentMethod[] = [];
+
 const longDate = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
   month: "long",
   day: "numeric",
   year: "numeric",
 });
-
-const paymentMethods = [
-  { id: "gcash", name: "GCash", account: "Dinks on Us", detail: "Mobile account", accent: "bg-[#0879df] text-white" },
-  { id: "maya", name: "Maya", account: "Dinks on Us", detail: "Mobile account", accent: "bg-[#171717] text-white" },
-  { id: "bdo", name: "BDO", account: "Dinks on Us", detail: "Bank account", accent: "bg-[#174a8b] text-white" },
-  { id: "gotyme", name: "GoTyme", account: "Dinks on Us", detail: "Mobile account", accent: "bg-[#16ad74] text-white" },
-] as const;
 
 function parseDateOnly(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -131,10 +125,7 @@ function ReservationSummary({ draft }: { draft: ReservationDraft }) {
             <div className="mt-3 grid gap-3">
               {group.courts.map((court) => (
                 <div key={`${group.date}-${court.courtId}`} className="rounded-xl border border-border bg-background p-3 sm:p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-heading font-extrabold uppercase tracking-[.08em]">{court.courtName}</p>
-                    <p className="font-extrabold text-primary">{currency.format(court.slots.reduce((total, slot) => total + slot.price, 0))}</p>
-                  </div>
+                  <p className="font-heading font-extrabold uppercase tracking-[.08em]">{court.courtName}</p>
                   <ul className="mt-3 grid gap-2">
                     {court.slots.map((slot) => (
                       <li key={`${slot.date}-${slot.courtId}-${slot.startHour}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
@@ -175,9 +166,6 @@ function ReservationSummary({ draft }: { draft: ReservationDraft }) {
       </div>
 
       <dl className="mt-5 grid gap-3 border-t border-border pt-5 text-sm">
-        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Court rental</dt><dd className="font-bold">{currency.format(courtSubtotal)}</dd></div>
-        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Equipment rental</dt><dd className="font-bold">{currency.format(equipmentSubtotal)}</dd></div>
-        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Additional players</dt><dd className="font-bold">{currency.format(additionalPlayerSubtotal)}</dd></div>
         <div className="flex items-end justify-between gap-4 border-t border-border pt-4"><dt className="font-heading text-lg font-extrabold">Amount to pay</dt><dd className="font-heading text-2xl font-extrabold text-primary">{currency.format(total)}</dd></div>
         {equipmentLines.length > 0 ? <p className="text-xs leading-5 text-muted-foreground">Equipment availability is confirmed when your reservation is verified. Pending reservations do not hold equipment.</p> : null}
       </dl>
@@ -185,32 +173,10 @@ function ReservationSummary({ draft }: { draft: ReservationDraft }) {
   );
 }
 
-function ConditionsCard() {
-  const query = usePublicPolicies();
-  const rules = query.data?.filter((section) => section.slug === "court-rules" || section.slug === "reservation-rules").flatMap((section) => section.subheaders).flatMap((subheader) => subheader.rules) ?? [];
+function PaymentMethodDetails({ method }: { method: PublicPaymentMethod }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="conditions-title">
-      <SectionHeading id="conditions-title" eyebrow="Rules & policies" title="Please review before paying" description="These current rules are managed by Dinks on Us and apply to your reservation." />
-      {query.isPending ? <p className="mt-5 text-sm text-muted-foreground">Loading current rules and policies…</p> : query.isError ? <p className="mt-5 text-sm text-muted-foreground">Current rules could not be loaded. Review the linked policy pages before submitting.</p> : <ul className="mt-5 grid gap-3 text-sm leading-6 sm:text-base">
-        {rules.map((rule) => (
-          <li key={rule.id} className="flex gap-3">
-            <FiCheck className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-            <span>{rule.content}</span>
-          </li>
-        ))}
-      </ul>}
-      <div className="mt-5 flex gap-3 rounded-xl border border-energy/35 bg-energy/8 p-4 text-sm leading-6">
-        <FiAlertTriangle className="mt-1 size-4 shrink-0 text-energy" aria-hidden="true" />
-        <p><strong>Important:</strong> Your selected slots are not held until the reservation is successfully submitted with complete payment proof.</p>
-      </div>
-    </section>
-  );
-}
-
-function PaymentPlaceholder({ method }: { method: (typeof paymentMethods)[number] }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-white text-neutral-900">
-      <div className={cn("flex items-center justify-between gap-3 px-4 py-3", method.accent)}>
+    <div className="overflow-hidden rounded-2xl border border-primary/35 bg-background text-foreground">
+      <div className="flex items-center justify-between gap-3 bg-primary px-4 py-3 text-primary-foreground">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.14em] text-current/75">Pay with</p>
           <p className="font-heading text-xl font-extrabold">{method.name}</p>
@@ -218,16 +184,20 @@ function PaymentPlaceholder({ method }: { method: (typeof paymentMethods)[number
         <FiSmartphone className="size-7" aria-hidden="true" />
       </div>
       <div className="grid justify-items-center gap-3 p-6 text-center">
-        <div className="grid size-44 grid-cols-5 gap-1 rounded-xl border-8 border-neutral-900 bg-white p-3" aria-hidden="true">
-          {Array.from({ length: 25 }, (_, index) => (
-            <span key={index} className={cn("rounded-[2px]", (index * 7 + method.id.length) % 3 === 0 || [0, 1, 5, 6, 18, 19, 23, 24].includes(index) ? "bg-neutral-900" : "bg-neutral-200")} />
-          ))}
+        <div className="flex aspect-square w-full max-w-sm items-center justify-center rounded-xl border-4 border-primary bg-card p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={method.qr_image_url} alt={`${method.name} payment QR code`} className="size-full object-contain" />
         </div>
-        <div>
-          <p className="font-heading text-lg font-extrabold">Payment code placeholder</p>
-          <p className="mt-1 text-sm text-neutral-600">{method.account} · {method.detail}</p>
-        </div>
-        <p className="max-w-sm text-xs leading-5 text-neutral-500">The manager-configured QR image and account identifier will appear here in the connected version.</p>
+        <dl className="grid gap-1 text-center">
+          <div>
+            <dt className="text-xs uppercase tracking-[.14em] text-muted-foreground">Account Number</dt>
+            <dd className="font-heading text-2xl font-bold sm:text-3xl">{method.account_number}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-[.14em] text-muted-foreground">Account Name</dt>
+            <dd className="font-heading text-md sm:text-xl">{method.account_name}</dd>
+          </div>
+        </dl>
       </div>
     </div>
   );
@@ -235,6 +205,7 @@ function PaymentPlaceholder({ method }: { method: (typeof paymentMethods)[number
 
 export function ReservationCheckout() {
   const loaded = useSyncExternalStore(subscribeToNothing, () => true, () => false);
+  const paymentMethodsQuery = usePublicPaymentMethods();
   const draft = useMemo(() => {
     if (!loaded) return null;
 
@@ -246,19 +217,20 @@ export function ReservationCheckout() {
       return null;
     }
   }, [loaded]);
-  const [paymentMethodId, setPaymentMethodId] = useState<(typeof paymentMethods)[number]["id"]>("gcash");
+  const [paymentMethodId, setPaymentMethodId] = useState("");
   const [receiptName, setReceiptName] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const paymentMethods = paymentMethodsQuery.data ?? noPaymentMethods;
   const selectedPaymentMethod = useMemo(
-    () => paymentMethods.find((method) => method.id === paymentMethodId) ?? paymentMethods[0],
-    [paymentMethodId],
+    () => paymentMethods.find((method) => String(method.id) === paymentMethodId) ?? paymentMethods[0] ?? null,
+    [paymentMethodId, paymentMethods],
   );
 
   function submitReservation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!acknowledged) return;
+    if (!acknowledged || !selectedPaymentMethod) return;
     setSubmitted(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -309,7 +281,7 @@ export function ReservationCheckout() {
 
       <form className="grid min-w-0 gap-5" onSubmit={submitReservation}>
         <ReservationSummary draft={draft} />
-        <ConditionsCard />
+        <ReservationPolicyBanner initialSlug="court-rules" titleId="checkout-policy-title" />
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="customer-information-title">
           <SectionHeading id="customer-information-title" eyebrow="Your information" title="Who is making this reservation?" description="We will use these details for the reservation acknowledgment and payment review." />
@@ -332,29 +304,46 @@ export function ReservationCheckout() {
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="payment-method-title">
           <SectionHeading id="payment-method-title" eyebrow="Payment method" title="Choose where you will pay" description="Select one method, complete the external transfer, then upload your receipt below." />
           <div className="mt-6 grid gap-2">
-            <Label htmlFor="payment-method" className="font-bold">E-wallet or bank</Label>
+            <Label htmlFor="payment-method" className="font-bold">E-wallet or Bank</Label>
             <Select
               name="paymentMethod"
-              value={paymentMethodId}
+              value={selectedPaymentMethod ? String(selectedPaymentMethod.id) : ""}
+              disabled={paymentMethodsQuery.isPending || paymentMethodsQuery.isError || paymentMethods.length === 0}
               onValueChange={(value) => {
-                if (value && paymentMethods.some((method) => method.id === value)) {
-                  setPaymentMethodId(value as (typeof paymentMethods)[number]["id"]);
+                if (value && paymentMethods.some((method) => String(method.id) === value)) {
+                  setPaymentMethodId(value);
                 }
               }}
             >
               <SelectTrigger id="payment-method" className="h-12 w-full rounded-xl bg-background px-4 font-heading text-base font-extrabold">
-                <SelectValue>{selectedPaymentMethod.name}</SelectValue>
+                <SelectValue>
+                  {paymentMethodsQuery.isPending
+                    ? "Loading payment methods…"
+                    : selectedPaymentMethod?.name ?? "No payment method available"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent align="start" className="rounded-xl p-1">
                 {paymentMethods.map((method) => (
-                  <SelectItem key={method.id} value={method.id} className="min-h-11 rounded-lg px-3 font-semibold">
+                  <SelectItem key={method.id} value={String(method.id)} className="min-h-11 rounded-lg px-3 font-semibold">
                     {method.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div className="mt-5"><PaymentPlaceholder method={selectedPaymentMethod} /></div>
+          {paymentMethodsQuery.isError ? (
+            <p className="mt-4 rounded-xl border border-destructive/35 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+              Payment methods could not be loaded. Please refresh the page and try again.
+            </p>
+          ) : paymentMethodsQuery.isPending ? (
+            <div className="mt-5 h-72 animate-pulse rounded-2xl bg-muted" aria-label="Loading payment details" />
+          ) : selectedPaymentMethod ? (
+            <div className="mt-5"><PaymentMethodDetails method={selectedPaymentMethod} /></div>
+          ) : (
+            <p className="mt-4 rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">
+              No payment method is currently available. Please contact Dinks on Us before submitting your reservation.
+            </p>
+          )}
         </section>
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="payment-proof-title">
@@ -394,10 +383,14 @@ export function ReservationCheckout() {
           </div>
           <p className="mt-2 pl-8 text-sm leading-6 text-muted-foreground">I have read and agree to the <Link href="/policies/court-rules" className="font-semibold text-primary underline underline-offset-3">Court Rules &amp; Policy</Link>, <Link href="/policies/reservation-rules" className="font-semibold text-primary underline underline-offset-3">Reservation Rules &amp; Policy</Link>, <Link href="/policies/reschedule-policy" className="font-semibold text-primary underline underline-offset-3">Reschedule Policy</Link>, and <Link href="/policies/cancellation-policy" className="font-semibold text-primary underline underline-offset-3">Cancellation Policy</Link>.</p>
           <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground"><FiLock aria-hidden="true" /> Your payment proof is intended only for reservation verification.</div>
-          <Button type="submit" disabled={!acknowledged} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
+          <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
             <FiShield aria-hidden="true" /> Submit reservation
           </Button>
-          {!acknowledged ? <p className="mt-3 text-center text-xs text-muted-foreground">Check the acknowledgment above to enable submission.</p> : null}
+          {!selectedPaymentMethod ? (
+            <p className="mt-3 text-center text-xs text-muted-foreground">A payment method must be available before submitting.</p>
+          ) : !acknowledged ? (
+            <p className="mt-3 text-center text-xs text-muted-foreground">Check the acknowledgment above to enable submission.</p>
+          ) : null}
         </section>
       </form>
     </div>

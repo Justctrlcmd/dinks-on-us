@@ -6,6 +6,7 @@ export function LoginView() {
     <AuthCardView
       title="Admin Login"
       description="Enter your credentials to access your account."
+      showBackToHome
     >
       <LoginForm />
     </AuthCardView>

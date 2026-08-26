@@ -1,14 +1,25 @@
 import Image from "next/image";
 import Link from "next/link";
+import { FiChevronLeft } from "react-icons/fi";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { siteConfig } from "@/config/site";
 
-export function AuthCardView({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+export function AuthCardView({ title, description, children, showBackToHome = false }: { title: string; description: string; children: React.ReactNode; showBackToHome?: boolean }) {
   return (
     <main className="relative flex min-h-svh items-center justify-center overflow-hidden bg-brand-surface px-4 py-5 sm:px-6 sm:py-8">
       <div className="pointer-events-none absolute -right-32 -top-32 size-96 rounded-full border-[4rem] border-white/4" aria-hidden="true" />
       <div className="pointer-events-none absolute -bottom-40 -left-40 size-112 rounded-full border-[5rem] border-white/3" aria-hidden="true" />
+      {showBackToHome && (
+        <Link
+          href="/"
+          aria-label="Back to home"
+          title="Back to home"
+          className="absolute left-5 top-5 z-10 flex size-10 items-center justify-center rounded-full border border-white/15 bg-black/10 text-white transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:left-7 sm:top-7"
+        >
+          <FiChevronLeft className="size-6" aria-hidden="true" />
+        </Link>
+      )}
       <ThemeToggle className="absolute right-5 top-5 z-10 size-10 rounded-full border border-white/15 bg-black/10 text-white hover:bg-white/10 hover:text-white sm:right-7 sm:top-7" />
 
       <Card className="relative w-full max-w-md rounded-3xl border-0 bg-card py-0 shadow-2xl shadow-black/20 ring-0">

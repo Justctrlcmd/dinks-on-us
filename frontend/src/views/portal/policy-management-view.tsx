@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { FiArrowDown, FiArrowUp, FiEdit2, FiMoreHorizontal, FiMove, FiPlus, FiTrash2 } from "react-icons/fi";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,7 +13,6 @@ import { PolicyRuleFormDialog } from "@/forms/policy/policy-rule-form-dialog";
 import { PolicySubheaderFormDialog } from "@/forms/policy/policy-subheader-form-dialog";
 import { useDeletePolicyRule, useDeletePolicySubheader, useUpdatePolicyRuleOrder, useUpdatePolicySubheaderOrder } from "@/hooks/mutations/use-policy-mutations";
 import { useManagementPolicies } from "@/hooks/queries/use-policies";
-import { isApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { PolicyRule, PolicySection, PolicySubheader } from "@/types/policy";
 
@@ -38,7 +36,6 @@ function PolicyBoard({ section }: { section: PolicySection }) {
   const subheaderOrder = useUpdatePolicySubheaderOrder();
   const ruleOrder = useUpdatePolicyRuleOrder();
   const [current, setCurrent] = useState(section);
-  const [message, setMessage] = useState<string>();
   const [subheaderForm, setSubheaderForm] = useState<PolicySubheader | "create" | null>(null);
   const [ruleForm, setRuleForm] = useState<PolicyRule | "create" | null>(null);
   const [deleting, setDeleting] = useState<{ kind: "subheader"; item: PolicySubheader } | { kind: "rule"; item: PolicyRule } | null>(null);
@@ -47,18 +44,12 @@ function PolicyBoard({ section }: { section: PolicySection }) {
   const originalOrder = useRef<number[]>([]);
   const originalRuleOrder = useRef<number[]>([]);
 
-  const safeMessage = (error: unknown, fallback: string) => {
-    if (!isApiError(error)) return fallback;
-    return error.errors?.subheader?.[0] ?? error.errors?.ids?.[0] ?? error.message;
-  };
-
   const persistSubheaderOrder = async (subheaders: PolicySubheader[]) => {
     setCurrent((value) => ({ ...value, subheaders }));
     try {
       await subheaderOrder.mutateAsync({ sectionId: current.id, ids: subheaders.map(({ id }) => id) });
-    } catch (error) {
+    } catch {
       setCurrent(section);
-      setMessage(safeMessage(error, "The new sub-header order could not be saved. Please try again."));
     }
   };
 
@@ -66,20 +57,18 @@ function PolicyBoard({ section }: { section: PolicySection }) {
     setCurrent((value) => withRuleOrder(value, subheaderId, rules));
     try {
       await ruleOrder.mutateAsync({ subheaderId, ids: rules.map(({ id }) => id) });
-    } catch (error) {
+    } catch {
       setCurrent(section);
-      setMessage(safeMessage(error, "The new rule order could not be saved. Please try again."));
     }
   };
 
   const confirmDelete = async () => {
     if (!deleting) return;
-    setMessage(undefined);
     try {
       if (deleting.kind === "subheader") await deleteSubheader.mutateAsync(deleting.item.id);
       else await deleteRule.mutateAsync(deleting.item.id);
-    } catch (error) {
-      setMessage(safeMessage(error, deleting.kind === "subheader" ? "The sub-header could not be deleted. Please try again." : "The rule could not be deleted. Please try again."));
+    } catch {
+      // The shared mutation cache presents the safe result message.
     } finally {
       setDeleting(null);
     }
@@ -102,8 +91,6 @@ function PolicyBoard({ section }: { section: PolicySection }) {
           <Button className="h-10" onClick={() => setRuleForm("create")}><FiPlus aria-hidden="true" />Add rule</Button>
         </div>
       </div>
-
-      {message && <Alert className="mb-4" variant="destructive"><AlertDescription>{message}</AlertDescription></Alert>}
 
       {current.subheaders.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-background p-6 text-center"><p className="font-medium">No sub-headers yet.</p><p className="mt-1 text-sm text-muted-foreground">Create a sub-header to begin adding policy rules.</p></div>

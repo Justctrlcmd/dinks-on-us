@@ -5,6 +5,20 @@ export interface PaginationMeta {
   total: number;
 }
 
+export type AccessModule =
+  | "DASHBOARD"
+  | "RESERVATION"
+  | "HISTORY"
+  | "MANAGEMENT_COURT_PRICING"
+  | "MANAGEMENT_AVAILABILITY_CLOSURES"
+  | "MANAGEMENT_PAYMENT_METHODS"
+  | "MANAGEMENT_TEAM_ACCESS"
+  | "MANAGEMENT_RULES_POLICIES"
+  | "MANAGEMENT_EVENTS"
+  | "MANAGEMENT_GALLERY"
+  | "MANAGEMENT_FAQS"
+  | "REPORTS";
+
 export interface ApiResponse<TData = null> {
   success: boolean;
   message: string;

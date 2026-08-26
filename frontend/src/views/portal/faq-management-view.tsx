@@ -14,7 +14,6 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -36,7 +35,6 @@ import {
 import { FaqFormDialog } from "@/forms/faq/faq-form-dialog";
 import { useDeleteFaq, useUpdateFaqOrder } from "@/hooks/mutations/use-faq-mutations";
 import { useManagementFaqs } from "@/hooks/queries/use-faqs";
-import { isApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Faq } from "@/types/faq";
 
@@ -60,7 +58,6 @@ export function FaqManagementView() {
   const [editingFaq, setEditingFaq] = useState<Faq | null>(null);
   const [deletingFaq, setDeletingFaq] = useState<Faq | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
-  const [message, setMessage] = useState<string>();
   const originalOrderRef = useRef<number[]>([]);
   const dragOrderRef = useRef<Faq[] | null>(null);
   const orderedFaqs = dragOrder ?? query.data ?? [];
@@ -76,17 +73,15 @@ export function FaqManagementView() {
   };
 
   const persistOrder = async (nextFaqs: Faq[]) => {
-    setMessage(undefined);
     dragOrderRef.current = nextFaqs;
     setDragOrder(nextFaqs);
     try {
       await orderMutation.mutateAsync(nextFaqs.map(({ id }) => id));
       dragOrderRef.current = null;
       setDragOrder(null);
-    } catch (error) {
+    } catch {
       dragOrderRef.current = null;
       setDragOrder(null);
-      setMessage(isApiError(error) ? error.message : "The new FAQ order could not be saved. Please try again.");
     }
   };
 
@@ -99,12 +94,10 @@ export function FaqManagementView() {
 
   const confirmDelete = async () => {
     if (!deletingFaq) return;
-    setMessage(undefined);
     try {
       await deleteMutation.mutateAsync(deletingFaq.id);
       setDeletingFaq(null);
-    } catch (error) {
-      setMessage(isApiError(error) ? error.message : "The FAQ could not be deleted. Please try again.");
+    } catch {
       setDeletingFaq(null);
     }
   };
@@ -121,12 +114,6 @@ export function FaqManagementView() {
           </Button>
         }
       />
-
-      {message && (
-        <Alert variant="destructive">
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      )}
 
       <section aria-labelledby="faq-board-title" className="rounded-2xl border bg-muted/45 p-3 sm:p-4">
         <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

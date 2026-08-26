@@ -8,7 +8,11 @@ Reuse shadcn buttons, cards, dialogs, inputs, menus, sheets, and tooltips. Use R
 
 Desktop portal navigation may collapse to an icon rail with tooltips. Mobile uses a header and off-canvas sheet, never a permanent rail. Keep account actions in the bottom user menu. Page routes stay thin and complete layouts live in views/components.
 
+Management interfaces use compact operational density by default. Avoid oversized cards, controls, icons, headings, empty states, and decorative whitespace. Let panels follow their content height unless equal height communicates a useful comparison. Project-specific admin sizing and layout rules live in `PROJECT_DESIGN.md`.
+
 Forms require visible labels, accessible descriptions and errors, predictable spacing, disabled/loading states, and reasonable touch targets. Compose focused controls rather than one universal component. Do not trim or alter passwords. Confirmation dialogs are for meaningful consequences such as delete, cancel, remove, or discarding important work—not harmless actions.
+
+User-action results use the shared Sonner toast system: compact card, semantic status indicator, bottom-right placement on desktop, inset placement on mobile, and automatic dismissal. Success, error, warning, and informational API results must not be duplicated inside forms or dialogs. Keep only Zod validation errors inline beneath their fields in dialogs.
 
 Loading messages should name the context. Empty states explain what will appear and may offer one useful action. Error states use safe explanations and a retry/navigation action when recovery is possible.
 

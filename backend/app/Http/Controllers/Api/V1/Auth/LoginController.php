@@ -15,7 +15,10 @@ class LoginController extends Controller
 
     public function __invoke(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->safe()->only(['email', 'password']);
+        $credentials = [
+            ...$request->safe()->only(['email', 'password']),
+            'is_active' => true,
+        ];
 
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
             return $this->respondFailure(
@@ -28,7 +31,8 @@ class LoginController extends Controller
 
         $request->session()->regenerate();
 
-        $request->user()->load('role');
+        $request->user()->update(['last_login_at' => now()]);
+        $request->user()->load('role.modules');
 
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),

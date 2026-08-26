@@ -3,6 +3,7 @@ import { icons } from "@/config/icons";
 export const managementAreas = [
   {
     slug: "court-pricing",
+    module: "MANAGEMENT_COURT_PRICING",
     title: "Courts & Pricing",
     description: "Create courts and configure their rates, player limits, operating hours, and rentable equipment.",
     icon: icons.rates,
@@ -14,6 +15,7 @@ export const managementAreas = [
   },
   {
     slug: "close-date-slot",
+    module: "MANAGEMENT_AVAILABILITY_CLOSURES",
     title: "Availability & Closures",
     description: "Select a court, then close the full date or only the affected time slots without disrupting active reservations.",
     icon: icons.blockedSlots,
@@ -21,13 +23,15 @@ export const managementAreas = [
   },
   {
     slug: "payment-method",
+    module: "MANAGEMENT_PAYMENT_METHODS",
     title: "Payment Methods",
-    description: "Add supported e-wallets with their QR image, display name, and account number.",
+    description: "Add supported e-wallets or bank accounts with their QR image, account name, and account number.",
     icon: icons.payment,
-    capabilities: ["Add and edit e-wallet details", "Upload or replace the QR image", "Activate or deactivate a payment method"],
+    capabilities: ["Add and edit e-wallet or bank details", "Upload or replace the QR image", "Remove a method from future payments"],
   },
   {
     slug: "staff-accounts",
+    module: "MANAGEMENT_TEAM_ACCESS",
     title: "Team & Access",
     description: "Create staff roles and accounts, assign one role per account, and manage operational access.",
     icon: icons.staff,
@@ -35,6 +39,7 @@ export const managementAreas = [
   },
   {
     slug: "rules-policy",
+    module: "MANAGEMENT_RULES_POLICIES",
     title: "Rules & Policies",
     description: "Manage customer-facing court, reservation, reschedule, and cancellation policies.",
     icon: icons.rules,
@@ -46,6 +51,7 @@ export const managementAreas = [
   },
   {
     slug: "events",
+    module: "MANAGEMENT_EVENTS",
     title: "Events",
     description: "Create public events with a header, image, description, and date.",
     icon: icons.calendar,
@@ -53,6 +59,7 @@ export const managementAreas = [
   },
   {
     slug: "gallery",
+    module: "MANAGEMENT_GALLERY",
     title: "Gallery",
     description: "Add and organize public images in the appropriate gallery tabs.",
     icon: icons.gallery,
@@ -60,6 +67,7 @@ export const managementAreas = [
   },
   {
     slug: "faqs",
+    module: "MANAGEMENT_FAQS",
     title: "FAQs",
     description: "Create question-and-answer cards for the public site and control the order in which players see them.",
     icon: icons.faq,

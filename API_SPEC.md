@@ -314,7 +314,7 @@ Returns the four system-defined policy sections—Court Rules & Policy, Reservat
 GET /api/v1/public/gallery
 ```
 
-Returns active public gallery images.
+Returns gallery categories in saved display order, with each category's images nested in saved display order. The response does not generate an `All` category.
 
 ---
 
@@ -1610,19 +1610,21 @@ Backend must enforce whole-hour boundaries and complete, consecutive coverage fr
 ```http
 GET   /api/v1/management/payment-methods
 POST  /api/v1/management/payment-methods
-GET   /api/v1/management/payment-methods/{paymentMethod}
-POST  /api/v1/management/payment-methods/{paymentMethod}
+PATCH /api/v1/management/payment-methods/{paymentMethod}
+DELETE /api/v1/management/payment-methods/{paymentMethod}
 ```
 
-A multipart request may be used when changing the QR code image.
+Create and update requests use multipart form data. Browser updates may send
+`POST` with `_method=PATCH` so PHP receives the replacement image correctly.
+QR images accept JPG, PNG, and WebP files up to 5 MB and are stored on the
+public Laravel disk.
 
 Manager should be able to:
 
-* Add a supported e-wallet payment method with its name and account number
+* Add a supported e-wallet or bank payment method with its name, account name, and account number
 * Update account information
 * Replace QR image
-* Activate
-* Deactivate
+* Remove a method from future payment selection by deactivating it
 
 Historical payment records must remain meaningful after deactivation.
 
@@ -1631,11 +1633,12 @@ Historical payment records must remain meaningful after deactivation.
 # 65. Closed Dates
 
 ```http
-GET    /api/v1/management/closed-dates
+GET    /api/v1/public/closed-dates
 POST   /api/v1/management/closed-dates
-PATCH  /api/v1/management/closed-dates/{closedDate}
 DELETE /api/v1/management/closed-dates/{closedDate}
 ```
+
+The public endpoint returns active future whole-operation closure dates only. It never exposes internal reasons. Reservation and management calendars use this list to disable dates before selection.
 
 Before creating a closure, backend must check for conflicts with active reservations.
 
@@ -1646,9 +1649,7 @@ It must not silently invalidate existing reservations.
 # 66. Availability Blocks
 
 ```http
-GET    /api/v1/management/availability-blocks
 POST   /api/v1/management/availability-blocks
-PATCH  /api/v1/management/availability-blocks/{block}
 DELETE /api/v1/management/availability-blocks/{block}
 ```
 
@@ -1658,13 +1659,26 @@ Payload example:
 {
   "court_id": 3,
   "date": "2026-08-22",
-  "start_time": "14:00",
-  "end_time": "16:00",
+  "periods": [
+    { "start_hour": 14, "end_hour": 16 },
+    { "start_hour": 18, "end_hour": 20 }
+  ],
   "reason": "Maintenance"
 }
 ```
 
 Backend must reject blocks that conflict with active reservations unless those reservations are first properly resolved.
+
+`DELETE` reopens the grouped closure: it deactivates the record and creates an audit event rather than erasing the closure history.
+
+## Availability management lists
+
+```http
+GET /api/v1/management/availability-closures?page=1
+GET /api/v1/management/availability-activity?page=1
+```
+
+Both endpoints return five records per page. The first lists active entire-operation and court-time closures together. The second lists closure and reopening events with their internal-reason and affected-schedule snapshot.
 
 ---
 
@@ -1699,16 +1713,20 @@ Events must not affect court availability.
 ```http
 GET    /api/v1/management/gallery-tabs
 POST   /api/v1/management/gallery-tabs
+PATCH  /api/v1/management/gallery-tabs/display-order
 PATCH  /api/v1/management/gallery-tabs/{galleryTab}
 DELETE /api/v1/management/gallery-tabs/{galleryTab}
 
-GET    /api/v1/management/gallery
+GET    /api/v1/management/gallery?gallery_tab_id={galleryTab}
 POST   /api/v1/management/gallery
 PATCH  /api/v1/management/gallery/{image}
 DELETE /api/v1/management/gallery/{image}
+PATCH  /api/v1/management/gallery-tabs/{galleryTab}/image-order
 ```
 
-An image belongs to a selected gallery tab. Tab and image display order are persisted and determine their public order.
+An image belongs to a selected gallery tab. Tab and image display order are persisted by drag-and-drop operations and determine their public order; numeric positions are not submitted through create or edit forms. New records are appended. Moving an image to another category appends it to the destination. Deleting a category permanently deletes its images and stored files. Neither management nor public responses generate an `All` tab.
+
+Category create and update requests include `name`. Image create and update requests include `gallery_tab_id`, required accessible `alt_text`, and an image file on create; the file is optional during edit unless it is being replaced.
 
 Image upload endpoints should validate:
 

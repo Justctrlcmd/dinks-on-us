@@ -455,7 +455,7 @@ This should be retained for operational tracking and reporting.
 
 # 26. Closed Date Rule
 
-Authorized management users may select a court and close an entire business date. A full-date closure applies to every court; the court selection is required only when the user chooses a slot-only closure.
+Authorized management users may close an entire business date. A full-date closure applies to every court; the court selection is required only when the user chooses a slot-only closure. Every closure requires an internal reason.
 
 When a date is closed:
 
@@ -478,10 +478,10 @@ Private Facility Use
 
 Authorized users may select a court and block specific court/time slots without closing the entire date.
 
-A block may target:
+A grouped block may target:
 
 * One court
-* One or more time slots
+* One or more non-overlapping time ranges
 * A specific date
 
 Example:
@@ -498,13 +498,15 @@ Maintenance
 
 Other courts and unaffected times remain available.
 
+All time ranges saved together belong to one closure and are reopened together. Time ranges must stay within the configured operating hours.
+
 ---
 
 # 28.1 Public Content Ordering Rule
 
 FAQ entries are public question-and-answer cards. Each card can be created, edited, deleted, and moved by drag-and-drop; the saved display order determines the order on the public FAQ page.
 
-Gallery images belong to a gallery tab. Management can add and order tabs, then add, remove, and order images within the selected tab.
+Gallery images belong to a gallery tab. Management can add, edit, delete, and drag tabs into their public order, then add, edit, move, delete, and drag images within the selected tab. Newly created tabs and images are appended to the end. The public and management galleries use only the configured tabs and do not generate an **All** tab. Deleting a gallery tab permanently deletes its contained images and stored image files.
 
 Rules and policy are maintained as three public sections: **Reservation**, **Reschedule**, and **Cancel**. Each section contains individual bullets that can be added, edited, deleted, and reordered. The public reservation experience must display those bullets in their configured order.
 

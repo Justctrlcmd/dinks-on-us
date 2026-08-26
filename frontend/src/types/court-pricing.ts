@@ -55,6 +55,12 @@ export type ReservationOptions = {
   configuration: CourtConfiguration | null;
   courts: Court[];
   slots: ReservationOptionSlot[];
+  is_date_closed: boolean;
+  unavailable_slots: { court_id: number; start_hour: number }[];
   equipment: RentalEquipment[];
   equipment_confirmation: string;
+};
+
+export type ReservationClosedDates = {
+  closed_dates: string[];
 };

@@ -185,6 +185,53 @@ being reviewed, without overpromising verification timing.
 The staff portal is an operational workspace, distinct from the public
 marketing experience but visually connected through the same tokens and fonts.
 
+### Minimal admin portal density
+
+The admin portal uses a compact, information-first interface. Every element
+must earn its space. Minimal means visually calm and easy to scan, not sparse,
+oversized, or stripped of necessary context.
+
+- Use compact page padding and a consistent `12–24px` spacing rhythm. Prefer
+  smaller gaps inside operational panels than on public marketing pages.
+- Keep page titles and descriptions concise. Do not use display-sized headings
+  in routine management screens.
+- Cards follow their own content height by default. Do not stretch neighboring
+  cards to equal heights unless their content is directly comparable and the
+  alignment materially improves comprehension.
+- Use compact card padding, generally `16–20px` on desktop and `16px` on mobile.
+  Avoid large blank regions added only to make a panel appear substantial.
+- Place an action that belongs to one panel in that panel's header, aligned to
+  the top right. Reserve the page header for actions affecting the entire page.
+- Desktop buttons and form controls should normally be `36–40px` high. Preserve
+  a practical `44px` touch target where needed on mobile; visual treatments may
+  remain compact inside that target.
+- Application icons should normally be `16–20px`. Supporting icon containers
+  should normally be `28–32px`; do not use large decorative icon tiles in
+  operational cards.
+- Prefer concise rows, tables, or small status cards for repeated data. Show a
+  useful first page and paginate longer collections rather than increasing a
+  card's fixed height or introducing an internal scroll area without need.
+- Empty states should be short and content-sized: one clear title, one helpful
+  sentence, and at most one relevant action. Do not vertically center them in
+  oversized panels.
+- Dialogs should fit their required fields without excessive padding. For
+  mutually exclusive modes, prefer clear clickable text labels or compact
+  controls over large selection cards unless a visual comparison is necessary.
+- Toasts are compact, content-sized cards with a small status indicator,
+  restrained padding, bottom-right desktop placement, and inset mobile
+  placement. They must never resemble full-width banners on desktop.
+- Use hierarchy through font weight, muted supporting text, borders, and small
+  status treatments before adding more containers, shadows, or colour blocks.
+- Avoid nesting cards inside cards when spacing, a divider, or a simple row can
+  express the same relationship.
+- Review every desktop management screen for avoidable vertical space. A normal
+  viewport should expose the primary controls and a meaningful amount of data
+  without feeling crowded.
+
+Compact density never overrides accessibility: labels, errors, focus rings,
+keyboard operation, readable type, sufficient contrast, and mobile touch areas
+remain mandatory.
+
 - Use a Primary Navy desktop sidebar with a clear active state. Maintain the
   existing collapsible desktop rail and mobile sheet pattern.
 - Use Warm Sand as the workspace background and Soft White for content panels.

@@ -1,10 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { TextareaWithLabel } from "@/components/common/forms/textarea-with-label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { applyApiErrors } from "@/forms/apply-api-errors";
 import { useCreateFaq, useUpdateFaq } from "@/hooks/mutations/use-faq-mutations";
 import type { Faq } from "@/types/faq";
 import { faqSchema, type FaqValues } from "@/validation/custom/faq-schema";
@@ -31,7 +28,6 @@ export function FaqFormDialog({
 }) {
   const createMutation = useCreateFaq();
   const updateMutation = useUpdateFaq();
-  const [message, setMessage] = useState<string>();
   const form = useForm<FaqValues>({
     resolver: zodResolver(faqSchema),
     defaultValues: { question: faq?.question ?? "", answer: faq?.answer ?? "" },
@@ -39,8 +35,6 @@ export function FaqFormDialog({
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const submit = form.handleSubmit(async (values) => {
-    setMessage(undefined);
-
     try {
       if (faq) {
         await updateMutation.mutateAsync({ id: faq.id, input: values });
@@ -48,9 +42,7 @@ export function FaqFormDialog({
         await createMutation.mutateAsync(values);
       }
       onOpenChange(false);
-    } catch (error) {
-      setMessage(applyApiErrors(error, form.setError));
-    }
+    } catch {}
   });
 
   return (
@@ -64,11 +56,6 @@ export function FaqFormDialog({
         </DialogHeader>
 
         <form id="faq-form" className="grid gap-5 py-2" onSubmit={submit} noValidate>
-          {message && (
-            <Alert variant="destructive">
-              <AlertDescription>{message}</AlertDescription>
-            </Alert>
-          )}
           <TextareaWithLabel
             label="Question"
             required

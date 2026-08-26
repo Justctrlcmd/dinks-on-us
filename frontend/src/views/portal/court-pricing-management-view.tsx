@@ -6,9 +6,8 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,7 +15,6 @@ import { CourtConfigurationFormDialog } from "@/forms/court-pricing/court-config
 import { RentalEquipmentFormDialog } from "@/forms/court-pricing/rental-equipment-form-dialog";
 import { useCreateCourt, useDeleteCourt, useDeleteRentalEquipment } from "@/hooks/mutations/use-court-pricing-mutations";
 import { useCourtPricingManagement } from "@/hooks/queries/use-court-pricing";
-import { isApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
 import type { Court, CourtConfiguration, RatePeriod, RentalEquipment } from "@/types/court-pricing";
@@ -87,38 +85,28 @@ export function CourtPricingManagementView() {
   const [equipmentFormOpen, setEquipmentFormOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<RentalEquipment | null>(null);
   const [deletingEquipment, setDeletingEquipment] = useState<RentalEquipment | null>(null);
-  const [message, setMessage] = useState<string>();
 
   async function createCourt() {
-    setMessage(undefined);
     try {
       await createCourtMutation.mutateAsync();
       setAddCourtOpen(false);
-    } catch (error) {
-      setMessage(isApiError(error) ? error.message : "The court could not be created. Please try again.");
-    }
+    } catch {}
   }
 
   async function deleteCourt() {
     if (!deletingCourt) return;
-    setMessage(undefined);
     try {
       await deleteCourtMutation.mutateAsync(deletingCourt.id);
       setDeletingCourt(null);
-    } catch (error) {
-      setMessage(isApiError(error) ? error.message : "The court could not be removed. Please try again.");
-    }
+    } catch {}
   }
 
   async function deleteEquipment() {
     if (!deletingEquipment) return;
-    setMessage(undefined);
     try {
       await deleteEquipmentMutation.mutateAsync(deletingEquipment.id);
       setDeletingEquipment(null);
-    } catch (error) {
-      setMessage(isApiError(error) ? error.message : "The equipment could not be removed. Please try again.");
-    }
+    } catch {}
   }
 
   if (query.isPending) return <LoadingState message="Loading courts and pricing…" />;
@@ -127,26 +115,26 @@ export function CourtPricingManagementView() {
   const { configuration, courts, nextCourtNumber, equipment } = query.data;
 
   return (
-    <div className="grid gap-8">
+    <div className="grid gap-6">
       <PageHeader title="Courts & Pricing" description="Manage the shared court rules, physical courts, and equipment offered during reservation." />
-      {message ? <Alert variant="destructive"><AlertDescription>{message}</AlertDescription></Alert> : null}
-
       <ConfigurationSummary configuration={configuration} onConfigure={() => setConfigurationOpen(true)} />
 
       <section aria-labelledby="courts-title">
-        <Card className="relative">
-          <CardHeader className="pr-36">
+        <Card size="sm">
+          <CardHeader>
             <CardTitle id="courts-title">Number of courts</CardTitle>
             <CardDescription>Each new court receives the next permanent court number.</CardDescription>
+            <CardAction>
+              <Button size="sm" onClick={() => setAddCourtOpen(true)}><FiPlus aria-hidden="true" />Add court</Button>
+            </CardAction>
           </CardHeader>
-          <Button className="absolute top-5 right-5" onClick={() => setAddCourtOpen(true)}><FiPlus aria-hidden="true" />Add court</Button>
           <CardContent>
             {courts.length === 0 ? <EmptyState title="No active courts." description="Use Add court to make configured time slots available." /> : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {courts.map((court) => (
-                  <Card key={court.id} className="relative gap-0 py-0">
-                    <CardContent className="flex min-h-24 items-center p-5 pr-12"><h3 className="font-heading text-lg font-bold">{court.name}</h3></CardContent>
-                    <Button variant="ghost" size="icon-sm" className="absolute top-1/2 right-4 -translate-y-1/2" aria-label={`Delete ${court.name}`} onClick={() => setDeletingCourt(court)}><FiTrash2 aria-hidden="true" /></Button>
+                  <Card key={court.id} size="sm" className="relative gap-0 py-0">
+                    <CardContent className="flex min-h-12 items-center px-3 py-2 pr-10"><h3 className="font-heading text-sm font-bold">{court.name}</h3></CardContent>
+                    <Button variant="ghost" size="icon-sm" className="absolute top-1/2 right-2 -translate-y-1/2" aria-label={`Delete ${court.name}`} onClick={() => setDeletingCourt(court)}><FiTrash2 aria-hidden="true" /></Button>
                   </Card>
                 ))}
               </div>
@@ -156,24 +144,28 @@ export function CourtPricingManagementView() {
       </section>
 
       <section aria-labelledby="equipment-title">
-        <Card className="relative">
-          <CardHeader className="pr-40">
+        <Card size="sm">
+          <CardHeader>
             <CardTitle id="equipment-title">Equipment rental</CardTitle>
             <CardDescription>Prices apply once per unit for the whole reservation.</CardDescription>
+            <CardAction>
+              <Button size="sm" onClick={() => { setEditingEquipment(null); setEquipmentFormOpen(true); }}><FiPlus aria-hidden="true" />Add equipment</Button>
+            </CardAction>
           </CardHeader>
-          <Button className="absolute top-5 right-5" onClick={() => { setEditingEquipment(null); setEquipmentFormOpen(true); }}><FiPlus aria-hidden="true" />Add equipment</Button>
           <CardContent>
             {equipment.length === 0 ? <EmptyState title="No rental equipment." description="Use Add equipment to offer items during public reservation." /> : (
-              <div className="grid gap-3">
+              <div className="grid gap-2">
                 {equipment.map((item) => (
-                  <Card key={item.id} className="relative gap-0 py-0">
-                    <CardContent className="flex min-h-24 flex-wrap items-center gap-x-5 gap-y-3 p-5">
-                      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-5 gap-y-1">
-                        <h3 className="font-heading text-lg font-bold">{item.name}</h3>
-                        <p className="font-heading text-lg font-extrabold text-primary">{currency.format(item.price)}</p>
-                        <p className="text-sm text-muted-foreground">{item.total_quantity} in stock</p>
+                  <Card key={item.id} size="sm" className="gap-0 py-0">
+                    <CardContent className="flex min-h-16 flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <h3 className="truncate font-heading text-sm font-bold">{item.name}</h3>
+                          <p className="shrink-0 border-l border-border pl-3 text-xs text-muted-foreground">{item.total_quantity} in stock</p>
+                        </div>
+                        <p className="mt-0.5 font-heading text-base font-extrabold text-primary">{currency.format(item.price)}</p>
                       </div>
-                      <div className="ml-auto flex shrink-0 items-center gap-3">
+                      <div className="ml-auto flex shrink-0 items-center gap-2">
                         <p className="flex items-center gap-2 text-xs text-muted-foreground"><FiClock aria-hidden="true" />Last modified {formatDateTime(item.updated_at)}</p>
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${item.name}`} />}><FiMoreHorizontal aria-hidden="true" /></DropdownMenuTrigger>
