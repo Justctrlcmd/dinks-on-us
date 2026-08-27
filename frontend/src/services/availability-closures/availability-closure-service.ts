@@ -32,10 +32,14 @@ export const closeCourtTimes = (input: CourtTimeClosureInput) =>
     body: JSON.stringify(input),
   });
 
-export function reopenClosure(closure: AvailabilityClosure) {
+export function reopenClosure({ closure, reason }: { closure: AvailabilityClosure; reason: string }) {
   const path = closure.type === "entire_operation"
     ? `/api/v1/management/closed-dates/${closure.id}`
     : `/api/v1/management/availability-blocks/${closure.id}`;
 
-  return authFetch<AvailabilityClosure>(path, { method: "DELETE", csrf: true });
+  return authFetch<AvailabilityClosure>(path, {
+    method: "DELETE",
+    csrf: true,
+    body: JSON.stringify({ reason }),
+  });
 }

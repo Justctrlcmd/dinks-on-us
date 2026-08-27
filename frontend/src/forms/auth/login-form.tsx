@@ -44,7 +44,7 @@ export function LoginForm() {
         type="email"
         autoComplete="email"
         placeholder="Enter your email"
-        className="h-12 rounded-xl bg-background/70 px-4"
+        className="h-10 rounded-xl bg-background/70 px-4"
         aria-required="true"
         {...form.register("email")}
         error={form.formState.errors.email?.message}
@@ -53,7 +53,7 @@ export function LoginForm() {
         label="Password"
         autoComplete="current-password"
         placeholder="Enter your password"
-        className="h-12 rounded-xl bg-background/70 px-4 pr-12"
+        className="h-10 rounded-xl bg-background/70 px-4 pr-12"
         aria-required="true"
         {...form.register("password")}
         error={form.formState.errors.password?.message}

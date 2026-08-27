@@ -100,8 +100,10 @@ Status must always include a written label; these colours are supporting cues.
 | --- | --- |
 | Available | Soft Mint surface, Deep Teal outline/icon, “Available” label |
 | Selected | Deep Teal fill with Soft White text and visible selection marker |
-| Waiting for verification | Warm Sand surface with Navy text and a “Waiting for verification” label |
+| Pending | Warm Sand surface with Navy text and a “Pending” label |
 | Verified / completed | Soft Mint surface with Deep Teal text and a check indicator |
+| Ongoing | Energy Coral accent with an explicit “Ongoing” label |
+| Rescheduled | Fresh Sky supporting treatment with an explicit “Rescheduled” label |
 | Unavailable / blocked | Muted surface with muted text and an unavailable icon/pattern |
 | Cancelled / rejected / no-show | Accessible destructive treatment with explicit status label |
 
@@ -176,7 +178,7 @@ review and remove. Never imply that a slot is guaranteed until submission
 succeeds.
 
 Payment instructions, QR code, receipt upload, reference number, and the
-waiting-for-verification outcome should be presented as a calm, numbered flow.
+pending-verification outcome should be presented as a calm, numbered flow.
 The confirmation state must state that selected slots are held while payment is
 being reviewed, without overpromising verification timing.
 
@@ -243,6 +245,15 @@ remain mandatory.
   confirmation. Destructive or irreversible actions retain confirmation dialogs.
 - Charts use navy, teal, sky, coral, and mint in a consistent series order,
   with labels and accessible alternatives rather than colour-only legends.
+
+### Established portal component references
+
+Project-specific screens must adapt to the current portal language before
+introducing new visual treatments. Reuse `PortalMetricCard` for KPI summaries,
+follow the Team & Access table shell for repeated management data, and use
+`CalendarDatePicker` for date selection. These implementations are the
+reference for spacing, typography, borders, states, and responsive behavior;
+new modules should vary their content and actions, not recreate those patterns.
 
 ## 8. Accessibility and responsive rules
 

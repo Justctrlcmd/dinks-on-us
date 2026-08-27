@@ -1,10 +1,11 @@
-import { FiBarChart2, FiClock, FiDollarSign, FiGrid, FiTrendingUp } from "react-icons/fi";
+import { FiBarChart2, FiClock, FiGrid, FiTrendingUp } from "react-icons/fi";
+import { LuPhilippinePeso } from "react-icons/lu";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const reports = [
-  { title: "Revenue", description: "Completed reservations and their final amounts, grouped by day, week, or month.", icon: FiDollarSign },
+  { title: "Revenue", description: "Completed reservations and their final amounts, grouped by day, week, or month.", icon: LuPhilippinePeso },
   { title: "Reservation trends", description: "Completed, rejected, cancelled, no-show, online, and walk-in activity.", icon: FiTrendingUp },
   { title: "Court utilization", description: "Reserved and completed hours for each court across a selected period.", icon: FiGrid },
   { title: "Popular times", description: "Frequently used reservation hours derived from reservation slots.", icon: FiClock },

@@ -13,17 +13,16 @@ import {
   FiUserX,
   FiUsers,
 } from "react-icons/fi";
-import type { IconType } from "react-icons";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
+import { PortalMetricCard } from "@/components/portal/portal-metric-card";
 import { Pagination } from "@/components/common/pagination";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
 import { AccessFormDialog } from "@/forms/team-access/access-form-dialog";
 import { ResetTeamPasswordDialog } from "@/forms/team-access/reset-team-password-dialog";
 import { TeamFormDialog } from "@/forms/team-access/team-form-dialog";
@@ -39,25 +38,6 @@ import type { AccessModuleOption, AccessProfile, TeamMember } from "@/types/team
 
 function teamId(id: number) {
   return `TEAM-${String(id).padStart(4, "0")}`;
-}
-
-function MetricCard({ label, value, icon: Icon, iconClassName }: {
-  label: string;
-  value?: number;
-  icon: IconType;
-  iconClassName: string;
-}) {
-  return (
-    <Card className="min-h-24 justify-center py-4">
-      <CardContent className="flex items-center gap-4 px-4">
-        <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${iconClassName}`}><Icon aria-hidden className="size-5" /></span>
-        <div>
-          {value === undefined ? <Skeleton className="mb-1 h-6 w-10" /> : <p className="font-heading text-xl font-bold leading-none">{value}</p>}
-          <p className="mt-1.5 text-sm font-medium text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 function AccessCard({ access, modules, onEdit, onDelete }: {
@@ -203,10 +183,10 @@ export function TeamAccessManagementView() {
       />
 
       <section aria-label="Team and Access summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total Team" value={accessQuery.data?.summary.total_team} icon={FiUsers} iconClassName="bg-primary/10 text-primary" />
-        <MetricCard label="Active" value={accessQuery.data?.summary.active_team} icon={FiUserCheck} iconClassName="bg-success/10 text-success" />
-        <MetricCard label="Inactive" value={accessQuery.data?.summary.inactive_team} icon={FiUserX} iconClassName="bg-foreground/10 text-muted-foreground" />
-        <MetricCard label="Access profiles" value={accessQuery.data?.summary.access_profiles} icon={FiShield} iconClassName="bg-energy/10 text-energy" />
+        <PortalMetricCard label="Total Team" value={accessQuery.data?.summary.total_team} icon={FiUsers} iconClassName="bg-primary/10 text-primary" />
+        <PortalMetricCard label="Active" value={accessQuery.data?.summary.active_team} icon={FiUserCheck} iconClassName="bg-success/10 text-success" />
+        <PortalMetricCard label="Inactive" value={accessQuery.data?.summary.inactive_team} icon={FiUserX} iconClassName="bg-foreground/10 text-muted-foreground" />
+        <PortalMetricCard label="Access profiles" value={accessQuery.data?.summary.access_profiles} icon={FiShield} iconClassName="bg-energy/10 text-energy" />
       </section>
 
       {!accessQuery.isPending && !accessQuery.isError && assignableAccesses.length === 0 ? (

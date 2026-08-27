@@ -6,7 +6,6 @@ import {
   FiClipboard,
   FiClock,
   FiCreditCard,
-  FiDollarSign,
   FiGlobe,
   FiGrid,
   FiHelpCircle,
@@ -21,6 +20,7 @@ import {
   FiUsers,
   FiUser,
 } from "react-icons/fi";
+import { LuPhilippinePeso } from "react-icons/lu";
 
 export const icons = {
   alert: FiAlertCircle,
@@ -37,7 +37,7 @@ export const icons = {
   menu: FiMenu,
   moon: FiMoon,
   payment: FiCreditCard,
-  rates: FiDollarSign,
+  rates: LuPhilippinePeso,
   reports: FiBarChart2,
   reservations: FiCalendar,
   roles: FiShield,

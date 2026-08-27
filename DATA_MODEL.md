@@ -336,6 +336,8 @@ Represents the parent reservation transaction.
 
 One reservation may contain multiple independent court/time slots.
 
+All current slots belonging to one reservation use the reservation's single `booking_date`. Multiple courts and non-consecutive hours remain supported.
+
 ### Suggested Fields
 
 ```text
@@ -343,12 +345,15 @@ id
 reference_number
 
 source
+booking_date
 
 customer_name
 customer_email
 customer_contact_number
 
 status
+is_rescheduled
+reschedule_count
 
 original_amount
 adjustment_amount
@@ -366,6 +371,7 @@ no_show_at
 
 created_by_user_id
 verified_by_user_id
+started_by_user_id
 completed_by_user_id
 cancelled_by_user_id
 rejected_by_user_id
@@ -403,8 +409,9 @@ Created manually by Staff or Manager.
 Suggested values:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
 VERIFIED
+ONGOING
 COMPLETED
 CANCELLED
 REJECTED
@@ -414,8 +421,9 @@ NO_SHOW
 ### Operational Statuses
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
 VERIFIED
+ONGOING
 ```
 
 ### Final Statuses
@@ -436,7 +444,7 @@ Each reservation must have a unique human-readable reference.
 Example:
 
 ```text
-DOU-20260811-0012
+RF-001
 ```
 
 ### Database Requirement
@@ -444,6 +452,8 @@ DOU-20260811-0012
 `reference_number` must be unique.
 
 It should be searchable by Staff.
+
+The value is generated from the reservation identity as an expanding, zero-padded sequence: `RF-001` through `RF-999`, then `RF-1000` and beyond. References are never reused.
 
 ---
 
@@ -792,20 +802,14 @@ This preserves historical meaning if the Manager later renames or disables the p
 
 # 24. Walk-In Payment Handling
 
-Walk-in payment requirements remain pending client confirmation.
-
-The data model should support walk-ins using payment information when applicable.
-
-Possible future payment types may include:
+Walk-ins record one verified initial payment using one of two channels:
 
 ```text
 CASH
-GCASH
-MAYA
-OTHER
+EWALLET_BANK
 ```
 
-The exact implementation should remain flexible until confirmed.
+The payment method name snapshot is `Cash` or `E-wallet / Bank`. The payment amount equals the backend-calculated initial reservation total, and the reservation's `amount_paid` is updated immediately. The payment reference and proof path are nullable because both are optional for walk-ins.
 
 ---
 
@@ -965,7 +969,7 @@ created_at
 ### Example
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
 → VERIFIED
 ```
 
@@ -1128,7 +1132,7 @@ created_at
 updated_at
 ```
 
-The internal reason is required. Reopening deactivates the record rather than deleting it, preserving its operational history.
+The internal reason is required. Reopening deactivates the record rather than deleting it, preserving its operational history. Each reopening also requires a new description, which is stored on the reopening audit event as its internal reason.
 
 ### Example
 
@@ -1202,7 +1206,7 @@ Reservation slots should block availability when their parent reservation is in 
 Current active states:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
 VERIFIED
 ```
 
@@ -1502,7 +1506,7 @@ Example:
 
 ```text
 Manager Maria
-changed Reservation DOU-0012
+changed Reservation RF-012
 from VERIFIED to CANCELLED
 at 2:41 PM
 ```
@@ -1952,7 +1956,7 @@ The backend should:
 9. Create reservation payment
 
 10. Set:
-    WAITING_FOR_VERIFICATION
+    PENDING
 
 11. Commit
 ```
@@ -1973,7 +1977,7 @@ When Staff verifies:
 
 ```text
 Reservation:
-WAITING_FOR_VERIFICATION
+PENDING
 → VERIFIED
 
 Payment:
@@ -2003,7 +2007,7 @@ When Staff rejects:
 
 ```text
 Reservation:
-WAITING_FOR_VERIFICATION
+PENDING
 → REJECTED
 
 Payment:
@@ -2121,7 +2125,7 @@ The following must remain true:
 
 7. Online submission locks all selected slots atomically.
 
-8. Waiting and Verified reservations block availability.
+8. Pending, Verified, and Ongoing reservations block availability.
 
 9. Rejected and Cancelled reservations release future availability.
 
@@ -2169,14 +2173,7 @@ No refund entity is required in the current confirmed scope.
 
 ## Walk-In Payments
 
-Depending on client requirements, walk-ins may require:
-
-* Payment method
-* Payment reference
-* Cash amount
-* Receipt
-
-The current model is flexible enough to support this later.
+Confirmed walk-in payments use `CASH` or `EWALLET_BANK`. They are stored as verified initial payments for the calculated reservation total. Reference numbers and receipts are optional.
 
 ---
 
@@ -2265,7 +2262,7 @@ Actual court occupancy
 Example:
 
 ```text
-Reservation DOU-00125
+Reservation RF-125
 │
 ├── Court 1 / 9–10 AM
 ├── Court 2 / 10–11 AM

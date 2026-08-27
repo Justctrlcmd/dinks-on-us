@@ -6,6 +6,37 @@ Use Tailwind CSS and shadcn/ui. Prefer semantic tokens such as `background`, `fo
 
 Reuse shadcn buttons, cards, dialogs, inputs, menus, sheets, and tooltips. Use React Icons `fi` for application semantics; primitive-internal icons may remain owned by shadcn. Decorative icons beside visible text use `aria-hidden`.
 
+## Existing component references
+
+An established component or pattern is the source of truth when the same UI
+need appears in another module. Inspect and reuse the existing implementation
+before creating a module-specific variant. Current portal references include:
+
+- KPI/stat cards: `frontend/src/components/portal/portal-metric-card.tsx`, used by
+  Team & Access and Reservations.
+- Management tables: the table shell and row treatment in
+  `frontend/src/views/portal/team-access-management-view.tsx` (bordered card,
+  muted header, compact cells, hover rows, and bordered pagination).
+- Date selection: `frontend/src/components/common/calendar-date-picker.tsx`,
+  used by event and availability-closure forms and required for management date
+  fields such as rescheduling and add-ons.
+- Select controls: `frontend/src/components/common/forms/select-with-label.tsx`
+  composes the primitive in `frontend/src/components/ui/select.tsx`; use the
+  wrapper for filters and form choices instead of native-select markup. Visible
+  labels are optional for compact filter rows, but unlabeled controls must keep
+  an explicit accessible name through `ariaLabel`.
+
+Shared text inputs, select triggers, and standard date-picker triggers use a
+40px (`h-10`) field height across the application. Do not add page-specific
+height overrides for these controls; reserve different heights for buttons,
+textareas, and explicitly documented touch or display treatments.
+
+When a new module needs a small variation, extend the referenced component with
+focused props or a documented variant. Do not introduce a competing KPI, table,
+select, or date-picker visual language without an explicit product decision.
+Match the current spacing, typography, borders, states, and responsive behavior
+first; module content and actions are what should vary.
+
 Desktop portal navigation may collapse to an icon rail with tooltips. Mobile uses a header and off-canvas sheet, never a permanent rail. Keep account actions in the bottom user menu. Page routes stay thin and complete layouts live in views/components.
 
 Management interfaces use compact operational density by default. Avoid oversized cards, controls, icons, headings, empty states, and decorative whitespace. Let panels follow their content height unless equal height communicates a useful comparison. Project-specific admin sizing and layout rules live in `PROJECT_DESIGN.md`.

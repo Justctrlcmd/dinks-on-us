@@ -3,8 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { FiSettings } from "react-icons/fi";
-import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
+import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUpdateCourtConfiguration } from "@/hooks/mutations/use-court-pricing-mutations";
 import { formatHour } from "@/lib/time";
 import { addTimeRange, canAddTimeRange, changeTimeRangeEnd, removeLastTimeRange } from "@/lib/time-ranges";
@@ -56,16 +55,15 @@ function TimeSelect({
   onChange: (hour: number) => void;
 }) {
   return (
-    <FormFieldWrapper id={id} label={label} error={error}>
-      <Select disabled={disabled} value={String(value)} onValueChange={(next) => onChange(Number(next))}>
-        <SelectTrigger id={id} aria-invalid={Boolean(error)} className="h-11 w-full">
-          <SelectValue>{formatHour(value)}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((hour) => <SelectItem key={hour} value={String(hour)}>{formatHour(hour)}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </FormFieldWrapper>
+    <SelectWithLabel
+      id={id}
+      label={label}
+      value={String(value)}
+      options={options.map((hour) => ({ value: String(hour), label: formatHour(hour) }))}
+      disabled={disabled}
+      error={error}
+      onValueChange={(next) => { if (next) onChange(Number(next)); }}
+    />
   );
 }
 

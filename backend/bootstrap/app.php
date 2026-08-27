@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\RequireModuleAccess;
+use App\Exceptions\ReservationConflictException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -80,6 +81,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (ThrottleRequestsException $exception, Request $request) use ($apiFailure) {
             return $request->is('api/*')
                 ? $apiFailure("You've made several requests in a short time. Please try again shortly.", 'TOO_MANY_REQUESTS', 429)
+                : null;
+        });
+
+        $exceptions->render(function (ReservationConflictException $exception, Request $request) use ($apiFailure) {
+            return $request->is('api/*')
+                ? $apiFailure($exception->getMessage(), 'RESERVATION_CONFLICT', 409)
                 : null;
         });
 

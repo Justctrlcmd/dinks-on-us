@@ -58,3 +58,21 @@ export const teamAccessKeys = {
   accesses: () => [...teamAccessKeys.all, "accesses"] as const,
   team: (page: number) => [...teamAccessKeys.all, "team", page] as const,
 };
+
+export const reservationKeys = {
+  all: ["reservations"] as const,
+  list: (filters: { page: number; search: string; status: string }) => [...reservationKeys.all, "list", filters] as const,
+  detail: (id: number) => [...reservationKeys.all, "detail", id] as const,
+};
+
+export const dashboardKeys = {
+  all: ["dashboard"] as const,
+  overview: (weekStart: string, date: string) => [...dashboardKeys.all, "overview", weekStart, date] as const,
+  reservation: (id: number) => [...dashboardKeys.all, "reservation", id] as const,
+};
+
+export const historyKeys = {
+  all: ["history"] as const,
+  list: (filters: { page: number; search: string; status: string; source: string }) => [...historyKeys.all, "list", filters] as const,
+  detail: (id: number) => [...historyKeys.all, "detail", id] as const,
+};

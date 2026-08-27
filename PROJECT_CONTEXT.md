@@ -371,7 +371,7 @@ A reservation can contain multiple independent one-hour court/time slots.
 Example:
 
 ```text
-Reservation DOU-00125
+Reservation RF-125
 │
 ├── Court 1 / 9:00–10:00 AM
 ├── Court 2 / 10:00–11:00 AM
@@ -436,10 +436,12 @@ Once a valid online reservation is successfully submitted:
 ```text
 Status
 =
-WAITING_FOR_VERIFICATION
+PENDING
 ```
 
 All selected slots immediately become unavailable.
+
+One reservation reference covers one booking date. Selecting the first slot locks the public date selector until the selection is cleared, while multiple courts and non-consecutive times on that date remain supported.
 
 The system must not wait for manual payment verification before locking those slots.
 
@@ -450,18 +452,22 @@ The system must not wait for manual payment verification before locking those sl
 Current lifecycle:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
         │
         ├── REJECTED
         │
         └── VERIFIED
                │
-               ├── COMPLETED
+               ├── RESCHEDULED marker → VERIFIED
                ├── CANCELLED
-               └── NO_SHOW
+               ├── NO_SHOW
+               └── ONGOING
+                       └── COMPLETED
 ```
 
 Rescheduling is primarily an action, not a permanent final status.
+
+Rescheduling is Manager-only, may be performed repeatedly, preserves every schedule change, and requires the same number of replacement one-hour slots. Price increases become additional balance; decreases become refundable credit.
 
 ---
 
@@ -615,6 +621,8 @@ Walk-ins are supported.
 Staff can create them through management.
 
 Walk-ins must consume the same reservation-slot availability as online reservations.
+
+Walk-ins are created as Verified reservations. Staff records the customer's name, email, contact number, court times, additional players, rental equipment, and payment. Payment uses either Cash or E-wallet / Bank; the transaction reference and receipt are optional.
 
 Conceptually:
 
@@ -868,7 +876,7 @@ Reject Reservation
 ├── Record actor
 ├── Record history
 ├── Audit action
-└── Send customer email
+└── Prepare customer email; deliver only when reservation email is enabled
 ```
 
 The implementation should preserve these business effects even if the internal architecture uses services/actions/listeners/jobs.
@@ -948,10 +956,6 @@ Pending:
 ### Payment Methods
 
 * Exact supported e-wallet accounts
-
-### Walk-In Payment
-
-* Required payment-recording information
 
 Do not invent permanent business policy for these areas.
 

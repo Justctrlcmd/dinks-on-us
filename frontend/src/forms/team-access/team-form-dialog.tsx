@@ -3,12 +3,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { PasswordInput } from "@/components/common/forms/password-input";
+import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateTeamMember, useUpdateTeamMember } from "@/hooks/mutations/use-team-access-mutations";
 import type { AccessProfile, TeamMember } from "@/types/team-access";
 import { teamSchema, type TeamValues } from "@/validation/custom/team-access-schema";
@@ -84,14 +83,16 @@ export function TeamFormDialog({ member, accesses, open, onOpenChange }: {
             </div>
           ) : null}
 
-          <FormFieldWrapper id="team-access" label="Access" required error={form.formState.errors.role_id?.message}>
-            <Select value={selectedAccessId ? String(selectedAccessId) : null} onValueChange={(value) => form.setValue("role_id", value ? Number(value) : 0, { shouldDirty: true, shouldValidate: true })}>
-              <SelectTrigger id="team-access" className="h-10 w-full" aria-invalid={Boolean(form.formState.errors.role_id)}>
-                <SelectValue placeholder="Select Access">{selectedAccess?.name}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>{accesses.map((access) => <SelectItem key={access.id} value={String(access.id)}>{access.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </FormFieldWrapper>
+          <SelectWithLabel
+            id="team-access"
+            label="Access"
+            required
+            value={selectedAccess ? String(selectedAccess.id) : null}
+            options={accesses.map((access) => ({ value: String(access.id), label: access.name }))}
+            placeholder="Select Access"
+            error={form.formState.errors.role_id?.message}
+            onValueChange={(value) => form.setValue("role_id", value ? Number(value) : 0, { shouldDirty: true, shouldValidate: true })}
+          />
         </form>
 
         <DialogFooter>

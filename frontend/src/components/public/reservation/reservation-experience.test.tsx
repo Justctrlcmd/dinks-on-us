@@ -29,6 +29,8 @@ const { closedDatesMock, policySectionsMock, pushMock, reservationOptionsMock } 
     slots: [{ start_hour: 7, end_hour: 8, price: 500 }, { start_hour: 8, end_hour: 9, price: 500 }],
     is_date_closed: false,
     unavailable_slots: [] as { court_id: number; start_hour: number }[],
+    reserved_slots: [] as { court_id: number; start_hour: number }[],
+    past_slots: [] as { court_id: number; start_hour: number }[],
     equipment: [{ id: 1, name: "Paddle", price: 100, total_quantity: 12, available_quantity: 12, created_at: "2026-08-25T00:00:00.000Z", updated_at: "2026-08-25T00:00:00.000Z" }],
     equipment_confirmation: "Equipment availability is confirmed when your reservation is verified.",
   },
@@ -58,6 +60,8 @@ afterEach(() => {
   window.sessionStorage.clear();
   reservationOptionsMock.is_date_closed = false;
   reservationOptionsMock.unavailable_slots.length = 0;
+  reservationOptionsMock.reserved_slots.length = 0;
+  reservationOptionsMock.past_slots.length = 0;
   closedDatesMock.length = 0;
 });
 
@@ -166,11 +170,45 @@ describe("ReservationExperience", () => {
     expect(pushMock).toHaveBeenCalledWith("/reserve/checkout");
   });
 
+  it("locks the date selector after the first slot and unlocks it when cleared", async () => {
+    const user = userEvent.setup();
+    render(<ReservationExperience />);
+
+    await user.click(screen.getAllByRole("button", { name: /Select Court 1, 7:00 AM/ })[0]);
+
+    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled();
+    const reservationBar = screen.getByRole("complementary", { name: "Current reservation selection" });
+    await user.click(within(reservationBar).getByRole("button", { name: "Clear reservation" }));
+    expect(screen.getByRole("button", { name: "Next week" })).toBeEnabled();
+  });
+
   it("marks a blocked court time as unavailable", () => {
     reservationOptionsMock.unavailable_slots.push({ court_id: 1, start_hour: 7 });
     render(<ReservationExperience />);
 
     screen.getAllByRole("button", { name: "Court 1, 7:00 AM – 8:00 AM, closed" }).forEach((slot) => expect(slot).toBeDisabled());
+  });
+
+  it("marks a reserved court time as reserved", () => {
+    reservationOptionsMock.unavailable_slots.push({ court_id: 1, start_hour: 7 });
+    reservationOptionsMock.reserved_slots.push({ court_id: 1, start_hour: 7 });
+    render(<ReservationExperience />);
+
+    screen.getAllByRole("button", { name: "Court 1, 7:00 AM – 8:00 AM, reserved" }).forEach((slot) => {
+      expect(slot).toBeDisabled();
+      expect(slot).toHaveTextContent("Reserved");
+    });
+  });
+
+  it("marks a court time that has ended as past", () => {
+    reservationOptionsMock.unavailable_slots.push({ court_id: 1, start_hour: 7 });
+    reservationOptionsMock.past_slots.push({ court_id: 1, start_hour: 7 });
+    render(<ReservationExperience />);
+
+    screen.getAllByRole("button", { name: "Court 1, 7:00 AM – 8:00 AM, past" }).forEach((slot) => {
+      expect(slot).toBeDisabled();
+      expect(slot).toHaveTextContent("Past");
+    });
   });
 
   it("disables whole-operation closed dates without highlighting today", () => {

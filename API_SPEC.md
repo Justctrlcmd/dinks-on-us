@@ -367,6 +367,8 @@ GET /api/v1/public/reservation-options?date=2026-08-25
 
 Returns the shared court configuration, active courts, the selected date's configured one-hour price slots, active rental equipment, and the verified-only equipment confirmation message.
 
+`unavailable_slots` contains every slot that cannot be selected, including elapsed times, operational closures, and active reservation locks. `past_slots` is the elapsed subset and should be presented as `Past`; a one-hour slot becomes past only after its end time in `Asia/Manila` (for example, 7:00–8:00 becomes past at 8:01). `reserved_slots` is the subset occupied by an active reservation lock and should be presented as `Reserved`. Any other unavailable slot should be presented as `Closed`.
+
 Example:
 
 ```json
@@ -382,6 +384,9 @@ Example:
     },
     "courts": [{ "id": 1, "name": "Court 1" }],
     "slots": [{ "start_hour": 7, "end_hour": 8, "price": 500 }],
+    "unavailable_slots": [{ "court_id": 1, "start_hour": 7 }],
+    "reserved_slots": [{ "court_id": 1, "start_hour": 7 }],
+    "past_slots": [],
     "equipment": [{ "id": 1, "name": "Paddle", "price": 100, "available_quantity": 12 }],
     "equipment_confirmation": "Equipment availability is confirmed when your reservation is verified."
   }
@@ -641,6 +646,8 @@ Each slot must:
 * Not be blocked
 * Not already be occupied
 
+All slots in one submission must use the same calendar date. Mixed-date submissions return `422 Unprocessable Entity`.
+
 ### Payment
 
 Must contain:
@@ -691,7 +698,7 @@ BEGIN TRANSACTION
 9. Create payment record
 10. Calculate original amount
 11. Set status:
-    WAITING_FOR_VERIFICATION
+    PENDING
 12. Create initial status history
 
 COMMIT
@@ -748,10 +755,10 @@ Example:
 ```json
 {
   "success": true,
-  "message": "Reservation submitted successfully and is waiting for verification.",
+  "message": "Reservation submitted. Your selected court times are held while payment is reviewed.",
   "data": {
-    "reference_number": "DOU-20260815-0012",
-    "status": "WAITING_FOR_VERIFICATION",
+    "reference_number": "RF-001",
+    "status": "PENDING",
     "original_amount": 1500,
     "slots": []
   }
@@ -762,7 +769,7 @@ Example:
 
 # 30. Reservation Submission Email
 
-After successful database commit, the system should trigger the reservation acknowledgment email.
+After successful database commit, the system may trigger the reservation acknowledgment email only when `RESERVATION_EMAILS_ENABLED` is true. It is false by default until production mail is configured.
 
 Email failure should not cause a successfully stored reservation to disappear.
 
@@ -863,7 +870,7 @@ Used by the frontend to determine:
 # 35. Dashboard API
 
 ```http
-GET /api/v1/management/dashboard
+GET /api/v1/management/dashboard?week_start=2026-08-24&date=2026-08-27
 ```
 
 Requires:
@@ -872,53 +879,45 @@ Requires:
 DASHBOARD
 ```
 
-Suggested filters:
+Required filters:
 
 ```text
-date
-from
-to
+week_start (Y-m-d; normalized to Monday)
+date (Y-m-d; selected schedule date)
 ```
 
-Possible data:
+The response contains:
 
-* Waiting reservations
-* Verified upcoming reservations
-* Today's reservations
-* Completed reservations
-* Current availability
-* Revenue summary
-* Walk-in count
-* Online reservation count
+* Monday-Sunday displayed week range
+* Pending, Verified, and Completed counts whose `booking_date` is in that week
+* Revenue from `final_amount` for Completed reservations booked in that week
+* Seven daily availability totals derived from the public reservation source of truth
+* Active courts and configured one-hour slots for the selected date
+* Written slot states: `AVAILABLE`, `PENDING`, `VERIFIED`, `ONGOING`, `COMPLETED`, `CLOSED`, or `PAST`
+* Reservation ID and reference for non-past occupied slots
+
+Past slots are calculated with the `Asia/Manila` business timezone and do not expose a clickable reservation target.
 
 ---
 
-# 36. Dashboard Weekly Availability
+# 36. Dashboard Reservation Detail
 
 ```http
-GET /api/v1/management/dashboard/availability
+GET /api/v1/management/dashboard/reservations/{reservation}
 ```
 
-Suggested query:
+Requires:
 
 ```text
-start_date=2026-08-10
-end_date=2026-08-16
+DASHBOARD
 ```
 
-Returns court/time states for management calendar display.
+Returns the same read-only reservation detail shape used by the reservation View dialog for `PENDING`, `VERIFIED`, `ONGOING`, and `COMPLETED` records. This lets a Dashboard-only Staff role inspect an occupied slot without granting reservation-management actions.
 
-Management may see more information than the public endpoint.
+Payment proof files referenced by this response use the protected route:
 
-Possible states:
-
-```text
-AVAILABLE
-WAITING_FOR_VERIFICATION
-VERIFIED
-ONGOING
-BLOCKED
-CLOSED
+```http
+GET /api/v1/management/dashboard-payments/{payment}/proof
 ```
 
 ---
@@ -939,16 +938,12 @@ Suggested filters:
 
 ```text
 status
-source
-date
-court_id
 search
-from
-to
 page
-per_page
-sort
+per_page=10
 ```
+
+The list contains operational records only. `status` accepts `PENDING`, `VERIFIED`, the derived `RESCHEDULED` marker, and `ONGOING`. Final `COMPLETED`, `REJECTED`, `CANCELLED`, and `NO_SHOW` records are available through History instead. Results are limited to 10 per page.
 
 Search should support important values such as:
 
@@ -1003,7 +998,7 @@ RESERVATION
 Valid only when:
 
 ```text
-status = WAITING_FOR_VERIFICATION
+status = PENDING
 ```
 
 Conceptual transaction:
@@ -1015,7 +1010,7 @@ Payment:
 PENDING → VERIFIED
 
 Reservation:
-WAITING_FOR_VERIFICATION → VERIFIED
+PENDING → VERIFIED
 
 Set:
 verified_by_user_id
@@ -1037,15 +1032,29 @@ COMMIT
   "success": true,
   "message": "Reservation verified successfully.",
   "data": {
-    "reference_number": "DOU-20260815-0012",
+    "reference_number": "RF-001",
     "status": "VERIFIED"
   }
 }
 ```
 
-After successful commit:
+After successful commit, the verification email structure is ready. Delivery occurs only when reservation emails are configured and enabled.
 
-* Send verification email.
+---
+
+## 40.1 Start Ongoing Reservation
+
+```http
+POST /api/v1/management/reservations/{reservation}/start
+```
+
+Requires `RESERVATION` module access and accepts only:
+
+```text
+VERIFIED → ONGOING
+```
+
+The transition is manually confirmed by Staff or Manager when the customer is at the facility and has started playing. It is never triggered automatically by the clock.
 
 ---
 
@@ -1064,13 +1073,14 @@ RESERVATION
 Valid only when:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
 ```
 
 Suggested payload:
 
 ```json
 {
+  "concern": "INVALID_PAYMENT_PROOF",
   "reason": "Payment receipt could not be verified."
 }
 ```
@@ -1086,7 +1096,7 @@ Payment:
 PENDING → REJECTED
 
 Reservation:
-WAITING_FOR_VERIFICATION → REJECTED
+PENDING → REJECTED
 
 Record:
 reason
@@ -1102,7 +1112,7 @@ Once committed:
 
 * Associated future slots stop blocking availability.
 * Reservation appears in History.
-* Rejection email is sent.
+* The rejection email is prepared and sent only when reservation email delivery is enabled.
 
 ---
 
@@ -1123,21 +1133,30 @@ Conceptual payload:
 ```json
 {
   "customer_name": "Walk-In Customer",
+  "customer_email": "walkin@example.com",
   "customer_contact_number": "09123456789",
 
   "slots": [
     {
       "court_id": 2,
       "date": "2026-08-15",
-      "start_time": "15:00"
+      "start_hour": 15
     }
   ],
-
-  "notes": ""
+  "additional_players": 1,
+  "equipment": [
+    {
+      "id": 3,
+      "quantity": 2
+    }
+  ],
+  "payment_channel": "CASH",
+  "payment_reference_number": null,
+  "payment_proof": "<optional image file>"
 }
 ```
 
-Payment fields depend on future client confirmation.
+The request is multipart only when a receipt is attached. Supported `payment_channel` values are `CASH` and `EWALLET_BANK`. The transaction reference and receipt are optional.
 
 ---
 
@@ -1151,11 +1170,20 @@ Once created:
 
 ```text
 source = WALK_IN
+status = VERIFIED
 ```
 
-and the selected slots become unavailable publicly.
+The backend calculates the court, additional-player, and equipment charges using current configuration snapshots. It records the full amount as a verified initial payment, sets `amount_paid` to the calculated amount, and makes the selected slots unavailable publicly.
 
 Walk-ins must never bypass duplicate-reservation protection.
+
+Equipment availability is checked transactionally across all selected reservation times because the reservation is immediately Verified. Any slot or equipment conflict rolls back the complete reservation and removes a newly stored receipt.
+
+Successful response:
+
+```text
+HTTP 201 Created
+```
 
 ---
 
@@ -1168,10 +1196,10 @@ POST /api/v1/management/reservations/{reservation}/reschedule
 Requires:
 
 ```text
-RESERVATION
+Manager full access
 ```
 
-Current business policy around who may request rescheduling remains pending.
+The operation accepts only a stored `VERIFIED` reservation, including one carrying the derived `RESCHEDULED` marker. Repeated rescheduling is allowed.
 
 The management action itself must validate all target slots.
 
@@ -1214,6 +1242,8 @@ BEGIN
 6. Release previous availability
 7. Create schedule history
 8. Create audit log
+9. Require the replacement slot count to equal the current one-hour slot count
+10. Create an additional balance for a positive price difference or refundable credit for a negative difference
 
 COMMIT
 ```
@@ -1302,16 +1332,22 @@ Requires:
 RESERVATION
 ```
 
+Normal add-ons are accepted only while the reservation status is `ONGOING`. Supported operational add-ons are additional court times on the same booking date, additional players, and active rental equipment. The manager records payment for the add-ons in the same request.
+
 Payload example:
 
 ```json
 {
-  "type": "ADDITIONAL_PLAYER",
-  "name": "Additional Player",
-  "quantity": 1,
-  "unit_amount": 100
+  "slots": [{ "court_id": 1, "date": "2026-08-25", "start_hour": 12 }],
+  "additional_players": 1,
+  "equipment": [{ "id": 1, "quantity": 1 }],
+  "payment_channel": "CASH",
+  "payment_reference_number": "ADDON-001",
+  "payment_proof": "(optional image upload)"
 }
 ```
+
+The request is multipart when a receipt is uploaded. The backend prices every item, records one verified `ADD_ON` payment for the amount due (including any prior outstanding balance after the adjustment), and updates `amount_paid`. The transaction reference and receipt are optional.
 
 ---
 
@@ -1367,6 +1403,8 @@ All adjustments
 Final Amount
 ```
 
+The backend also calculates `max(final_amount - amount_paid, 0)` as the exact additional collection. When positive, Staff selects Cash, E-wallet, or Bank and may attach a transaction reference and proof image.
+
 ---
 
 # 55. Completion Transaction
@@ -1415,6 +1453,8 @@ No-show is manually performed.
 
 The API must not automatically perform this transition based only on time.
 
+The non-refundable amount already collected is recognized as no-show revenue. Unpaid balances are not recognized as revenue.
+
 ---
 
 # 57. Cancel Reservation
@@ -1445,7 +1485,9 @@ unless the cancellation policy changes later.
 
 ```json
 {
-  "reason": "Customer requested cancellation through Messenger."
+  "reason": "Approved force majeure cancellation.",
+  "refund_type": "CUSTOM",
+  "refund_amount": 500
 }
 ```
 
@@ -1458,9 +1500,9 @@ Cancellation should:
 * Release appropriate future slots
 * Create status history
 * Create audit log
-* Trigger cancellation email
-
-Refund handling is outside the current confirmed scope.
+* Record either a full refund or Manager-selected custom refund
+* Prevent the refund from exceeding the amount already collected
+* Prepare the cancellation email; delivery remains disabled until configured
 
 ---
 
@@ -1638,6 +1680,14 @@ POST   /api/v1/management/closed-dates
 DELETE /api/v1/management/closed-dates/{closedDate}
 ```
 
+The reopen request must include a required replacement internal reason:
+
+```json
+{
+  "reason": "The event ended early; reopening for regular play."
+}
+```
+
 The public endpoint returns active future whole-operation closure dates only. It never exposes internal reasons. Reservation and management calendars use this list to disable dates before selection.
 
 Before creating a closure, backend must check for conflicts with active reservations.
@@ -1652,6 +1702,8 @@ It must not silently invalidate existing reservations.
 POST   /api/v1/management/availability-blocks
 DELETE /api/v1/management/availability-blocks/{block}
 ```
+
+The reopen request must include the same required `reason` payload. This description replaces the original internal reason on the reopening activity-log event.
 
 Payload example:
 
@@ -1669,7 +1721,7 @@ Payload example:
 
 Backend must reject blocks that conflict with active reservations unless those reservations are first properly resolved.
 
-`DELETE` reopens the grouped closure: it deactivates the record and creates an audit event rather than erasing the closure history.
+`DELETE` reopens the grouped closure: it deactivates the record and creates an audit event rather than erasing the closure history. The required `reason` in the request is recorded as the reopening event’s internal reason.
 
 ## Availability management lists
 

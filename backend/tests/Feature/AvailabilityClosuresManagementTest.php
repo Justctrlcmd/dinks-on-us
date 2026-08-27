@@ -48,7 +48,9 @@ class AvailabilityClosuresManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.closed_dates.0', '2026-09-01');
 
-        $this->actingAs($user)->deleteJson("/api/v1/management/closed-dates/{$closure['id']}")
+        $this->actingAs($user)->deleteJson("/api/v1/management/closed-dates/{$closure['id']}", [
+            'reason' => 'The tournament ended early; reopening for regular play.',
+        ])
             ->assertOk()
             ->assertJsonPath('data.is_active', false);
 
@@ -66,7 +68,7 @@ class AvailabilityClosuresManagementTest extends TestCase
             ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.action', 'DATE_REOPENED')
             ->assertJsonPath('data.0.actor_name', 'Operations Manager')
-            ->assertJsonPath('data.0.details.reason', 'Private tournament setup');
+            ->assertJsonPath('data.0.details.reason', 'The tournament ended early; reopening for regular play.');
     }
 
     public function test_a_grouped_court_time_closure_blocks_only_its_selected_ranges(): void
@@ -106,7 +108,9 @@ class AvailabilityClosuresManagementTest extends TestCase
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['periods.0.start_hour']);
 
-        $this->actingAs($user)->deleteJson("/api/v1/management/availability-blocks/{$closure['id']}")
+        $this->actingAs($user)->deleteJson("/api/v1/management/availability-blocks/{$closure['id']}", [
+            'reason' => 'Maintenance completed ahead of schedule.',
+        ])
             ->assertOk();
 
         $this->getJson('/api/v1/public/reservation-options?date=2026-09-02')
@@ -154,5 +158,24 @@ class AvailabilityClosuresManagementTest extends TestCase
             'date' => '2026-08-24',
             'reason' => 'Past closure',
         ])->assertUnprocessable()->assertJsonValidationErrors(['date']);
+    }
+
+    public function test_reopening_requires_a_description(): void
+    {
+        $user = User::factory()->create();
+        $closure = $this->actingAs($user)->postJson('/api/v1/management/closed-dates', [
+            'date' => '2026-09-04',
+            'reason' => 'Private event',
+        ])->assertCreated()->json('data');
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/management/closed-dates/{$closure['id']}", ['reason' => '   '])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['reason']);
+
+        $this->assertDatabaseHas('availability_closures', [
+            'id' => $closure['id'],
+            'is_active' => true,
+        ]);
     }
 }

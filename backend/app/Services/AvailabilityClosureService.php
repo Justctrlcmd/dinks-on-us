@@ -7,6 +7,7 @@ use App\Models\AvailabilityClosure;
 use App\Models\AvailabilityClosurePeriod;
 use App\Models\Court;
 use App\Models\CourtConfiguration;
+use App\Models\ReservationSlotLock;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -16,6 +17,10 @@ class AvailabilityClosureService
     public function closeEntireOperation(User $user, string $date, string $reason): AvailabilityClosure
     {
         return DB::transaction(function () use ($user, $date, $reason): AvailabilityClosure {
+            Court::query()->active()->orderBy('id')->lockForUpdate()->get();
+            if (ReservationSlotLock::query()->whereDate('date', $date)->exists()) {
+                throw ValidationException::withMessages(['date' => ['Active reservations use this date. Handle those reservations before closing the operation.']]);
+            }
             $existing = AvailabilityClosure::query()
                 ->whereDate('date', $date)
                 ->lockForUpdate()
@@ -58,6 +63,11 @@ class AvailabilityClosureService
                     throw ValidationException::withMessages([
                         "periods.{$index}.start_hour" => ['Choose a time within the configured operating hours.'],
                     ]);
+                }
+
+                if (ReservationSlotLock::query()->where('court_id', $court->id)->whereDate('date', $date)
+                    ->where('start_hour', '>=', $period['start_hour'])->where('start_hour', '<', $period['end_hour'])->exists()) {
+                    throw ValidationException::withMessages(["periods.{$index}.start_hour" => ['An active reservation uses this court time. Handle the reservation before blocking it.']]);
                 }
             }
 
@@ -107,9 +117,9 @@ class AvailabilityClosureService
         });
     }
 
-    public function reopen(User $user, AvailabilityClosure $closure): AvailabilityClosure
+    public function reopen(User $user, AvailabilityClosure $closure, string $reason): AvailabilityClosure
     {
-        return DB::transaction(function () use ($user, $closure): AvailabilityClosure {
+        return DB::transaction(function () use ($user, $closure, $reason): AvailabilityClosure {
             $closure = AvailabilityClosure::query()
                 ->with(['court', 'periods'])
                 ->lockForUpdate()
@@ -130,7 +140,7 @@ class AvailabilityClosureService
                 $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION ? AuditLog::DATE_REOPENED : AuditLog::COURT_SLOT_REOPENED,
                 $closure,
                 ['is_active' => true],
-                ['is_active' => false],
+                ['is_active' => false, 'reason' => $reason],
             );
 
             return $closure->fresh(['court', 'periods']);

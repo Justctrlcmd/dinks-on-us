@@ -58,6 +58,10 @@ vi.mock("@/hooks/queries/use-payment-methods", () => ({
   }),
 }));
 
+vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
+  useSubmitReservation: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 beforeEach(() => {
   window.sessionStorage.setItem(
     RESERVATION_DRAFT_STORAGE_KEY,
@@ -109,7 +113,7 @@ describe("ReservationCheckout", () => {
     expect(screen.getByText("Dinks on Us", { selector: "dd" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("combobox", { name: "E-wallet or Bank" }));
-    await user.click(screen.getByRole("option", { name: "BPI" }));
+    await user.click(await screen.findByRole("option", { name: "BPI" }));
     expect(screen.getByRole("img", { name: "BPI payment QR code" })).toHaveAttribute("src", expect.stringContaining("bpi.png"));
     expect(screen.getByText("0011223344")).toBeInTheDocument();
     expect(screen.getByText("Dinks on Us PH")).toBeInTheDocument();

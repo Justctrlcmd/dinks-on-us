@@ -13,15 +13,16 @@ import {
   FiUploadCloud,
 } from "react-icons/fi";
 import { ReservationPolicyBanner } from "@/components/public/reservation/reservation-policy-banner";
+import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
+import { useSubmitReservation } from "@/hooks/mutations/use-reservation-mutations";
 import { formatHourRange } from "@/lib/time";
 import type { PublicPaymentMethod } from "@/types/payment-method";
-import { RESERVATION_DRAFT_STORAGE_KEY, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
+import { RESERVATION_DRAFT_STORAGE_KEY, type ManagementReservation, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
 
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -220,7 +221,8 @@ export function ReservationCheckout() {
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [receiptName, setReceiptName] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState<ManagementReservation | null>(null);
+  const submitMutation = useSubmitReservation();
 
   const paymentMethods = paymentMethodsQuery.data ?? noPaymentMethods;
   const selectedPaymentMethod = useMemo(
@@ -228,11 +230,34 @@ export function ReservationCheckout() {
     [paymentMethodId, paymentMethods],
   );
 
-  function submitReservation(event: FormEvent<HTMLFormElement>) {
+  function submitReservationForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!acknowledged || !selectedPaymentMethod) return;
-    setSubmitted(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!acknowledged || !selectedPaymentMethod || !draft) return;
+    const source = new FormData(event.currentTarget);
+    const input = new FormData();
+    input.set("customer_name", String(source.get("fullName") ?? ""));
+    input.set("customer_email", String(source.get("email") ?? ""));
+    input.set("customer_contact_number", String(source.get("mobile") ?? ""));
+    input.set("payment_method_id", String(selectedPaymentMethod.id));
+    input.set("payment_reference_number", String(source.get("referenceNumber") ?? ""));
+    const proof = source.get("receipt");
+    if (proof instanceof File) input.set("payment_proof", proof);
+    input.set("additional_players", String(draft.additionalPlayers));
+    input.set("policy_acknowledged", "1");
+    draft.selectedSlots.forEach((slot, index) => {
+      input.set(`slots[${index}][court_id]`, String(slot.courtId));
+      input.set(`slots[${index}][date]`, slot.date);
+      input.set(`slots[${index}][start_hour]`, String(slot.startHour));
+    });
+    draft.equipment.forEach((item, index) => {
+      input.set(`equipment[${index}][id]`, String(item.id));
+      input.set(`equipment[${index}][quantity]`, String(item.quantity));
+    });
+    submitMutation.mutate(input, { onSuccess: (response) => {
+      setSubmitted(response.data);
+      window.sessionStorage.removeItem(RESERVATION_DRAFT_STORAGE_KEY);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } });
   }
 
   if (!loaded) {
@@ -259,9 +284,10 @@ export function ReservationCheckout() {
       <section className="mx-auto max-w-2xl px-6 text-center sm:px-10">
         <div className="rounded-2xl border border-primary/35 bg-card p-7 sm:p-12">
           <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/12 text-primary"><FiCheckCircle className="size-8" aria-hidden="true" /></span>
-          <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Mock submission complete</p>
+          <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Reservation received</p>
           <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-[-.045em]">Payment proof received</h1>
-          <p className="mx-auto mt-4 max-w-lg leading-7 text-muted-foreground">Your reservation will be held while staff reviews the submitted payment. The connected backend will provide the final reservation reference here.</p>
+          <p className="mt-4 font-heading text-2xl font-extrabold text-primary">{submitted.reference_number}</p>
+          <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Your selected court times are held while staff reviews the submitted payment. Keep this reference for questions about your reservation.</p>
           <Button nativeButton={false} variant="outline" className="mt-7 h-12 rounded-full px-6 font-extrabold" render={<Link href="/" />}>Return home</Button>
         </div>
       </section>
@@ -279,7 +305,7 @@ export function ReservationCheckout() {
         <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">Review your costs, add your details, then send payment proof for staff verification.</p>
       </header>
 
-      <form className="grid min-w-0 gap-5" onSubmit={submitReservation}>
+      <form className="grid min-w-0 gap-5" onSubmit={submitReservationForm}>
         <ReservationSummary draft={draft} />
         <ReservationPolicyBanner initialSlug="court-rules" titleId="checkout-policy-title" />
 
@@ -287,49 +313,39 @@ export function ReservationCheckout() {
           <SectionHeading id="customer-information-title" eyebrow="Your information" title="Who is making this reservation?" description="We will use these details for the reservation acknowledgment and payment review." />
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="full-name" className="font-bold">Full name</Label>
-              <Input id="full-name" name="fullName" autoComplete="name" required placeholder="Enter your full name" className="h-12 px-4" />
+              <Label htmlFor="full-name" className="font-bold">Full name <span aria-hidden="true" className="text-destructive">*</span></Label>
+              <Input id="full-name" name="fullName" autoComplete="name" required placeholder="Enter your full name" className="h-10 px-4" />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="email" className="font-bold">Email address</Label>
-              <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className="h-12 px-4" />
+              <Label htmlFor="email" className="font-bold">Email address <span aria-hidden="true" className="text-destructive">*</span></Label>
+              <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className="h-10 px-4" />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="mobile" className="font-bold">Mobile number</Label>
-              <Input id="mobile" name="mobile" type="tel" autoComplete="tel" required placeholder="+63 912 345 6789" className="h-12 px-4" />
+              <Label htmlFor="mobile" className="font-bold">Mobile number <span aria-hidden="true" className="text-destructive">*</span></Label>
+              <Input id="mobile" name="mobile" type="tel" autoComplete="tel" required placeholder="+63 912 345 6789" className="h-10 px-4" />
             </div>
           </div>
         </section>
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="payment-method-title">
           <SectionHeading id="payment-method-title" eyebrow="Payment method" title="Choose where you will pay" description="Select one method, complete the external transfer, then upload your receipt below." />
-          <div className="mt-6 grid gap-2">
-            <Label htmlFor="payment-method" className="font-bold">E-wallet or Bank</Label>
-            <Select
-              name="paymentMethod"
-              value={selectedPaymentMethod ? String(selectedPaymentMethod.id) : ""}
+          <div className="mt-6">
+            <SelectWithLabel
+              id="payment-method"
+              label="E-wallet or Bank"
+              required
+              value={selectedPaymentMethod ? String(selectedPaymentMethod.id) : null}
+              options={paymentMethods.map((method) => ({ value: String(method.id), label: method.name }))}
+              placeholder={paymentMethodsQuery.isPending ? "Loading payment methods…" : "No payment method available"}
               disabled={paymentMethodsQuery.isPending || paymentMethodsQuery.isError || paymentMethods.length === 0}
+            triggerClassName="rounded-xl bg-background px-4 font-heading text-base "
+              contentClassName="rounded-xl p-1"
               onValueChange={(value) => {
                 if (value && paymentMethods.some((method) => String(method.id) === value)) {
                   setPaymentMethodId(value);
                 }
               }}
-            >
-              <SelectTrigger id="payment-method" className="h-12 w-full rounded-xl bg-background px-4 font-heading text-base font-extrabold">
-                <SelectValue>
-                  {paymentMethodsQuery.isPending
-                    ? "Loading payment methods…"
-                    : selectedPaymentMethod?.name ?? "No payment method available"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent align="start" className="rounded-xl p-1">
-                {paymentMethods.map((method) => (
-                  <SelectItem key={method.id} value={String(method.id)} className="min-h-11 rounded-lg px-3 font-semibold">
-                    {method.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
           {paymentMethodsQuery.isError ? (
             <p className="mt-4 rounded-xl border border-destructive/35 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
@@ -350,11 +366,11 @@ export function ReservationCheckout() {
           <SectionHeading id="payment-proof-title" eyebrow="Payment proof" title="Submit your transaction details" description="Both the reference number and a clear receipt image are required for manual verification." />
           <div className="mt-6 grid gap-5">
             <div className="grid gap-2">
-              <Label htmlFor="reference-number" className="font-bold">Transaction reference number</Label>
-              <Input id="reference-number" name="referenceNumber" required inputMode="numeric" placeholder="Enter the complete reference number" className="h-12 px-4" />
+              <Label htmlFor="reference-number" className="font-bold">Transaction reference number <span aria-hidden="true" className="text-destructive">*</span></Label>
+              <Input id="reference-number" name="referenceNumber" required inputMode="numeric" placeholder="Enter the complete reference number" className="h-10 px-4" />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="payment-receipt" className="font-bold">Payment receipt image</Label>
+              <Label htmlFor="payment-receipt" className="font-bold">Payment receipt image <span aria-hidden="true" className="text-destructive">*</span></Label>
               <label htmlFor="payment-receipt" className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-primary/50 bg-primary/5 p-5 text-center transition-colors hover:bg-primary/10 focus-within:ring-3 focus-within:ring-ring/50">
                 {receiptName ? <FiImage className="size-7 text-primary" aria-hidden="true" /> : <FiUploadCloud className="size-7 text-primary" aria-hidden="true" />}
                 <span className="mt-3 break-all font-heading font-extrabold">{receiptName || "Choose a receipt image"}</span>
@@ -377,14 +393,14 @@ export function ReservationCheckout() {
           <div className="flex gap-3">
             <Checkbox id="acknowledgment" checked={acknowledged} onCheckedChange={setAcknowledged} className="mt-1 size-5" />
             <Label htmlFor="acknowledgment" className="block cursor-pointer text-sm leading-6">
-              <strong className="block font-heading text-base">Reservation acknowledgment</strong>
+              <strong className="block font-heading text-base">Reservation acknowledgment <span aria-hidden="true" className="text-destructive">*</span></strong>
               <span className="mt-1 block font-normal text-muted-foreground">I reviewed the reservation summary and conditions. I confirm that my information and payment proof are accurate, and I understand that staff must verify the payment before the reservation is confirmed.</span>
             </Label>
           </div>
           <p className="mt-2 pl-8 text-sm leading-6 text-muted-foreground">I have read and agree to the <Link href="/policies/court-rules" className="font-semibold text-primary underline underline-offset-3">Court Rules &amp; Policy</Link>, <Link href="/policies/reservation-rules" className="font-semibold text-primary underline underline-offset-3">Reservation Rules &amp; Policy</Link>, <Link href="/policies/reschedule-policy" className="font-semibold text-primary underline underline-offset-3">Reschedule Policy</Link>, and <Link href="/policies/cancellation-policy" className="font-semibold text-primary underline underline-offset-3">Cancellation Policy</Link>.</p>
           <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground"><FiLock aria-hidden="true" /> Your payment proof is intended only for reservation verification.</div>
-          <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
-            <FiShield aria-hidden="true" /> Submit reservation
+          <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod || submitMutation.isPending} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
+            <FiShield aria-hidden="true" /> {submitMutation.isPending ? "Submitting reservation…" : "Submit reservation"}
           </Button>
           {!selectedPaymentMethod ? (
             <p className="mt-3 text-center text-xs text-muted-foreground">A payment method must be available before submitting.</p>

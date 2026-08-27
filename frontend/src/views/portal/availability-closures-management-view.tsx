@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { FiActivity, FiCalendar, FiClock, FiLock, FiPlus, FiUnlock } from "react-icons/fi";
 import { ErrorState } from "@/components/common/error-state";
+import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
 import { Pagination } from "@/components/common/pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { AvailabilityClosureFormDialog } from "@/forms/availability-closures/availability-closure-form-dialog";
 import { useReopenClosure } from "@/hooks/mutations/use-availability-closure-mutations";
 import { useAvailabilityActivity, useAvailabilityClosures } from "@/hooks/queries/use-availability-closures";
@@ -71,7 +73,7 @@ function activityTitle(activity: AvailabilityActivity) {
 function ActivityCard({ activity }: { activity: AvailabilityActivity }) {
   const reopened = activity.action === "DATE_REOPENED" || activity.action === "COURT_SLOT_REOPENED";
   const Icon = reopened ? FiUnlock : FiLock;
-  return <article className="flex min-h-16 gap-2.5 rounded-lg border border-border bg-background p-2.5"><span className={reopened ? "grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary" : "grid size-8 shrink-0 place-items-center rounded-lg bg-destructive/10 text-destructive"}><Icon aria-hidden="true" className="size-3.5" /></span><div className="min-w-0 flex-1"><h3 className="font-heading text-sm font-bold leading-5">{activityTitle(activity)}</h3><p className="mt-0.5 text-xs text-muted-foreground"><span className="font-medium text-foreground">Internal reason:</span> {activity.details.reason}</p><p className="mt-1 text-xs text-muted-foreground">{reopened ? "Reopened" : "Set"} {formatDateTime(activity.created_at)} by {activity.actor_name}</p></div></article>;
+  return <article className="flex min-h-16 gap-2.5 rounded-lg border border-border bg-background p-2.5"><span className={reopened ? "grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary" : "grid size-8 shrink-0 place-items-center rounded-lg bg-destructive/10 text-destructive"}><Icon aria-hidden="true" className="size-3.5" /></span><div className="min-w-0 flex-1"><h3 className="font-heading text-sm font-bold leading-5">{activityTitle(activity)}</h3><p className="mt-0.5 text-xs text-muted-foreground"><span className="font-medium text-foreground">{reopened ? "Reopening description" : "Internal reason"}:</span> {activity.details.reason}</p><p className="mt-1 text-xs text-muted-foreground">{reopened ? "Reopened" : "Set"} {formatDateTime(activity.created_at)} by {activity.actor_name}</p></div></article>;
 }
 
 export function AvailabilityClosuresManagementView() {
@@ -79,18 +81,32 @@ export function AvailabilityClosuresManagementView() {
   const [activityPage, setActivityPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [reopening, setReopening] = useState<AvailabilityClosure | null>(null);
+  const [reopeningReason, setReopeningReason] = useState("");
   const closuresQuery = useAvailabilityClosures(closurePage);
   const activityQuery = useAvailabilityActivity(activityPage);
   const pricingQuery = useCourtPricingManagement();
   const reopenMutation = useReopenClosure();
 
   async function reopen() {
-    if (!reopening) return;
+    const reason = reopeningReason.trim();
+    if (!reopening || !reason) return;
     try {
-      await reopenMutation.mutateAsync(reopening);
+      await reopenMutation.mutateAsync({ closure: reopening, reason });
       setReopening(null);
+      setReopeningReason("");
       if (closuresQuery.data?.data.length === 1 && closurePage > 1) setClosurePage((page) => page - 1);
     } catch {}
+  }
+
+  function openReopenDialog(closure: AvailabilityClosure) {
+    setReopeningReason("");
+    setReopening(closure);
+  }
+
+  function closeReopenDialog() {
+    if (reopenMutation.isPending) return;
+    setReopening(null);
+    setReopeningReason("");
   }
 
   return (
@@ -100,14 +116,30 @@ export function AvailabilityClosuresManagementView() {
         <Card size="sm">
           <CardHeader><CardTitle>Closed dates &amp; time blocks</CardTitle><CardDescription>Active closures preventing reservations.</CardDescription><CardAction><Button size="sm" onClick={() => setFormOpen(true)} disabled={pricingQuery.isPending || pricingQuery.isError}><FiPlus aria-hidden="true" />Add closure</Button></CardAction></CardHeader>
           <CardContent className="grid gap-2">
-            {closuresQuery.isPending ? <LoadingState message="Loading active closures…" /> : closuresQuery.isError ? <ErrorState title="We couldn't load active closures." onRetry={() => void closuresQuery.refetch()} /> : closuresQuery.data.data.length === 0 ? <CompactEmpty title="No active closures." description="Closed dates and court times will appear here." /> : <>{closuresQuery.data.data.map((closure) => <ClosureCard key={closure.id} closure={closure} onReopen={setReopening} />)}{closuresQuery.data.meta.last_page > 1 ? <Pagination page={closurePage} lastPage={closuresQuery.data.meta.last_page} onChange={setClosurePage} /> : null}</>}
+            {closuresQuery.isPending ? <LoadingState message="Loading active closures…" /> : closuresQuery.isError ? <ErrorState title="We couldn't load active closures." onRetry={() => void closuresQuery.refetch()} /> : closuresQuery.data.data.length === 0 ? <CompactEmpty title="No active closures." description="Closed dates and court times will appear here." /> : <>{closuresQuery.data.data.map((closure) => <ClosureCard key={closure.id} closure={closure} onReopen={openReopenDialog} />)}{closuresQuery.data.meta.last_page > 1 ? <Pagination page={closurePage} lastPage={closuresQuery.data.meta.last_page} onChange={setClosurePage} /> : null}</>}
           </CardContent>
         </Card>
         <Card size="sm"><CardHeader><CardTitle>Schedule Overview</CardTitle><CardDescription>Current operating details used for closures.</CardDescription></CardHeader><CardContent><ScheduleOverview /></CardContent></Card>
       </div>
       <section aria-labelledby="availability-activity-title" className="flex min-h-0 flex-1"><Card size="sm" className="h-full w-full"><CardHeader><CardTitle id="availability-activity-title">Activity Log</CardTitle><CardDescription>Recent closures, reopenings, and internal reasons.</CardDescription></CardHeader><CardContent className="flex flex-1 flex-col gap-2">{activityQuery.isPending ? <LoadingState message="Loading availability activity…" /> : activityQuery.isError ? <ErrorState title="We couldn't load the activity log." onRetry={() => void activityQuery.refetch()} /> : activityQuery.data.data.length === 0 ? <div className="flex flex-1 items-center"><CompactEmpty title="No availability activity yet." description="Closures and reopenings will be recorded here." /></div> : <>{activityQuery.data.data.map((activity) => <ActivityCard key={activity.id} activity={activity} />)}{activityQuery.data.meta.last_page > 1 ? <div className="mt-auto pt-1"><Pagination page={activityPage} lastPage={activityQuery.data.meta.last_page} onChange={setActivityPage} /></div> : null}</>}</CardContent></Card></section>
       {formOpen && !pricingQuery.isPending && !pricingQuery.isError ? <AvailabilityClosureFormDialog configuration={pricingQuery.data.configuration} courts={pricingQuery.data.courts} open onOpenChange={setFormOpen} /> : null}
-      <Dialog open={Boolean(reopening)} onOpenChange={(open) => !open && !reopenMutation.isPending && setReopening(null)}><DialogContent><DialogHeader><DialogTitle>Reopen this closure?</DialogTitle><DialogDescription>{reopening?.type === "entire_operation" ? `All courts will become available again for ${reopening ? formatDateOnly(reopening.date) : "this date"}, unless another court-time closure still applies.` : `The selected ${reopening?.court?.name ?? "court"} time ranges will become available again.`}</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={reopenMutation.isPending} />}>Cancel</DialogClose><Button disabled={reopenMutation.isPending} onClick={() => void reopen()}>{reopenMutation.isPending ? "Reopening…" : "Reopen closure"}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(reopening)} onOpenChange={(open) => !open && closeReopenDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reopen this closure?</DialogTitle>
+            <DialogDescription>{reopening?.type === "entire_operation" ? `All courts will become available again for ${reopening ? formatDateOnly(reopening.date) : "this date"}, unless another court-time closure still applies.` : `The selected ${reopening?.court?.name ?? "court"} time ranges will become available again.`}</DialogDescription>
+          </DialogHeader>
+          <form id="availability-reopen-form" className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void reopen(); }}>
+            <FormFieldWrapper id="reopen-reason" label="Reopening description" description="This replaces the internal reason shown for this reopening in the activity log." required>
+              <Textarea id="reopen-reason" rows={4} required maxLength={1000} value={reopeningReason} onChange={(event) => setReopeningReason(event.target.value)} placeholder="Explain why this closure is being reopened…" />
+            </FormFieldWrapper>
+          </form>
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" disabled={reopenMutation.isPending} />}>Cancel</DialogClose>
+            <Button form="availability-reopen-form" type="submit" disabled={reopenMutation.isPending || reopeningReason.trim().length === 0}>{reopenMutation.isPending ? "Reopening…" : "Reopen closure"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

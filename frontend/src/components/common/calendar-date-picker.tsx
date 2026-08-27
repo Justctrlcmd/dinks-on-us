@@ -54,7 +54,7 @@ export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
           const closed = disabled.has(date);
           const unavailable = Boolean(min && date < min) || closed;
           const selected = value === date;
-          const isToday = date === today;
+          const isToday = date === (min ?? today);
           const ariaLabel = `${dayLabel.format(day)}${closed ? ", Closed" : ""}`;
 
           return (
@@ -88,7 +88,7 @@ export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
   );
 }
 
-export function CalendarDatePicker({ id, value, min, disabledDates, onChange, placeholder = "Select a date", iconOnly = false, invalid = false }: {
+export function CalendarDatePicker({ id, value, min, disabledDates, onChange, placeholder = "Select a date", iconOnly = false, invalid = false, disabled = false }: {
   id?: string;
   value?: string;
   min?: string;
@@ -97,6 +97,7 @@ export function CalendarDatePicker({ id, value, min, disabledDates, onChange, pl
   placeholder?: string;
   iconOnly?: boolean;
   invalid?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -106,7 +107,7 @@ export function CalendarDatePicker({ id, value, min, disabledDates, onChange, pl
         id={id}
         aria-label={iconOnly ? "Choose a date from calendar" : undefined}
         aria-invalid={invalid || undefined}
-        render={<Button type="button" variant="outline" size={iconOnly ? "icon-sm" : "default"} className={iconOnly ? undefined : "h-11 w-full justify-between font-normal"} />}
+        render={<Button type="button" variant="outline" size={iconOnly ? "icon-sm" : "default"} disabled={disabled} className={iconOnly ? undefined : "h-10 w-full justify-between font-normal"} />}
       >
         {iconOnly ? <FiCalendar aria-hidden="true" /> : <><span>{value ? formatDateOnly(value) : placeholder}</span><FiCalendar aria-hidden="true" className="text-muted-foreground" /></>}
       </PopoverTrigger>

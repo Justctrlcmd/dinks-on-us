@@ -95,7 +95,7 @@ Selected slots:
 Example:
 
 ```text
-Reservation DOU-00125
+Reservation RF-125
 
 Court 1
 9:00 AM – 10:00 AM
@@ -111,6 +111,8 @@ Court 3
 ```
 
 This is valid as long as every selected slot is available at the time of submission.
+
+All slots under one reservation reference must use one booking date. After the customer selects the first slot, other dates are disabled until every selected slot is removed. Different courts and non-consecutive times on that date remain valid.
 
 ---
 
@@ -155,7 +157,7 @@ The reservation should succeed only when all requested slots can be reserved tog
 
 Once a valid reservation is successfully submitted:
 
-* The reservation becomes **Waiting for Verification**.
+* The reservation becomes **Pending**.
 * Every selected slot becomes immediately unavailable to other players.
 
 The system must not wait for Staff payment verification before locking the slots.
@@ -179,8 +181,9 @@ If a reservation is rejected:
 The current reservation statuses are:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
 VERIFIED
+ONGOING
 COMPLETED
 CANCELLED
 REJECTED
@@ -196,18 +199,21 @@ Rescheduling is treated as an action that modifies the current schedule rather t
 The standard lifecycle is:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
         │
         ├── REJECTED
         │
         └── VERIFIED
                │
-               ├── COMPLETED
+               ├── RESCHEDULED marker → VERIFIED
                ├── CANCELLED
-               └── NO_SHOW
+               ├── NO_SHOW
+               └── ONGOING
+                       │
+                       └── COMPLETED
 ```
 
-A verified reservation may also be rescheduled before reaching a final state.
+A verified reservation may be rescheduled repeatedly by the Manager. `RESCHEDULED` is a derived operational marker backed by schedule history; the stored status remains `VERIFIED` and retains the verified action set.
 
 ---
 
@@ -226,11 +232,11 @@ They should not normally return to an operational status.
 
 ---
 
-# 13. Waiting for Verification Rule
+# 13. Pending Rule
 
 All successfully submitted online reservations begin as:
 
-**Waiting for Verification**
+**Pending**
 
 During this state:
 
@@ -252,7 +258,7 @@ Authorized Staff or Manager may verify an online reservation after reviewing:
 If the payment is accepted:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
         ↓
 VERIFIED
 ```
@@ -276,7 +282,7 @@ Example reasons may include:
 When rejected:
 
 ```text
-WAITING_FOR_VERIFICATION
+PENDING
         ↓
 REJECTED
 ```
@@ -426,6 +432,10 @@ Staff may manually create a reservation for a customer physically present at the
 
 Walk-ins must use the same availability rules as online reservations.
 
+A successfully created walk-in begins as **Verified** because Staff records the payment while creating it. The reservation does not pass through the online Pending/payment-review stage. It may later be started, completed, cancelled, or marked no-show through the normal reservation lifecycle.
+
+Staff must record the customer's name, email address, and contact number. A walk-in may include multiple available one-hour court slots on one booking date, additional players, and active rental equipment using the same configured prices and historical snapshots as an online reservation.
+
 ---
 
 # 24. Walk-In Slot Rule
@@ -435,6 +445,7 @@ When Staff creates a walk-in reservation:
 * Every selected slot must first be available.
 * Once saved, those slots immediately become unavailable online.
 * Walk-ins must not bypass duplicate-reservation protection.
+* Rental equipment must be available across the selected reservation times because a walk-in is immediately Verified.
 
 ---
 
@@ -500,6 +511,8 @@ Other courts and unaffected times remain available.
 
 All time ranges saved together belong to one closure and are reopened together. Time ranges must stay within the configured operating hours.
 
+Reopening a closure requires a new description. The reopening description replaces the closure reason shown for that reopening’s internal activity-log event.
+
 ---
 
 # 28.1 Public Content Ordering Rule
@@ -522,9 +535,11 @@ If a slot already contains an active reservation, the system should require the 
 
 # 29. Rescheduling Rule
 
-Verified reservations may be rescheduled when business policy allows.
+Only the Manager may reschedule a verified reservation. A reservation may be rescheduled repeatedly, and every change must remain in schedule history.
 
 The new target slots must all be available before the reschedule succeeds.
+
+The replacement schedule must contain exactly the same number of one-hour slots as the current schedule. A higher replacement price creates an additional balance. A lower replacement price creates refundable credit.
 
 ---
 
@@ -588,7 +603,7 @@ The additional charge must be added to the reservation's final billing.
 
 # 35. Add-On Rule
 
-A reservation may accumulate additional charges during actual play.
+Only an ongoing reservation may accumulate additional charges during actual play.
 
 Possible examples include:
 
@@ -654,7 +669,8 @@ Once completed, the reservation becomes a History record.
 
 Primary business revenue analytics should use:
 
-**Completed Reservations → Final Amount**
+* Completed reservations → final collected amount
+* No-show reservations → non-refundable amount already collected
 
 A verified reservation should not automatically count as final revenue.
 
@@ -690,7 +706,7 @@ Current temporary business assumption:
 
 A cancelled reservation becomes a finalized History record.
 
-Exact refund and cancellation policies remain subject to client confirmation.
+Cancellation is an approved force-majeure action performed only by the Manager. The Manager chooses a full refund or a custom refund that cannot exceed the amount already collected. The system records the refund due but does not transfer funds automatically.
 
 ---
 
@@ -722,7 +738,7 @@ If an event requires courts to become unavailable, management must separately:
 
 # 43. Email Acknowledgment Rule
 
-After successful online reservation submission, the system should send an acknowledgment email to the customer.
+After successful online reservation submission, the system has an acknowledgment email template ready for the customer.
 
 The acknowledgment should communicate that:
 
@@ -735,7 +751,7 @@ The acknowledgment should communicate that:
 
 # 44. Reservation Status Email Rule
 
-The customer should receive an email for important reservation changes.
+Email templates are prepared for important reservation changes, but reservation delivery remains disabled until a mail provider is configured and `RESERVATION_EMAILS_ENABLED` is explicitly enabled.
 
 Current expected notification events:
 
@@ -756,10 +772,10 @@ Every reservation should receive a unique human-readable reference identifier.
 Example:
 
 ```text
-DOU-20260811-0012
+RF-001
 ```
 
-The exact formatting may be decided during implementation, but references must be unique and suitable for:
+References use `RF-` followed by a zero-padded sequence with a minimum of three digits. The sequence expands naturally after `RF-999` and must never be reused.
 
 * Customer communication
 * Staff search
@@ -1094,13 +1110,12 @@ Pending:
 
 ## Walk-In Payment
 
-Pending:
+Staff records one of two payment modes:
 
-* Whether Staff records cash
-* Payment method
-* Reference number
-* Receipt
-* Other required payment information
+* Cash
+* E-wallet / Bank
+
+The full calculated reservation amount is recorded as a verified initial payment. The transaction reference number and receipt image are optional for either mode.
 
 ---
 

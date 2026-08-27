@@ -5,6 +5,7 @@ import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { FiPlus } from "react-icons/fi";
 import { CalendarDatePicker } from "@/components/common/calendar-date-picker";
 import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
+import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,13 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useCloseCourtTimes,
@@ -85,56 +79,22 @@ function TimeRangeEditor({
 
   return (
     <div className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-2">
-      <FormFieldWrapper
+      <SelectWithLabel
         id={`closure-from-${index}`}
         label="From"
+        value={String(period.start_hour)}
+        options={startOptions.map((hour) => ({ value: String(hour), label: formatHour(hour) }))}
         error={error?.start_hour?.message}
-      >
-        <Select
-          value={String(period.start_hour)}
-          onValueChange={(value) => onChangeStart(Number(value))}
-        >
-          <SelectTrigger
-            id={`closure-from-${index}`}
-            aria-invalid={Boolean(error?.start_hour)}
-            className="h-11 w-full"
-          >
-            <SelectValue>{formatHour(period.start_hour)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {startOptions.map((hour) => (
-              <SelectItem key={hour} value={String(hour)}>
-                {formatHour(hour)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FormFieldWrapper>
-      <FormFieldWrapper
+        onValueChange={(value) => { if (value) onChangeStart(Number(value)); }}
+      />
+      <SelectWithLabel
         id={`closure-to-${index}`}
         label="To"
+        value={String(period.end_hour)}
+        options={endOptions.map((hour) => ({ value: String(hour), label: formatHour(hour) }))}
         error={error?.end_hour?.message}
-      >
-        <Select
-          value={String(period.end_hour)}
-          onValueChange={(value) => onChangeEnd(Number(value))}
-        >
-          <SelectTrigger
-            id={`closure-to-${index}`}
-            aria-invalid={Boolean(error?.end_hour)}
-            className="h-11 w-full"
-          >
-            <SelectValue>{formatHour(period.end_hour)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {endOptions.map((hour) => (
-              <SelectItem key={hour} value={String(hour)}>
-                {formatHour(hour)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FormFieldWrapper>
+        onValueChange={(value) => { if (value) onChangeEnd(Number(value)); }}
+      />
     </div>
   );
 }
@@ -305,38 +265,16 @@ export function AvailabilityClosureFormDialog({
           </FormFieldWrapper>
           {type === "court_time" ? (
             <>
-              <FormFieldWrapper
+              <SelectWithLabel
                 id="closure-court"
                 label="Court"
                 required
+                value={courtId ? String(courtId) : null}
+                options={courts.map((court) => ({ value: String(court.id), label: court.name }))}
+                placeholder="Select a court"
                 error={form.formState.errors.court_id?.message}
-              >
-                <Select
-                  value={courtId ? String(courtId) : null}
-                  onValueChange={(value) =>
-                    form.setValue(
-                      "court_id",
-                      value === null ? undefined : Number(value),
-                      { shouldDirty: true, shouldValidate: true },
-                    )
-                  }
-                >
-                  <SelectTrigger
-                    id="closure-court"
-                    aria-invalid={Boolean(form.formState.errors.court_id)}
-                    className="h-11 w-full"
-                  >
-                    <SelectValue placeholder="Select a court" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {courts.map((court) => (
-                      <SelectItem key={court.id} value={String(court.id)}>
-                        {court.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormFieldWrapper>
+                onValueChange={(value) => form.setValue("court_id", value ? Number(value) : undefined, { shouldDirty: true, shouldValidate: true })}
+              />
               <section
                 className="grid gap-2.5"
                 aria-labelledby="closure-time-ranges-title"

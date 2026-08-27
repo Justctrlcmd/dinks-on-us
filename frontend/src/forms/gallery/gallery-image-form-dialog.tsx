@@ -6,10 +6,10 @@ import { useForm, useWatch } from "react-hook-form";
 import { FiImage, FiUploadCloud } from "react-icons/fi";
 import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
+import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateGalleryImage, useUpdateGalleryImage } from "@/hooks/mutations/use-gallery-mutations";
 import type { GalleryImage, GalleryImageInput, GalleryTab } from "@/types/gallery";
 import { GALLERY_IMAGE_ACCEPT, galleryImageSchema, type GalleryImageValues } from "@/validation/custom/gallery-schema";
@@ -110,19 +110,16 @@ export function GalleryImageFormDialog({
             </div>
           </FormFieldWrapper>
 
-          <FormFieldWrapper id="gallery-category" label="Category" required error={form.formState.errors.gallery_tab_id?.message}>
-            <Select
-              value={String(selectedTabId)}
-              onValueChange={(value) => form.setValue("gallery_tab_id", Number(value), { shouldDirty: true, shouldValidate: true })}
-            >
-              <SelectTrigger id="gallery-category" className="h-10 w-full" aria-invalid={Boolean(form.formState.errors.gallery_tab_id)}>
-                <SelectValue>{selectedTab?.name ?? "Choose a category"}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {tabs.map((tab) => <SelectItem key={tab.id} value={String(tab.id)}>{tab.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormFieldWrapper>
+          <SelectWithLabel
+            id="gallery-category"
+            label="Category"
+            required
+            value={selectedTab ? String(selectedTab.id) : null}
+            options={tabs.map((tab) => ({ value: String(tab.id), label: tab.name }))}
+            placeholder="Choose a category"
+            error={form.formState.errors.gallery_tab_id?.message}
+            onValueChange={(value) => form.setValue("gallery_tab_id", value ? Number(value) : 0, { shouldDirty: true, shouldValidate: true })}
+          />
 
           <InputWithLabel
             label="Alt text"

@@ -208,7 +208,7 @@ Players are not required to select consecutive hours.
 Example:
 
 ```text
-Reservation DOU-00125
+Reservation RF-125
 
 Court 1
 9:00 AM – 10:00 AM
@@ -358,7 +358,7 @@ When a player selects a payment method, the correct QR code and payment informat
 
 Once a player successfully submits a complete reservation:
 
-* The reservation status becomes **Waiting for Verification**.
+* The reservation status becomes **Pending**.
 * Every selected court/time slot immediately becomes unavailable to other players.
 * The slots remain blocked while payment verification is pending.
 
@@ -377,7 +377,7 @@ AVAILABLE SLOT
       │
       │ Reservation Submitted
       ▼
-WAITING FOR VERIFICATION
+PENDING
       │
       ├──────────────► REJECTED
       │                   │
@@ -386,22 +386,24 @@ WAITING FOR VERIFICATION
       ▼
 VERIFIED
       │
-      ├──► RESCHEDULED
+      ├──► RESCHEDULED marker → VERIFIED
       │
       ├──► CANCELLED
       │
       ├──► NO-SHOW
       │
-      └──► COMPLETED
+      └──► ONGOING
+               │
+               └──► COMPLETED
 ```
 
 ---
 
-# 12. Waiting for Verification
+# 12. Pending
 
 A submitted online reservation begins with:
 
-**Waiting for Verification**
+**Pending**
 
 The reservation remains in this state until an authorized Staff member or Manager reviews the payment information.
 
@@ -436,7 +438,7 @@ When rejected:
 
 # 15. Rescheduling
 
-A verified reservation may be rescheduled when permitted.
+Only the Manager may reschedule a verified reservation. Repeated rescheduling is allowed and every schedule change is preserved.
 
 Rescheduling should preserve the history of the previous schedule.
 
@@ -460,6 +462,8 @@ Verified
 Rescheduling should be treated primarily as an operational action with historical tracking rather than permanently leaving the reservation in a `Rescheduled` state.
 
 The new selected slots must be available before the reschedule can be completed.
+
+The replacement must contain the same number of one-hour slots. A higher rate creates an additional balance; a lower rate creates refundable credit.
 
 ---
 
@@ -500,7 +504,7 @@ The following policies are still subject to client confirmation:
 
 # 18. Reservation Email Notifications
 
-The system should send emails for important reservation events.
+The system contains email structures for important reservation events. Delivery remains disabled until a mail provider is configured and reservation email delivery is explicitly enabled.
 
 ## Submission Confirmation
 
@@ -512,10 +516,10 @@ Example information:
 Reservation Received
 
 Reference:
-DOU-20260811-0012
+RF-001
 
 Status:
-Waiting for Verification
+Pending
 
 Court:
 Court 2
@@ -559,15 +563,19 @@ Example:
 + Add Walk-In
 
 Customer Name
+Email Address
 Contact Number
 Court
 Date
 Time Slot(s)
+Additional Players
+Rental Equipment
 Payment Information
-Additional Information
 ```
 
 Once the walk-in reservation is saved, the selected court/time slots immediately become unavailable online.
+
+The walk-in is created as **Verified** and its full calculated amount is recorded as paid. Staff chooses either **Cash** or **E-wallet / Bank**. A transaction reference number and receipt image may be recorded but are optional.
 
 The system should distinguish reservation sources such as:
 
@@ -761,7 +769,7 @@ Possible slot states include:
 
 ```text
 Available
-Waiting for Verification
+Pending
 Verified
 Blocked
 Ongoing
@@ -775,7 +783,7 @@ The Reservation module contains reservations that still require operational atte
 
 This includes:
 
-* Waiting for Verification
+* Pending
 * Verified
 * Upcoming
 * Ongoing
@@ -849,7 +857,7 @@ Before completing a reservation, Staff should be able to review the final charge
 Example:
 
 ```text
-Reservation DOU-0012
+Reservation RF-012
 
 Original Court Fee
 ₱1,000
@@ -880,7 +888,7 @@ Current finalized statuses include:
 * Rejected
 * No-show
 
-Operational reservations such as Waiting for Verification, Verified, Upcoming, and Ongoing remain in the Reservation module.
+Operational reservations such as Pending, Verified, Upcoming, and Ongoing remain in the Reservation module.
 
 History records are considered finalized operational records.
 
@@ -1047,7 +1055,7 @@ Submit Reservation
   ├── Selected Slots Immediately Become Unavailable
   │
   ▼
-WAITING FOR VERIFICATION
+PENDING
   │
   ├───────────────┐
   ▼               ▼
@@ -1122,7 +1130,7 @@ The system must maintain **one shared source of truth for court availability**.
 
 Availability must consider:
 
-* Online reservations waiting for verification
+* Pending online reservations
 * Verified reservations
 * Walk-in reservations
 * Ongoing reservations
@@ -1265,15 +1273,12 @@ Confirm whether additional information is required.
 
 ## Walk-In Payment Information
 
-Confirm whether Staff must record:
+Staff selects one payment mode:
 
-* Payment method
-* Payment reference number
-* Receipt
-* Cash payment
-* Other payment details
+* Cash
+* E-wallet / Bank
 
-for walk-in reservations.
+The transaction reference number and receipt are optional. The reservation is stored as Verified with the calculated amount recorded as paid.
 
 ---
 

@@ -57,6 +57,8 @@ export type ReservationOptions = {
   slots: ReservationOptionSlot[];
   is_date_closed: boolean;
   unavailable_slots: { court_id: number; start_hour: number }[];
+  reserved_slots: { court_id: number; start_hour: number }[];
+  past_slots: { court_id: number; start_hour: number }[];
   equipment: RentalEquipment[];
   equipment_confirmation: string;
 };

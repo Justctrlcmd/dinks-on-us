@@ -16,7 +16,15 @@ Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains,
 
 ## Frontend
 
-`src/app` contains route files, layouts, loading/error boundaries, and metadata. Complete pages live in `src/views`. Complete forms live in `src/forms/<domain>`; reusable accessible controls live in `src/components/common/forms`. shadcn primitives remain under `components/ui`.
+`src/app` contains route files, layouts, loading/error boundaries, and metadata. Complete pages live in `src/views`. Complete forms live in `src/forms/<domain>`; reusable accessible controls live in `src/components/common/forms`. Use `SelectWithLabel` for labeled select fields and filters; it composes the low-level select primitive in `components/ui`. shadcn primitives remain under `components/ui`.
+
+Existing module implementations are the visual and interaction references for
+later modules. Before adding a repeated pattern, inspect the established portal
+components and views, then reuse or extend them. In particular, use the shared
+portal metric card for KPI summaries, the Team & Access management table shell
+for portal data tables, and `CalendarDatePicker` for management date fields.
+Avoid parallel module-specific versions of an existing component unless the
+variation is intentionally documented.
 
 Services contain API calls only. Query/mutation hooks add caching and invalidation. Query keys are centralized and hierarchical. Components must not call raw `fetch`; browser requests use `lib/api.ts`. Server-only reads use `lib/server-api.ts`, forward relevant cookies, and explicitly choose cache behavior. Browser CSRF logic must never be imported into Server Components.
 

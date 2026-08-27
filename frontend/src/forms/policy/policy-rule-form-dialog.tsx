@@ -4,10 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { FiPlus } from "react-icons/fi";
+import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { TextareaWithLabel } from "@/components/common/forms/textarea-with-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreatePolicyRule, useUpdatePolicyRule } from "@/hooks/mutations/use-policy-mutations";
 import type { PolicyRule, PolicySection, PolicySubheader } from "@/types/policy";
 import { policyRuleSchema, type PolicyRuleValues } from "@/validation/custom/policy-schema";
@@ -44,12 +44,20 @@ export function PolicyRuleFormDialog({ section, rule, open, onOpenChange }: { se
           </DialogHeader>
           <form id="policy-rule-form" className="grid gap-5 py-2" onSubmit={submit} noValidate>
             <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-3"><label htmlFor="policy-subheader" className="font-medium">Sub-header <span aria-hidden="true">*</span></label><Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => setNewSubheaderOpen(true)}><FiPlus aria-hidden="true" />New sub-header</Button></div>
-              <Select value={selectedSubheader ? String(selectedSubheader.id) : undefined} onValueChange={(value) => form.setValue("policy_subheader_id", Number(value), { shouldValidate: true })}>
-                <SelectTrigger id="policy-subheader" aria-invalid={Boolean(form.formState.errors.policy_subheader_id)} className="h-11 w-full"><SelectValue>{selectedSubheader?.title ?? "Select a sub-header"}</SelectValue></SelectTrigger>
-                <SelectContent>{subheaders.map((subheader) => <SelectItem key={subheader.id} value={String(subheader.id)}>{subheader.title}</SelectItem>)}</SelectContent>
-              </Select>
-              {form.formState.errors.policy_subheader_id && <p role="alert" className="text-xs leading-4 text-destructive">{form.formState.errors.policy_subheader_id.message}</p>}
+              <div className="flex items-center justify-between gap-3">
+                <SelectWithLabel
+                  id="policy-subheader"
+                  label="Sub-header"
+                  required
+                  className="min-w-0 flex-1"
+                  value={selectedSubheader ? String(selectedSubheader.id) : null}
+                  options={subheaders.map((subheader) => ({ value: String(subheader.id), label: subheader.title }))}
+                  placeholder="Select a sub-header"
+                  error={form.formState.errors.policy_subheader_id?.message}
+                  onValueChange={(value) => form.setValue("policy_subheader_id", value ? Number(value) : 0, { shouldValidate: true })}
+                />
+                <Button type="button" variant="link" size="sm" className="h-auto shrink-0 px-0" onClick={() => setNewSubheaderOpen(true)}><FiPlus aria-hidden="true" />New sub-header</Button>
+              </div>
             </div>
             <TextareaWithLabel label="Rule" required rows={6} placeholder="Enter the policy rule here..." {...form.register("content")} error={form.formState.errors.content?.message} />
           </form>

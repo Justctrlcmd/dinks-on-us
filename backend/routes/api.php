@@ -10,13 +10,19 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\Management\AvailabilityClosureController;
 use App\Http\Controllers\Api\V1\Management\CourtConfigurationController;
 use App\Http\Controllers\Api\V1\Management\CourtController;
+use App\Http\Controllers\Api\V1\Management\DashboardController;
+use App\Http\Controllers\Api\V1\Management\DashboardPaymentProofController;
 use App\Http\Controllers\Api\V1\Management\EventController as ManagementEventController;
 use App\Http\Controllers\Api\V1\Management\FaqController as ManagementFaqController;
 use App\Http\Controllers\Api\V1\Management\GalleryImageController;
 use App\Http\Controllers\Api\V1\Management\GalleryTabController;
+use App\Http\Controllers\Api\V1\Management\HistoryController;
+use App\Http\Controllers\Api\V1\Management\HistoryPaymentProofController;
 use App\Http\Controllers\Api\V1\Management\PaymentMethodController;
 use App\Http\Controllers\Api\V1\Management\PolicyController as ManagementPolicyController;
 use App\Http\Controllers\Api\V1\Management\RentalEquipmentController;
+use App\Http\Controllers\Api\V1\Management\ReservationController as ManagementReservationController;
+use App\Http\Controllers\Api\V1\Management\ReservationPaymentProofController;
 use App\Http\Controllers\Api\V1\Management\RoleController;
 use App\Http\Controllers\Api\V1\Management\StaffController;
 use App\Http\Controllers\Api\V1\Website\EventController as PublicEventController;
@@ -24,6 +30,7 @@ use App\Http\Controllers\Api\V1\Website\FaqController as PublicFaqController;
 use App\Http\Controllers\Api\V1\Website\GalleryController as PublicGalleryController;
 use App\Http\Controllers\Api\V1\Website\PaymentMethodController as PublicPaymentMethodController;
 use App\Http\Controllers\Api\V1\Website\PolicyController as PublicPolicyController;
+use App\Http\Controllers\Api\V1\Website\ReservationController as PublicReservationController;
 use App\Http\Controllers\Api\V1\Website\ReservationOptionsController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +44,7 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/public/payment-methods', PublicPaymentMethodController::class)->name('public.payment-methods.index');
     Route::get('/public/closed-dates', [ReservationOptionsController::class, 'closedDates'])->name('public.closed-dates.index');
     Route::get('/public/reservation-options', ReservationOptionsController::class)->name('public.reservation-options.show');
+    Route::post('/public/reservations', [PublicReservationController::class, 'store'])->middleware('throttle:10,1')->name('public.reservations.store');
 
     Route::middleware('guest')->group(function (): void {
         Route::post('/login', LoginController::class)->middleware('throttle:login')->name('login');
@@ -55,6 +63,35 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/password', [PasswordController::class, 'update'])->name('password.change');
 
         Route::prefix('management')->name('management.')->group(function (): void {
+            Route::middleware('module:DASHBOARD')->group(function (): void {
+                Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+                Route::get('/dashboard/reservations/{reservation}', [DashboardController::class, 'showReservation'])
+                    ->name('dashboard.reservations.show');
+                Route::get('/dashboard-payments/{payment}/proof', DashboardPaymentProofController::class)
+                    ->name('dashboard-payments.proof');
+            });
+
+            Route::middleware('module:RESERVATION')->group(function (): void {
+                Route::get('/reservations', [ManagementReservationController::class, 'index'])->name('reservations.index');
+                Route::post('/reservations/walk-in', [ManagementReservationController::class, 'storeWalkIn'])->name('reservations.walk-in.store');
+                Route::get('/reservations/{reservation}', [ManagementReservationController::class, 'show'])->name('reservations.show');
+                Route::post('/reservations/{reservation}/verify', [ManagementReservationController::class, 'verify'])->name('reservations.verify');
+                Route::post('/reservations/{reservation}/reject', [ManagementReservationController::class, 'reject'])->name('reservations.reject');
+                Route::post('/reservations/{reservation}/start', [ManagementReservationController::class, 'start'])->name('reservations.start');
+                Route::post('/reservations/{reservation}/reschedule', [ManagementReservationController::class, 'reschedule'])->name('reservations.reschedule');
+                Route::post('/reservations/{reservation}/add-ons', [ManagementReservationController::class, 'addOns'])->name('reservations.add-ons');
+                Route::post('/reservations/{reservation}/complete', [ManagementReservationController::class, 'complete'])->name('reservations.complete');
+                Route::post('/reservations/{reservation}/no-show', [ManagementReservationController::class, 'noShow'])->name('reservations.no-show');
+                Route::post('/reservations/{reservation}/cancel', [ManagementReservationController::class, 'cancel'])->name('reservations.cancel');
+                Route::get('/reservation-payments/{payment}/proof', ReservationPaymentProofController::class)->name('reservation-payments.proof');
+            });
+
+            Route::middleware('module:HISTORY')->group(function (): void {
+                Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
+                Route::get('/history/{reservation}', [HistoryController::class, 'show'])->name('history.show');
+                Route::get('/history-payments/{payment}/proof', HistoryPaymentProofController::class)->name('history-payments.proof');
+            });
+
             Route::middleware('module:MANAGEMENT_COURT_PRICING')->group(function (): void {
                 Route::get('/court-configuration', [CourtConfigurationController::class, 'show'])->name('court-configuration.show');
                 Route::put('/court-configuration', [CourtConfigurationController::class, 'update'])->name('court-configuration.update');

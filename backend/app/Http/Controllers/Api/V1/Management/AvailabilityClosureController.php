@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Management;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Management\ReopenAvailabilityClosureRequest;
 use App\Http\Requests\Management\StoreAvailabilityBlockRequest;
 use App\Http\Requests\Management\StoreClosedDateRequest;
 use App\Http\Resources\AvailabilityActivityResource;
@@ -66,13 +67,13 @@ class AvailabilityClosureController extends Controller
         );
     }
 
-    public function destroyClosedDate(Request $request, AvailabilityClosure $closedDate, AvailabilityClosureService $service): JsonResponse
+    public function destroyClosedDate(ReopenAvailabilityClosureRequest $request, AvailabilityClosure $closedDate, AvailabilityClosureService $service): JsonResponse
     {
         if ($closedDate->type !== AvailabilityClosure::TYPE_ENTIRE_OPERATION) {
             return $this->respondFailure('The requested closure could not be found.', 'NOT_FOUND', 404);
         }
 
-        $closure = $service->reopen($request->user(), $closedDate);
+        $closure = $service->reopen($request->user(), $closedDate, $request->validated('reason'));
 
         return $this->respondSuccess(
             AvailabilityClosureResource::make($closure)->resolve($request),
@@ -80,13 +81,13 @@ class AvailabilityClosureController extends Controller
         );
     }
 
-    public function destroyAvailabilityBlock(Request $request, AvailabilityClosure $block, AvailabilityClosureService $service): JsonResponse
+    public function destroyAvailabilityBlock(ReopenAvailabilityClosureRequest $request, AvailabilityClosure $block, AvailabilityClosureService $service): JsonResponse
     {
         if ($block->type !== AvailabilityClosure::TYPE_COURT_TIME) {
             return $this->respondFailure('The requested closure could not be found.', 'NOT_FOUND', 404);
         }
 
-        $closure = $service->reopen($request->user(), $block);
+        $closure = $service->reopen($request->user(), $block, $request->validated('reason'));
 
         return $this->respondSuccess(
             AvailabilityClosureResource::make($closure)->resolve($request),

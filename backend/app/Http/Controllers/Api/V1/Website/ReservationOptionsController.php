@@ -7,9 +7,8 @@ use App\Http\Resources\CourtConfigurationResource;
 use App\Http\Resources\CourtResource;
 use App\Http\Resources\RentalEquipmentResource;
 use App\Models\AvailabilityClosure;
-use App\Models\Court;
-use App\Models\CourtConfiguration;
 use App\Models\RentalEquipment;
+use App\Services\CourtAvailabilityService;
 use App\Traits\ApiResponse;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -37,74 +36,21 @@ class ReservationOptionsController extends Controller
         );
     }
 
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, CourtAvailabilityService $availability): JsonResponse
     {
         $validated = $request->validate(['date' => ['required', 'date_format:Y-m-d']]);
-        $date = CarbonImmutable::createFromFormat('Y-m-d', $validated['date']);
-        $configuration = CourtConfiguration::query()->with('ratePeriods')->find(1);
-        $courts = Court::query()->active()->orderBy('court_number')->get();
+        $snapshot = $availability->forDate($validated['date']);
         $equipment = RentalEquipment::query()->active()->orderBy('name')->orderBy('id')->get();
-        $closures = AvailabilityClosure::query()
-            ->active()
-            ->whereDate('date', $validated['date'])
-            ->with('periods')
-            ->get();
-
-        $slots = [];
-        if ($configuration) {
-            $dayType = $date->isWeekend() ? 'weekend' : 'weekday';
-            $rates = $configuration->ratePeriods->where('day_type', $dayType);
-
-            for ($hour = $configuration->opening_hour; $hour < $configuration->closing_hour; $hour++) {
-                $rate = $rates->first(fn ($period) => $period->start_hour <= $hour && $period->end_hour > $hour);
-                if ($rate) {
-                    $slots[] = [
-                        'start_hour' => $hour,
-                        'end_hour' => $hour + 1,
-                        'price' => (float) $rate->price,
-                    ];
-                }
-            }
-        }
-
-        $isDateClosed = $closures->contains(
-            fn (AvailabilityClosure $closure): bool => $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION,
-        );
-        $unavailableSlots = [];
-
-        if ($isDateClosed) {
-            foreach ($courts as $court) {
-                foreach ($slots as $slot) {
-                    $unavailableSlots[] = [
-                        'court_id' => $court->id,
-                        'start_hour' => $slot['start_hour'],
-                    ];
-                }
-            }
-        } else {
-            $closures
-                ->where('type', AvailabilityClosure::TYPE_COURT_TIME)
-                ->each(function (AvailabilityClosure $closure) use (&$unavailableSlots, $slots): void {
-                    foreach ($closure->periods as $period) {
-                        foreach ($slots as $slot) {
-                            if ($slot['start_hour'] >= $period->start_hour && $slot['end_hour'] <= $period->end_hour) {
-                                $unavailableSlots[] = [
-                                    'court_id' => $closure->court_id,
-                                    'start_hour' => $slot['start_hour'],
-                                ];
-                            }
-                        }
-                    }
-                });
-        }
 
         return $this->respondSuccess([
             'date' => $validated['date'],
-            'configuration' => $configuration ? CourtConfigurationResource::make($configuration)->resolve($request) : null,
-            'courts' => CourtResource::collection($courts)->resolve($request),
-            'slots' => $slots,
-            'is_date_closed' => $isDateClosed,
-            'unavailable_slots' => $unavailableSlots,
+            'configuration' => $snapshot['configuration'] ? CourtConfigurationResource::make($snapshot['configuration'])->resolve($request) : null,
+            'courts' => CourtResource::collection($snapshot['courts'])->resolve($request),
+            'slots' => $snapshot['slots'],
+            'is_date_closed' => $snapshot['is_date_closed'],
+            'unavailable_slots' => $snapshot['unavailable_slots'],
+            'reserved_slots' => $snapshot['reserved_slots'],
+            'past_slots' => $snapshot['past_slots'],
             'equipment' => RentalEquipmentResource::collection($equipment)->resolve($request),
             'equipment_confirmation' => 'Equipment availability is confirmed when your reservation is verified.',
         ], 'Reservation options retrieved.');
