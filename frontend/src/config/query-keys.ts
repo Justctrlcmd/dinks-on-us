@@ -62,6 +62,7 @@ export const teamAccessKeys = {
 export const reservationKeys = {
   all: ["reservations"] as const,
   list: (filters: { page: number; search: string; status: string }) => [...reservationKeys.all, "list", filters] as const,
+  pendingCount: () => [...reservationKeys.all, "pending-count"] as const,
   detail: (id: number) => [...reservationKeys.all, "detail", id] as const,
 };
 
@@ -69,6 +70,17 @@ export const dashboardKeys = {
   all: ["dashboard"] as const,
   overview: (weekStart: string, date: string) => [...dashboardKeys.all, "overview", weekStart, date] as const,
   reservation: (id: number) => [...dashboardKeys.all, "reservation", id] as const,
+};
+
+export const reportKeys = {
+  all: ["reports"] as const,
+  overview: (filters: import("@/types/reports").ReportFilters) => [...reportKeys.all, "overview", filters] as const,
+  revenue: (filters: import("@/types/reports").ReportFilters, groupBy: import("@/types/reports").ReportGrouping) => [...reportKeys.all, "revenue", filters, groupBy] as const,
+  reservations: (filters: import("@/types/reports").ReportFilters) => [...reportKeys.all, "reservations", filters] as const,
+  courtUtilization: (filters: import("@/types/reports").ReportFilters) => [...reportKeys.all, "court-utilization", filters] as const,
+  popularTimes: (filters: import("@/types/reports").ReportFilters) => [...reportKeys.all, "popular-times", filters] as const,
+  payments: (filters: import("@/types/reports").ReportFilters) => [...reportKeys.all, "payments", filters] as const,
+  operations: (filters: import("@/types/reports").ReportFilters) => [...reportKeys.all, "operations", filters] as const,
 };
 
 export const historyKeys = {

@@ -22,7 +22,7 @@ Use MySQL backups with documented retention and restore drills. Run migrations a
 
 - Files use the local disk only in development. Choose durable shared storage before user uploads.
 - Reservation payment proofs are private files and currently rely on the local disk. Choose durable private storage with authorized retrieval before production.
-- Mail uses the log driver. Reservation email templates exist, but delivery is disabled by default through `RESERVATION_EMAILS_ENABLED=false`; choose a real provider and verified sender before enabling it.
+- The repository defaults to the log mailer. Verification, rejection, reschedule, and walk-in verification email templates exist, but delivery is disabled by default through `RESERVATION_EMAILS_ENABLED=false`; choose a real provider and verified sender before enabling it in a production environment.
 - Queues run synchronously; no worker is required or assumed.
 - Scheduler and WebSockets are unused.
 - Redis is not required.

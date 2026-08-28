@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { FiActivity, FiCalendar, FiClock, FiLock, FiPlus, FiUnlock } from "react-icons/fi";
 import { ErrorState } from "@/components/common/error-state";
 import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
@@ -18,6 +20,7 @@ import { useCourtPricingManagement } from "@/hooks/queries/use-court-pricing";
 import { formatDateOnly, formatDateTime } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
 import type { AvailabilityActivity, AvailabilityClosure, ClosurePeriod } from "@/types/availability-closures";
+import { availabilityReopenSchema, type AvailabilityReopenValues } from "@/validation/custom/reservation-management-schema";
 
 function formatPeriods(periods: ClosurePeriod[]) {
   return periods.map((period) => formatHourRange(period.start_hour, period.end_hour)).join(" · ");
@@ -81,33 +84,36 @@ export function AvailabilityClosuresManagementView() {
   const [activityPage, setActivityPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [reopening, setReopening] = useState<AvailabilityClosure | null>(null);
-  const [reopeningReason, setReopeningReason] = useState("");
   const closuresQuery = useAvailabilityClosures(closurePage);
   const activityQuery = useAvailabilityActivity(activityPage);
   const pricingQuery = useCourtPricingManagement();
   const reopenMutation = useReopenClosure();
-
-  async function reopen() {
-    const reason = reopeningReason.trim();
-    if (!reopening || !reason) return;
+  const form = useForm<AvailabilityReopenValues>({
+    resolver: zodResolver(availabilityReopenSchema),
+    defaultValues: { reason: "" },
+  });
+  async function reopen(values: AvailabilityReopenValues) {
+    if (!reopening) return;
     try {
-      await reopenMutation.mutateAsync({ closure: reopening, reason });
+      await reopenMutation.mutateAsync({ closure: reopening, reason: values.reason });
       setReopening(null);
-      setReopeningReason("");
+      form.reset({ reason: "" });
       if (closuresQuery.data?.data.length === 1 && closurePage > 1) setClosurePage((page) => page - 1);
     } catch {}
   }
 
   function openReopenDialog(closure: AvailabilityClosure) {
-    setReopeningReason("");
+    form.reset({ reason: "" });
     setReopening(closure);
   }
 
   function closeReopenDialog() {
     if (reopenMutation.isPending) return;
     setReopening(null);
-    setReopeningReason("");
+    form.reset({ reason: "" });
   }
+
+  const submitReopen = form.handleSubmit(reopen);
 
   return (
     <div className="flex flex-col gap-4 xl:min-h-[calc(100svh-4rem)]">
@@ -129,14 +135,14 @@ export function AvailabilityClosuresManagementView() {
             <DialogTitle>Reopen this closure?</DialogTitle>
             <DialogDescription>{reopening?.type === "entire_operation" ? `All courts will become available again for ${reopening ? formatDateOnly(reopening.date) : "this date"}, unless another court-time closure still applies.` : `The selected ${reopening?.court?.name ?? "court"} time ranges will become available again.`}</DialogDescription>
           </DialogHeader>
-          <form id="availability-reopen-form" className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void reopen(); }}>
-            <FormFieldWrapper id="reopen-reason" label="Reopening description" description="This replaces the internal reason shown for this reopening in the activity log." required>
-              <Textarea id="reopen-reason" rows={4} required maxLength={1000} value={reopeningReason} onChange={(event) => setReopeningReason(event.target.value)} placeholder="Explain why this closure is being reopened…" />
+          <form id="availability-reopen-form" className="grid gap-4" onSubmit={submitReopen} noValidate>
+            <FormFieldWrapper id="reopen-reason" label="Reopening description" description="This replaces the internal reason shown for this reopening in the activity log." required error={form.formState.errors.reason?.message}>
+              <Textarea id="reopen-reason" rows={4} maxLength={1000} aria-invalid={Boolean(form.formState.errors.reason)} aria-describedby={form.formState.errors.reason ? "reopen-reason-error" : "reopen-reason-description"} {...form.register("reason")} placeholder="Explain why this closure is being reopened…" />
             </FormFieldWrapper>
           </form>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" disabled={reopenMutation.isPending} />}>Cancel</DialogClose>
-            <Button form="availability-reopen-form" type="submit" disabled={reopenMutation.isPending || reopeningReason.trim().length === 0}>{reopenMutation.isPending ? "Reopening…" : "Reopen closure"}</Button>
+            <Button form="availability-reopen-form" type="submit" disabled={reopenMutation.isPending}>{reopenMutation.isPending ? "Reopening…" : "Reopen closure"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -56,6 +56,8 @@ return [
 
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
 
+    'facebook_url' => env('FACEBOOK_URL', 'https://www.facebook.com/profile.php?id=61593085117097'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

@@ -46,10 +46,11 @@ export function PaymentMethodManagementView() {
       <PageHeader
         title="Payment Methods"
         description="Manage the e-wallets and bank accounts players can use for manual payments."
+        actionsClassName="absolute right-0 top-0"
         actions={
-          <Button className="h-10 px-4" onClick={openCreate}>
+          <Button className="h-8 px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm" onClick={openCreate}>
             <FiPlus aria-hidden="true" />
-            Add payment method
+            Add Method
           </Button>
         }
       />

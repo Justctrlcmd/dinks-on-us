@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationCheckout } from "@/components/public/reservation/reservation-checkout";
 import { RESERVATION_DRAFT_STORAGE_KEY } from "@/types/reservation";
 
+const { toastErrorMock } = vi.hoisted(() => ({ toastErrorMock: vi.fn() }));
+
+vi.mock("@/components/common/toast-provider", () => ({
+  useToast: () => ({ success: vi.fn(), error: toastErrorMock, warning: vi.fn(), info: vi.fn() }),
+}));
+
 vi.mock("@/hooks/queries/use-policies", () => ({
   usePublicPolicies: () => ({
     data: [{
@@ -59,10 +65,11 @@ vi.mock("@/hooks/queries/use-payment-methods", () => ({
 }));
 
 vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
-  useSubmitReservation: () => ({ mutate: vi.fn(), isPending: false }),
+  useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
 }));
 
 beforeEach(() => {
+  toastErrorMock.mockReset();
   window.sessionStorage.setItem(
     RESERVATION_DRAFT_STORAGE_KEY,
     JSON.stringify({
@@ -122,10 +129,40 @@ describe("ReservationCheckout", () => {
     expect(submit).toBeEnabled();
   });
 
+  it("opens checkout policy links in a dialog without losing entered details", async () => {
+    const user = userEvent.setup();
+    render(<ReservationCheckout />);
+
+    const nameInput = screen.getByRole("textbox", { name: "Full name" });
+    await user.type(nameInput, "Mark Justin Sayson");
+    await user.click(screen.getByRole("button", { name: "Court Rules & Policy" }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Court Rules & Policy" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(nameInput).toHaveValue("Mark Justin Sayson");
+  });
+
   it("shows an empty state when checkout is opened without a selection", () => {
     window.sessionStorage.clear();
     render(<ReservationCheckout />);
 
     expect(screen.getByRole("heading", { name: "No reservation selected yet" })).toBeInTheDocument();
+  });
+
+  it("shows inline validation errors when required fields are missing", async () => {
+    const user = userEvent.setup();
+    render(<ReservationCheckout />);
+
+    await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
+    await user.click(screen.getByRole("button", { name: "Submit reservation" }));
+
+    expect(screen.getByText("Enter your full name.")).toBeInTheDocument();
+    expect(screen.getByText("Enter a valid email address.")).toBeInTheDocument();
+    expect(screen.getByText("Enter your mobile number.")).toBeInTheDocument();
+    expect(screen.getByText("Enter the transaction reference number.")).toBeInTheDocument();
+    expect(screen.getByText("Select a payment proof image.")).toBeInTheDocument();
+    expect(toastErrorMock).toHaveBeenCalledWith("Please complete all required fields before submitting.");
   });
 });

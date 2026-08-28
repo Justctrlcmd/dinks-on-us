@@ -201,7 +201,7 @@ export function WalkInReservationForm() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2"><InputWithLabel label="Name" autoComplete="name" required {...form.register("customer_name")} error={form.formState.errors.customer_name?.message} /></div>
           <InputWithLabel label="Email" type="email" autoComplete="email" required {...form.register("customer_email")} error={form.formState.errors.customer_email?.message} />
-          <InputWithLabel label="Contact number" type="tel" autoComplete="tel" required {...form.register("customer_contact_number")} error={form.formState.errors.customer_contact_number?.message} />
+          <InputWithLabel label="Contact number" type="tel" inputMode="numeric" maxLength={11} pattern="09[0-9]{9}" autoComplete="tel" required onInput={(event) => { event.currentTarget.value = event.currentTarget.value.replace(/\D/g, "").slice(0, 11); }} placeholder="09XXXXXXXXX" {...form.register("customer_contact_number")} error={form.formState.errors.customer_contact_number?.message} />
         </div>
       </Card>
 

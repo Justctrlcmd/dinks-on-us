@@ -10,6 +10,8 @@ import {
   FiEye,
   FiPlay,
   FiSlash,
+  FiUserX,
+  FiXCircle,
 } from "react-icons/fi";
 import { LuPhilippinePeso } from "react-icons/lu";
 
@@ -51,11 +53,14 @@ const slotPresentation: Record<DashboardSlotStatus, {
   VERIFIED: { label: "Verified", className: "border-primary/35 bg-primary/10 text-primary", icon: FiCheckCircle },
   ONGOING: { label: "Ongoing", className: "border-energy bg-energy/15 text-foreground", icon: FiPlay },
   COMPLETED: { label: "Completed", className: "border-success/35 bg-success/10 text-success", icon: FiCheckCircle },
+  CANCELLED: { label: "Cancelled", className: "border-destructive/30 bg-destructive/10 text-destructive", icon: FiXCircle },
+  REJECTED: { label: "Rejected", className: "border-destructive/30 bg-destructive/10 text-destructive", icon: FiSlash },
+  NO_SHOW: { label: "No-show", className: "border-destructive/30 bg-destructive/10 text-destructive", icon: FiUserX },
   CLOSED: { label: "Closed", className: "border-destructive/30 bg-destructive/10 text-destructive", icon: FiSlash },
   PAST: { label: "Past", className: "border-border/70 bg-muted/45 text-muted-foreground opacity-65", icon: FiClock },
 };
 
-const viewableStatuses: DashboardSlotStatus[] = ["PENDING", "VERIFIED", "ONGOING", "COMPLETED"];
+const viewableStatuses: DashboardSlotStatus[] = ["PENDING", "VERIFIED", "ONGOING", "COMPLETED", "CANCELLED", "REJECTED", "NO_SHOW"];
 
 function formatRange(start: string, end: string): string {
   return `${shortDate.format(parseDateOnly(start))} – ${shortDate.format(parseDateOnly(end))}`;
@@ -197,7 +202,7 @@ export function PortalHomeView() {
   const query = useDashboard(weekStart, selectedDate);
   const data = query.data;
   const weekEnd = data?.week.end ?? addDays(weekStart, 6);
-  const description = `Weekly records for ${formatRange(data?.week.start ?? weekStart, weekEnd)}.`;
+  const description = `Weekly operation and records for ${formatRange(data?.week.start ?? weekStart, weekEnd)}.`;
 
   function selectDate(date: string) {
     setSelectedDate(date);

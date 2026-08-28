@@ -5,10 +5,10 @@ import {
   FiEdit2,
   FiKey,
   FiMoreHorizontal,
+  FiPlus,
   FiRefreshCw,
   FiShield,
   FiTrash2,
-  FiUserPlus,
   FiUserCheck,
   FiUserX,
   FiUsers,
@@ -106,6 +106,55 @@ function TeamActions({ member, currentUserId, onEdit, onReset, onDeactivate, onA
   );
 }
 
+function TeamMemberCard({ member, currentUserId, onEdit, onReset, onDeactivate, onActivate, activating }: {
+  member: TeamMember;
+  currentUserId?: number;
+  onEdit: (member: TeamMember) => void;
+  onReset: (member: TeamMember) => void;
+  onDeactivate: (member: TeamMember) => void;
+  onActivate: (member: TeamMember) => void;
+  activating: boolean;
+}) {
+  return (
+    <article className="rounded-xl border p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-xs font-semibold text-primary">{teamId(member.id)}</p>
+          <h3 className="mt-1 truncate font-semibold">{member.name}</h3>
+          <p className="break-all text-sm text-muted-foreground">{member.email}</p>
+        </div>
+        <TeamActions
+          member={member}
+          currentUserId={currentUserId}
+          onEdit={onEdit}
+          onReset={onReset}
+          onDeactivate={onDeactivate}
+          onActivate={onActivate}
+          activating={activating}
+        />
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <dt className="text-xs text-muted-foreground">Contact</dt>
+          <dd className="font-mono text-xs">{member.contact_number}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Access</dt>
+          <dd><span className="rounded-full border px-2 py-1 text-xs font-medium">{member.access.name}</span></dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Status</dt>
+          <dd><span className={member.is_active ? "inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary" : "inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground"}><span aria-hidden="true" className={member.is_active ? "size-1.5 rounded-full bg-primary" : "size-1.5 rounded-full bg-muted-foreground"} />{member.is_active ? "Active" : "Inactive"}</span></dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Last login</dt>
+          <dd className="text-xs text-muted-foreground">{member.last_login_at ? formatDateTime(member.last_login_at) : "Never"}</dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 export function TeamAccessManagementView() {
   const [page, setPage] = useState(1);
   const [accessFormOpen, setAccessFormOpen] = useState(false);
@@ -174,15 +223,24 @@ export function TeamAccessManagementView() {
       <PageHeader
         title="Team & Access"
         description="Manage Team accounts and the module access assigned to each member."
+        actionsClassName="absolute right-0 top-0"
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="h-10 px-4" onClick={openCreateAccess}><FiShield aria-hidden="true" />Add Access</Button>
-            <Button className="h-10 px-4" disabled={assignableAccesses.length === 0} onClick={openCreateTeam}><FiUserPlus aria-hidden="true" />Add Team</Button>
+          <div className="flex gap-1.5 sm:gap-2">
+            <Button variant="outline" className="h-8 gap-1 px-1.5 text-[0.625rem] sm:h-9 sm:gap-1.5 sm:px-3 sm:text-sm [&_svg:not([class*='size-'])]:size-3 sm:[&_svg:not([class*='size-'])]:size-4" onClick={openCreateAccess}>
+              <FiPlus aria-hidden="true" />
+              <span className="sm:hidden">Access</span>
+              <span className="hidden sm:inline">Add Access</span>
+            </Button>
+            <Button className="h-8 gap-1 px-1.5 text-[0.625rem] sm:h-9 sm:gap-1.5 sm:px-3 sm:text-sm [&_svg:not([class*='size-'])]:size-3 sm:[&_svg:not([class*='size-'])]:size-4" disabled={assignableAccesses.length === 0} onClick={openCreateTeam}>
+              <FiPlus aria-hidden="true" />
+              <span className="sm:hidden">Team</span>
+              <span className="hidden sm:inline">Add Team</span>
+            </Button>
           </div>
         }
       />
 
-      <section aria-label="Team and Access summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Team and Access summary" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <PortalMetricCard label="Total Team" value={accessQuery.data?.summary.total_team} icon={FiUsers} iconClassName="bg-primary/10 text-primary" />
         <PortalMetricCard label="Active" value={accessQuery.data?.summary.active_team} icon={FiUserCheck} iconClassName="bg-success/10 text-success" />
         <PortalMetricCard label="Inactive" value={accessQuery.data?.summary.inactive_team} icon={FiUserX} iconClassName="bg-foreground/10 text-muted-foreground" />
@@ -194,7 +252,7 @@ export function TeamAccessManagementView() {
       ) : null}
 
       <Card className="gap-0 py-0">
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[980px] border-collapse text-left text-sm">
             <caption className="sr-only">Team accounts and assigned Access profiles</caption>
             <thead className="border-b bg-muted/45 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -230,6 +288,26 @@ export function TeamAccessManagementView() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="grid gap-3 p-3 md:hidden">
+          {teamQuery.isPending ? (
+            <LoadingState message="Loading Team members…" />
+          ) : teamQuery.isError ? (
+            <ErrorState title="We couldn't load the Team members." onRetry={() => void teamQuery.refetch()} />
+          ) : teamQuery.data.data.length === 0 ? (
+            <div className="px-1 py-5 text-center"><p className="font-medium">No Team accounts found.</p><p className="mt-1 text-sm text-muted-foreground">Add the first Team member after creating an Access profile.</p></div>
+          ) : teamQuery.data.data.map((member) => (
+            <TeamMemberCard
+              key={member.id}
+              member={member}
+              currentUserId={currentUser.data?.id}
+              onEdit={openEditTeam}
+              onReset={setResettingMember}
+              onDeactivate={setDeactivatingMember}
+              onActivate={(item) => void activateMember(item)}
+              activating={activateMutation.isPending}
+            />
+          ))}
         </div>
         {!teamQuery.isPending && !teamQuery.isError && teamQuery.data.meta.last_page > 1 ? <div className="border-t p-3"><Pagination page={page} lastPage={teamQuery.data.meta.last_page} onChange={setPage} /></div> : null}
       </Card>

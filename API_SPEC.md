@@ -624,6 +624,8 @@ customer_email
 customer_contact_number
 ```
 
+`customer_contact_number` must contain exactly 11 digits and start with `09`.
+
 ### Slots
 
 At least one slot must be selected.
@@ -767,13 +769,13 @@ Example:
 
 ---
 
-# 30. Reservation Submission Email
+# 30. Reservation Submission Notification
 
-After successful database commit, the system may trigger the reservation acknowledgment email only when `RESERVATION_EMAILS_ENABLED` is true. It is false by default until production mail is configured.
+Successful public reservation submission does not send a customer email. The API response and on-screen confirmation communicate that the reservation is pending payment review.
 
-Email failure should not cause a successfully stored reservation to disappear.
+The customer receives an email only after Staff or Management verifies, rejects, or reschedules the reservation. Delivery occurs when `RESERVATION_EMAILS_ENABLED` is true.
 
-The reservation transaction and email delivery should be treated as separate responsibilities.
+Email failure must not roll back or otherwise change the committed reservation result. The reservation transaction and email delivery are separate responsibilities.
 
 ---
 
@@ -893,10 +895,10 @@ The response contains:
 * Revenue from `final_amount` for Completed reservations booked in that week
 * Seven daily availability totals derived from the public reservation source of truth
 * Active courts and configured one-hour slots for the selected date
-* Written slot states: `AVAILABLE`, `PENDING`, `VERIFIED`, `ONGOING`, `COMPLETED`, `CLOSED`, or `PAST`
-* Reservation ID and reference for non-past occupied slots
+* Written slot states: `AVAILABLE`, `PENDING`, `VERIFIED`, `ONGOING`, `COMPLETED`, `CANCELLED`, `REJECTED`, `NO_SHOW`, `CLOSED`, or `PAST`
+* Reservation ID and reference for occupied slots, including reservations in past time slots
 
-Past slots are calculated with the `Asia/Manila` business timezone and do not expose a clickable reservation target.
+Past slots are calculated with the `Asia/Manila` business timezone. A reservation's operational or final status takes precedence over `PAST`, and an explicit closure takes precedence over `PAST`, so the dashboard retains the status history for every slot.
 
 ---
 
@@ -912,7 +914,7 @@ Requires:
 DASHBOARD
 ```
 
-Returns the same read-only reservation detail shape used by the reservation View dialog for `PENDING`, `VERIFIED`, `ONGOING`, and `COMPLETED` records. This lets a Dashboard-only Staff role inspect an occupied slot without granting reservation-management actions.
+Returns the same read-only reservation detail shape used by the reservation View dialog for operational and final reservation records (`PENDING`, `VERIFIED`, `ONGOING`, `COMPLETED`, `CANCELLED`, `REJECTED`, and `NO_SHOW`). This lets a Dashboard-only Staff role inspect an occupied slot without granting reservation-management actions.
 
 Payment proof files referenced by this response use the protected route:
 
@@ -1038,7 +1040,7 @@ COMMIT
 }
 ```
 
-After successful commit, the verification email structure is ready. Delivery occurs only when reservation emails are configured and enabled.
+After successful commit, the verification email is sent when reservation emails are configured and enabled. It includes the reservation reference, verified status, court/date/time prices, additional players, rental items, amount paid, and arrival reminder.
 
 ---
 
@@ -1112,7 +1114,7 @@ Once committed:
 
 * Associated future slots stop blocking availability.
 * Reservation appears in History.
-* The rejection email is prepared and sent only when reservation email delivery is enabled.
+* The rejection email is sent only when reservation email delivery is enabled. It includes the reservation reference, concern, reason, court/date/time prices, additional players, rental items, and amount paid.
 
 ---
 
@@ -1174,6 +1176,8 @@ status = VERIFIED
 ```
 
 The backend calculates the court, additional-player, and equipment charges using current configuration snapshots. It records the full amount as a verified initial payment, sets `amount_paid` to the calculated amount, and makes the selected slots unavailable publicly.
+
+Creating a walk-in sends the verification email when reservation email delivery is configured and enabled because its payment is already recorded as verified at creation. A later approved reschedule may send another email with the updated schedule.
 
 Walk-ins must never bypass duplicate-reservation protection.
 
@@ -1255,6 +1259,8 @@ ROLLBACK
 ```
 
 The existing reservation schedule remains unchanged.
+
+After a successful commit, the reschedule email is sent when reservation emails are configured and enabled. It contains the reservation reference, newly active court/date/time prices, additional players, rental items, and amount paid. Previous schedule data is retained internally in history but is not presented as the active schedule in this email.
 
 ---
 
@@ -1502,7 +1508,7 @@ Cancellation should:
 * Create audit log
 * Record either a full refund or Manager-selected custom refund
 * Prevent the refund from exceeding the amount already collected
-* Prepare the cancellation email; delivery remains disabled until configured
+* Do not send a customer email; reservation email delivery is limited to verification, rejection, and rescheduling
 
 ---
 
@@ -1965,14 +1971,24 @@ Base route:
 GET /api/v1/management/reports/overview
 ```
 
-Suggested filters:
+Required filters:
 
 ```text
 from
 to
+```
+
+Optional filters:
+
+```text
 court_id
 source
 ```
+
+`from` and `to` are inclusive Manila business dates. `from` must not be later
+than `to`, and `to` must not be later than the current Manila date. `source`
+accepts `ONLINE` or `WALK_IN`. All report endpoints use the standard API
+envelope and require the `REPORTS` module.
 
 ---
 
@@ -1982,12 +1998,19 @@ source
 GET /api/v1/management/reports/revenue
 ```
 
-Revenue must primarily use:
+Recognized revenue uses:
 
 ```text
-status = COMPLETED
-final_amount
+SUM(final_amount) for COMPLETED reservations, dated by completed_at
++
+SUM(amount_paid) for NO_SHOW reservations, dated by no_show_at
 ```
+
+`VERIFIED`, `PENDING_PAYMENT`, and other non-finalized states are not recognized
+revenue. Average reservation value divides completed revenue by completed count
+and returns `null` when the denominator is zero. When `court_id` is supplied,
+revenue is limited to completed slot-derived revenue for that court; a
+reservation-wide final amount must never be duplicated across courts.
 
 Possible grouping:
 
@@ -2011,7 +2034,7 @@ GET /api/v1/management/reports/revenue?from=2026-08-01&to=2026-08-31&group_by=da
 GET /api/v1/management/reports/reservations
 ```
 
-May provide:
+Provides:
 
 * Completed count
 * Rejected count
@@ -2019,6 +2042,10 @@ May provide:
 * No-show count
 * Online vs walk-in
 * Reservation trend
+
+The reservation trend is grouped by `submitted_at`. Outcome counts are grouped
+by each outcome's own timestamp (`completed_at`, `rejected_at`, `cancelled_at`,
+or `no_show_at`).
 
 ---
 
@@ -2028,18 +2055,20 @@ May provide:
 GET /api/v1/management/reports/court-utilization
 ```
 
-Possible output:
+Utilization uses:
 
-```json
-{
-  "court_id": 1,
-  "court_name": "Court 1",
-  "booked_hours": 125,
-  "completed_hours": 110
-}
+```text
+completed reservation-slot hours / sellable court hours × 100
 ```
 
-Exact utilization formula can be finalized later.
+Sellable hours are current configured operating hours minus recorded closures.
+No-shows do not count as actual use, overlapping closures are deducted once,
+and future unelapsed hours on the current Manila date are excluded.
+
+Court rows and court filter options are limited to courts with at least one
+reservation-slot record in the selected date/source scope. An inactive court
+is retained when it has historical slot data; a court with no slot records is
+treated as nonexistent for that report view.
 
 ---
 
@@ -2051,6 +2080,31 @@ GET /api/v1/management/reports/popular-times
 
 Uses reservation-slot data to determine frequently used times.
 
+It returns a court/day/hour heatmap and day-of-week rollups using completed
+court hours and the same sellable-capacity denominator as utilization.
+
+---
+
+# 82.1. Payment Report
+
+```http
+GET /api/v1/management/reports/payments
+```
+
+Provides verified online-payment verification time (average and median) and a
+payment-method breakdown for reservations in the selected scope.
+
+---
+
+# 82.2. Operations Report
+
+```http
+GET /api/v1/management/reports/operations
+```
+
+Provides rejection concerns, reschedules, extensions, closure hours,
+operational availability, and finalized outcome counts.
+
 ---
 
 # 83. Reports Must Use Transactional Data
@@ -2061,6 +2115,9 @@ Reporting endpoints should compute results from:
 reservations
 reservation_slots
 reservation_adjustments
+reservation_payments
+reservation_schedule_histories
+availability_closures
 ```
 
 and related transactional tables.
@@ -2564,6 +2621,8 @@ GET /api/v1/management/reports/revenue
 GET /api/v1/management/reports/reservations
 GET /api/v1/management/reports/court-utilization
 GET /api/v1/management/reports/popular-times
+GET /api/v1/management/reports/payments
+GET /api/v1/management/reports/operations
 ```
 
 ---

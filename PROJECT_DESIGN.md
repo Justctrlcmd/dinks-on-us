@@ -21,7 +21,7 @@ reservations.
    reservation status must be instantly scannable.
 2. **Warm confidence.** Teal and navy establish trust; warm, off-white
    surfaces make a sports reservation flow approachable.
-3. **Energy with restraint.** Coral is a deliberate action accent, not a
+3. **Energy with restraint.** Deep burgundy is a deliberate action accent, not a
    dominant interface colour.
 4. **Practical under pressure.** Staff views prioritise hierarchy, status,
    filtering, and readable data over decorative treatment.
@@ -50,7 +50,7 @@ logo and content remain dominant.
 | Primary Navy | `#1F4E79` | Brand foundation, high-emphasis headings, dark surfaces |
 | Deep Teal | `#1E6F78` | Main brand and primary interactive colour |
 | Fresh Sky | `#4DA8DA` | Focus indication, data visualisation, supporting highlight |
-| Energy Coral | `#FF7A59` | High-energy calls to action and attention states |
+| Energy Burgundy | `#B53A6D` | High-energy calls to action and attention states |
 | Soft Mint | `#BEE3DB` | Subtle selected, success, and informational surfaces |
 | Warm Sand | `#F7F3E9` | Main light canvas and warm secondary surfaces |
 | Soft White | `#FFFDFC` | Cards, forms, dialogs, and raised content |
@@ -79,11 +79,10 @@ values directly in view JSX except in a documented decorative treatment.
 | `sidebar` | deep teal | deep teal | Staff shell |
 | `sidebar-primary` | Soft Mint | Soft Mint | Active staff navigation |
 
-`Energy Coral` uses Primary Text
-for its label, and is reserved for a clearly important action (for example,
-“Reserve a Court”) or an attention state. Semantic destructive colours may use
-a deeper accessible red derived outside the brand palette; coral is not a
-substitute for an error message.
+`Energy Burgundy` uses Soft White for its label, and is reserved for a clearly
+important action (for example, “Reserve a Court”) or an attention state.
+Semantic destructive colours may use a deeper accessible red derived outside
+the brand palette; burgundy is not a substitute for an error message.
 
 For public pages, do not use Fresh Sky or other ocean-blue tones as card or
 section backgrounds. The public surface system is limited to Warm Sand and Soft
@@ -102,7 +101,7 @@ Status must always include a written label; these colours are supporting cues.
 | Selected | Deep Teal fill with Soft White text and visible selection marker |
 | Pending | Warm Sand surface with Navy text and a “Pending” label |
 | Verified / completed | Soft Mint surface with Deep Teal text and a check indicator |
-| Ongoing | Energy Coral accent with an explicit “Ongoing” label |
+| Ongoing | Energy Burgundy accent with an explicit “Ongoing” label |
 | Rescheduled | Fresh Sky supporting treatment with an explicit “Rescheduled” label |
 | Unavailable / blocked | Muted surface with muted text and an unavailable icon/pattern |
 | Cancelled / rejected / no-show | Accessible destructive treatment with explicit status label |
@@ -146,7 +145,7 @@ carrier of important information.
 Use a transparent header over the dark hero, transitioning to a calm semantic
 page surface after the hero, with the Dinks on Us logo, Home, Reserve, Events,
 FAQ, and a low-emphasis Staff Login action. The hero should pair a concise,
-reservation-led message with a facility image when available. Reserve bright coral
+reservation-led message with a facility image when available. Reserve deep burgundy
 for the primary “Reserve a Court” hero action; the secondary location action is
 outlined. Events remain available from the global navigation and their dedicated
 page, but are not duplicated as a landing-page section or hero action.
@@ -158,8 +157,8 @@ light mode; deep teal and soft teal in dark mode. The image-backed hero and
 footer may retain the brand-surface treatment. Supporting palette colours must
 not appear as page or card backgrounds. Alternate the two approved surfaces
 between adjacent landing sections so that the page remains easy to scan. Reuse
-the hero's orange overline rule, pill button shape, and circular icon endcap
-for public-page actions; orange remains an action and emphasis colour, not a
+the hero's burgundy vertical separator, pill button shape, and circular icon endcap
+for public-page actions; burgundy remains an action and emphasis colour, not a
 surface. Reservation steps use separate responsive cards, with a numbered
 pickleball marker at the left of each card. The footer must remain visibly
 separated from the final public section in both themes. The floating Messenger action must be clearly labelled for
@@ -243,7 +242,7 @@ remain mandatory.
   urgency scannable without relying on colour alone.
 - Payment verification and schedule changes require clear summaries before
   confirmation. Destructive or irreversible actions retain confirmation dialogs.
-- Charts use navy, teal, sky, coral, and mint in a consistent series order,
+- Charts use navy, teal, sky, burgundy, and mint in a consistent series order,
   with labels and accessible alternatives rather than colour-only legends.
 
 ### Established portal component references

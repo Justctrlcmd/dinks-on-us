@@ -17,7 +17,7 @@ export function ReservationStatusBadge({ status }: { status: ReservationStatus }
   return (
     <span
       className={cn(
-        "inline-flex rounded-full border px-2.5 py-1 text-xs font-bold capitalize",
+        "inline-flex w-32 items-center justify-center rounded-full border px-2.5 py-1 text-center text-xs font-bold capitalize",
         statusStyles[status],
       )}
     >

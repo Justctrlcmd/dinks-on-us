@@ -25,7 +25,7 @@ class StoreReservationRequest extends FormRequest
         return [
             'customer_name' => ['required', 'string', 'max:180'],
             'customer_email' => ['required', 'email:rfc', 'max:180'],
-            'customer_contact_number' => ['required', 'string', 'max:30'],
+            'customer_contact_number' => ['required', 'string', 'size:11', 'regex:/^09[0-9]{9}$/'],
             'slots' => ['required', 'array', 'min:1', 'max:48'],
             'slots.*.court_id' => ['required', 'integer', 'exists:courts,id'],
             'slots.*.date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
@@ -66,6 +66,8 @@ class StoreReservationRequest extends FormRequest
             'payment_proof.mimes' => 'The payment proof must be a JPG, PNG, or WebP image.',
             'payment_proof.max' => 'The payment proof must not be larger than 5 MB.',
             'policy_acknowledged.accepted' => 'Accept the reservation policies before submitting.',
+            'customer_contact_number.size' => 'The contact number must contain exactly 11 digits.',
+            'customer_contact_number.regex' => 'The contact number must contain only digits and start with 09.',
         ];
     }
 }

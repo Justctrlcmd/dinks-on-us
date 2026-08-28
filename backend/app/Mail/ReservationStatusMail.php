@@ -18,9 +18,9 @@ class ReservationStatusMail extends Mailable
     public function envelope(): Envelope
     {
         $subjects = [
-            'submitted' => 'Reservation Received', 'verified' => 'Verification Message',
-            'rejected' => 'Reservation Rejection Message', 'rescheduled' => 'Reservation Rescheduled',
-            'cancelled' => 'Reservation Cancelled',
+            'verified' => 'Reservation Verified',
+            'rejected' => 'Reservation Not Approved',
+            'rescheduled' => 'Reservation Rescheduled',
         ];
 
         return new Envelope(subject: ($subjects[$this->event] ?? 'Reservation Update')." — {$this->reservation->reference_number}");

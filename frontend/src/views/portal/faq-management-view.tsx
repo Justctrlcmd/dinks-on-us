@@ -107,8 +107,9 @@ export function FaqManagementView() {
       <PageHeader
         title="FAQs"
         description="Create helpful answers for players and arrange the cards in their public display order."
+        actionsClassName="absolute right-0 top-0"
         actions={
-          <Button className="h-10 px-4" onClick={openCreate}>
+          <Button className="h-8 px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm" onClick={openCreate}>
             <FiPlus aria-hidden="true" />
             Add FAQ
           </Button>
@@ -119,7 +120,7 @@ export function FaqManagementView() {
         <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 id="faq-board-title" className="font-heading text-lg font-semibold">FAQ board</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Drag cards to reorder them. Changes are saved automatically.</p>
+            <p className="mt-1 text-sm sm:text-xs text-muted-foreground">Drag cards to reorder them. Changes saved automatically.</p>
           </div>
           {orderedFaqs.length > 0 && (
             <p className="text-sm text-muted-foreground">{orderedFaqs.length} {orderedFaqs.length === 1 ? "card" : "cards"}</p>

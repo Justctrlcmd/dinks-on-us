@@ -912,16 +912,20 @@ All Additional Adjustments
 
 # 28. Completed Revenue
 
-Revenue reporting should use:
+Recognized revenue reporting uses both finalized outcome types:
 
 ```text
 Reservation.status = COMPLETED
+Reservation.final_amount
+dated by Reservation.completed_at
 ```
 
 and:
 
 ```text
-Reservation.final_amount
+Reservation.status = NO_SHOW
+Reservation.amount_paid
+dated by Reservation.no_show_at
 ```
 
 Example:
@@ -939,6 +943,10 @@ Revenue recognized:
 ```text
 ₱1,700
 ```
+
+For a court-scoped report, use only completed slot-derived revenue belonging to
+the selected court. Do not allocate or duplicate reservation-wide add-ons or a
+multi-court reservation's full `final_amount` across courts.
 
 ---
 
@@ -1715,6 +1723,11 @@ Indexes around:
 ```text
 status
 completed_at
+no_show_at
+cancelled_at
+rejected_at
+submitted_at
+verified_at
 created_at
 source
 ```
@@ -2056,9 +2069,12 @@ Examples:
 ## Revenue
 
 ```text
-SUM(reservations.final_amount)
-WHERE status = COMPLETED
+SUM(reservations.final_amount) WHERE status = COMPLETED
++
+SUM(reservations.amount_paid) WHERE status = NO_SHOW
 ```
+
+The two revenue components use `completed_at` and `no_show_at`, respectively.
 
 ## Completed Reservations
 
@@ -2083,6 +2099,10 @@ Aggregate:
 reservation_slots
 GROUP BY court_id
 ```
+
+Court utilization divides completed slot hours by sellable hours. Sellable
+hours use current court operating configuration less recorded closure overlap;
+future unelapsed hours on the current Manila date are excluded.
 
 using completed reservations where appropriate.
 

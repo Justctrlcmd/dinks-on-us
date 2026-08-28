@@ -10,6 +10,12 @@ The request path is: form → Zod → mutation hook → service → `publicFetch
 
 Routes are versioned under `/api/v1`. Controllers are focused and use `app/Traits/ApiResponse.php`; resources shape entities. Input requests normalize only intentional fields and persist `validated()`/`safe()` data. Names and emails may be normalized; passwords, tokens, identifiers, JSON, signatures, code, and rich text must not be globally transformed.
 
+Query-heavy report aggregation belongs in `ReportService`, which is the backend
+authority for report formulas, date bases, filter semantics, and capacity
+calculations. Report controllers remain transport-only and return the standard
+API envelope. Reports are derived from transactional records; they do not store
+parallel manually maintained totals.
+
 API responses always contain `success`, `message`, `code`, `data`, `errors`, and `meta`, except a true HTTP 204, which has no body. Human messages are safe and nontechnical. Never expose SQL, paths, exception classes, stack traces, secrets, framework internals, or infrastructure. Log technical context server-side.
 
 Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains, CORS credentials, and the `web` guard. The frontend and API must share a top-level domain in production. Public registration and password recovery are disabled; authenticated management accounts are provisioned by the system and belong to one role. The system Manager role is seeded for local development and is the highest operational role defined by the business rules.

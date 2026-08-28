@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, useWatch } from "react-hook-form";
 import {
   FiArrowLeft,
   FiCheckCircle,
@@ -12,17 +14,22 @@ import {
   FiSmartphone,
   FiUploadCloud,
 } from "react-icons/fi";
-import { ReservationPolicyBanner } from "@/components/public/reservation/reservation-policy-banner";
+import { applyApiErrors } from "@/forms/apply-api-errors";
+import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
+import { InputWithLabel } from "@/components/common/forms/input-with-label";
+import { useToast } from "@/components/common/toast-provider";
+import { ReservationPolicyBanner, ReservationPolicyDialog } from "@/components/public/reservation/reservation-policy-banner";
 import { SelectWithLabel } from "@/components/common/forms/select-with-label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { useSubmitReservation } from "@/hooks/mutations/use-reservation-mutations";
 import { formatHourRange } from "@/lib/time";
 import type { PublicPaymentMethod } from "@/types/payment-method";
 import { RESERVATION_DRAFT_STORAGE_KEY, type ManagementReservation, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
+import { reservationCheckoutSchema, type ReservationCheckoutValues } from "@/validation/custom/reservation-checkout-schema";
 
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -206,7 +213,20 @@ function PaymentMethodDetails({ method }: { method: PublicPaymentMethod }) {
 
 export function ReservationCheckout() {
   const loaded = useSyncExternalStore(subscribeToNothing, () => true, () => false);
+  const toast = useToast();
   const paymentMethodsQuery = usePublicPaymentMethods();
+  const form = useForm<ReservationCheckoutValues>({
+    resolver: zodResolver(reservationCheckoutSchema),
+    defaultValues: {
+      customer_name: "",
+      customer_email: "",
+      customer_contact_number: "",
+      payment_method_id: "",
+      payment_reference_number: "",
+      payment_proof: undefined,
+      policy_acknowledged: false,
+    },
+  });
   const draft = useMemo(() => {
     if (!loaded) return null;
 
@@ -218,30 +238,36 @@ export function ReservationCheckout() {
       return null;
     }
   }, [loaded]);
-  const [paymentMethodId, setPaymentMethodId] = useState("");
-  const [receiptName, setReceiptName] = useState("");
-  const [acknowledged, setAcknowledged] = useState(false);
   const [submitted, setSubmitted] = useState<ManagementReservation | null>(null);
+  const [submitMessage, setSubmitMessage] = useState<string>();
   const submitMutation = useSubmitReservation();
 
   const paymentMethods = paymentMethodsQuery.data ?? noPaymentMethods;
+  const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
+  const acknowledged = useWatch({ control: form.control, name: "policy_acknowledged" });
+  const paymentProof = useWatch({ control: form.control, name: "payment_proof" });
   const selectedPaymentMethod = useMemo(
-    () => paymentMethods.find((method) => String(method.id) === paymentMethodId) ?? paymentMethods[0] ?? null,
+    () => paymentMethods.find((method) => String(method.id) === paymentMethodId) ?? null,
     [paymentMethodId, paymentMethods],
   );
 
-  function submitReservationForm(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!acknowledged || !selectedPaymentMethod || !draft) return;
-    const source = new FormData(event.currentTarget);
+  useEffect(() => {
+    if (!paymentMethodId && paymentMethods[0]) {
+      form.setValue("payment_method_id", String(paymentMethods[0].id));
+    }
+  }, [form, paymentMethodId, paymentMethods]);
+
+  async function submitReservationForm(values: ReservationCheckoutValues) {
+    if (!selectedPaymentMethod || !draft) return;
+    setSubmitMessage(undefined);
     const input = new FormData();
-    input.set("customer_name", String(source.get("fullName") ?? ""));
-    input.set("customer_email", String(source.get("email") ?? ""));
-    input.set("customer_contact_number", String(source.get("mobile") ?? ""));
-    input.set("payment_method_id", String(selectedPaymentMethod.id));
-    input.set("payment_reference_number", String(source.get("referenceNumber") ?? ""));
-    const proof = source.get("receipt");
-    if (proof instanceof File) input.set("payment_proof", proof);
+    input.set("customer_name", values.customer_name);
+    input.set("customer_email", values.customer_email);
+    input.set("customer_contact_number", values.customer_contact_number);
+    input.set("payment_method_id", values.payment_method_id);
+    input.set("payment_reference_number", values.payment_reference_number);
+    const proof = values.payment_proof?.item(0);
+    if (proof) input.set("payment_proof", proof);
     input.set("additional_players", String(draft.additionalPlayers));
     input.set("policy_acknowledged", "1");
     draft.selectedSlots.forEach((slot, index) => {
@@ -253,12 +279,19 @@ export function ReservationCheckout() {
       input.set(`equipment[${index}][id]`, String(item.id));
       input.set(`equipment[${index}][quantity]`, String(item.quantity));
     });
-    submitMutation.mutate(input, { onSuccess: (response) => {
+    try {
+      const response = await submitMutation.mutateAsync(input);
       setSubmitted(response.data);
       window.sessionStorage.removeItem(RESERVATION_DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } });
+    } catch (error) {
+      setSubmitMessage(applyApiErrors(error, form.setError));
+    }
   }
+
+  const submit = form.handleSubmit(submitReservationForm, () => {
+    toast.error("Please complete all required fields before submitting.");
+  });
 
   if (!loaded) {
     return <div className="mx-auto min-h-[40svh] max-w-[76rem] px-6 sm:px-10"><div className="h-64 animate-pulse rounded-2xl bg-muted" /></div>;
@@ -285,9 +318,9 @@ export function ReservationCheckout() {
         <div className="rounded-2xl border border-primary/35 bg-card p-7 sm:p-12">
           <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/12 text-primary"><FiCheckCircle className="size-8" aria-hidden="true" /></span>
           <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Reservation received</p>
-          <h1 className="mt-2 font-heading text-3xl font-extrabold tracking-[-.045em]">Payment proof received</h1>
           <p className="mt-4 font-heading text-2xl font-extrabold text-primary">{submitted.reference_number}</p>
-          <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Your selected court times are held while staff reviews the submitted payment. Keep this reference for questions about your reservation.</p>
+          <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Your selected court times are held while staff reviews the submitted reservation information. An email will be sent to you once the reservation is verified or rejected.</p>
+          <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Keep this reference for questions about your reservation.</p>
           <Button nativeButton={false} variant="outline" className="mt-7 h-12 rounded-full px-6 font-extrabold" render={<Link href="/" />}>Return home</Button>
         </div>
       </section>
@@ -305,25 +338,52 @@ export function ReservationCheckout() {
         <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">Review your costs, add your details, then send payment proof for staff verification.</p>
       </header>
 
-      <form className="grid min-w-0 gap-5" onSubmit={submitReservationForm}>
+      <form className="grid min-w-0 gap-5" onSubmit={submit} noValidate>
+        {submitMessage ? <Alert variant="destructive"><AlertDescription>{submitMessage}</AlertDescription></Alert> : null}
         <ReservationSummary draft={draft} />
         <ReservationPolicyBanner initialSlug="court-rules" titleId="checkout-policy-title" />
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="customer-information-title">
           <SectionHeading id="customer-information-title" eyebrow="Your information" title="Who is making this reservation?" description="We will use these details for the reservation acknowledgment and payment review." />
-          <div className="mt-6 grid gap-5 sm:grid-cols-2">
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="full-name" className="font-bold">Full name <span aria-hidden="true" className="text-destructive">*</span></Label>
-              <Input id="full-name" name="fullName" autoComplete="name" required placeholder="Enter your full name" className="h-10 px-4" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email" className="font-bold">Email address <span aria-hidden="true" className="text-destructive">*</span></Label>
-              <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className="h-10 px-4" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="mobile" className="font-bold">Mobile number <span aria-hidden="true" className="text-destructive">*</span></Label>
-              <Input id="mobile" name="mobile" type="tel" autoComplete="tel" required placeholder="+63 912 345 6789" className="h-10 px-4" />
-            </div>
+          <div className="mt-6 grid gap-5 sm:grid-cols-3">
+            <InputWithLabel
+              id="full-name"
+              label="Full name"
+              autoComplete="name"
+              required
+              placeholder="Enter your full name"
+              className="h-10 px-4 col-span-2 "
+              {...form.register("customer_name")}
+              error={form.formState.errors.customer_name?.message}
+            />
+            <InputWithLabel
+              id="email"
+              label="Email address"
+              type="email"
+              autoComplete="email"
+              required
+              placeholder="you@example.com"
+              className="h-10 px-4"
+              {...form.register("customer_email")}
+              error={form.formState.errors.customer_email?.message}
+            />
+          <InputWithLabel
+              id="mobile"
+              label="Mobile number"
+              type="tel"
+              inputMode="numeric"
+              maxLength={11}
+              pattern="09[0-9]{9}"
+              autoComplete="tel"
+              required
+              onInput={(event) => {
+                event.currentTarget.value = event.currentTarget.value.replace(/\D/g, "").slice(0, 11);
+              }}
+              placeholder="09XXXXXXXXX"
+              className="h-10 px-4"
+              {...form.register("customer_contact_number")}
+              error={form.formState.errors.customer_contact_number?.message}
+            />
           </div>
         </section>
 
@@ -334,15 +394,16 @@ export function ReservationCheckout() {
               id="payment-method"
               label="E-wallet or Bank"
               required
-              value={selectedPaymentMethod ? String(selectedPaymentMethod.id) : null}
+              value={paymentMethodId || null}
               options={paymentMethods.map((method) => ({ value: String(method.id), label: method.name }))}
               placeholder={paymentMethodsQuery.isPending ? "Loading payment methods…" : "No payment method available"}
+              error={form.formState.errors.payment_method_id?.message}
               disabled={paymentMethodsQuery.isPending || paymentMethodsQuery.isError || paymentMethods.length === 0}
-            triggerClassName="rounded-xl bg-background px-4 font-heading text-base "
+              triggerClassName="rounded-xl bg-background px-4 font-heading text-base"
               contentClassName="rounded-xl p-1"
               onValueChange={(value) => {
                 if (value && paymentMethods.some((method) => String(method.id) === value)) {
-                  setPaymentMethodId(value);
+                  form.setValue("payment_method_id", value, { shouldDirty: true, shouldValidate: true });
                 }
               }}
             />
@@ -365,39 +426,68 @@ export function ReservationCheckout() {
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="payment-proof-title">
           <SectionHeading id="payment-proof-title" eyebrow="Payment proof" title="Submit your transaction details" description="Both the reference number and a clear receipt image are required for manual verification." />
           <div className="mt-6 grid gap-5">
-            <div className="grid gap-2">
-              <Label htmlFor="reference-number" className="font-bold">Transaction reference number <span aria-hidden="true" className="text-destructive">*</span></Label>
-              <Input id="reference-number" name="referenceNumber" required inputMode="numeric" placeholder="Enter the complete reference number" className="h-10 px-4" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="payment-receipt" className="font-bold">Payment receipt image <span aria-hidden="true" className="text-destructive">*</span></Label>
+            <InputWithLabel
+              id="reference-number"
+              label="Transaction reference number"
+              required
+              inputMode="numeric"
+              placeholder="Enter the complete reference number"
+              className="h-10 px-4"
+              {...form.register("payment_reference_number")}
+              error={form.formState.errors.payment_reference_number?.message}
+            />
+            <FormFieldWrapper
+              id="payment-receipt"
+              label="Payment receipt image"
+              required
+              error={form.formState.errors.payment_proof?.message}
+            >
               <label htmlFor="payment-receipt" className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-primary/50 bg-primary/5 p-5 text-center transition-colors hover:bg-primary/10 focus-within:ring-3 focus-within:ring-ring/50">
-                {receiptName ? <FiImage className="size-7 text-primary" aria-hidden="true" /> : <FiUploadCloud className="size-7 text-primary" aria-hidden="true" />}
-                <span className="mt-3 break-all font-heading font-extrabold">{receiptName || "Choose a receipt image"}</span>
+                {paymentProof?.item(0) ? <FiImage className="size-7 text-primary" aria-hidden="true" /> : <FiUploadCloud className="size-7 text-primary" aria-hidden="true" />}
+                <span className="mt-3 break-all font-heading font-extrabold">{paymentProof?.item(0)?.name || "Choose a receipt image"}</span>
                 <span className="mt-1 text-xs leading-5 text-muted-foreground">JPG, PNG, or WEBP · clear and readable</span>
                 <input
                   id="payment-receipt"
-                  name="receipt"
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   required
                   className="sr-only"
-                  onChange={(event) => setReceiptName(event.target.files?.[0]?.name ?? "")}
+                  aria-invalid={Boolean(form.formState.errors.payment_proof)}
+                  aria-describedby={form.formState.errors.payment_proof ? "payment-receipt-error" : undefined}
+                  {...form.register("payment_proof")}
                 />
               </label>
-            </div>
+            </FormFieldWrapper>
           </div>
         </section>
 
         <section className="rounded-2xl border border-primary/35 bg-card p-4 sm:p-7">
           <div className="flex gap-3">
-            <Checkbox id="acknowledgment" checked={acknowledged} onCheckedChange={setAcknowledged} className="mt-1 size-5" />
+            <Checkbox
+              id="acknowledgment"
+              checked={acknowledged}
+              onCheckedChange={(checked) => form.setValue("policy_acknowledged", checked === true, { shouldDirty: true, shouldValidate: true })}
+              aria-invalid={Boolean(form.formState.errors.policy_acknowledged)}
+              aria-describedby={form.formState.errors.policy_acknowledged ? "acknowledgment-error" : undefined}
+              className="mt-1 size-5"
+            />
             <Label htmlFor="acknowledgment" className="block cursor-pointer text-sm leading-6">
               <strong className="block font-heading text-base">Reservation acknowledgment <span aria-hidden="true" className="text-destructive">*</span></strong>
               <span className="mt-1 block font-normal text-muted-foreground">I reviewed the reservation summary and conditions. I confirm that my information and payment proof are accurate, and I understand that staff must verify the payment before the reservation is confirmed.</span>
             </Label>
           </div>
-          <p className="mt-2 pl-8 text-sm leading-6 text-muted-foreground">I have read and agree to the <Link href="/policies/court-rules" className="font-semibold text-primary underline underline-offset-3">Court Rules &amp; Policy</Link>, <Link href="/policies/reservation-rules" className="font-semibold text-primary underline underline-offset-3">Reservation Rules &amp; Policy</Link>, <Link href="/policies/reschedule-policy" className="font-semibold text-primary underline underline-offset-3">Reschedule Policy</Link>, and <Link href="/policies/cancellation-policy" className="font-semibold text-primary underline underline-offset-3">Cancellation Policy</Link>.</p>
+          {form.formState.errors.policy_acknowledged?.message ? (
+            <p id="acknowledgment-error" role="alert" className="mt-2 pl-8 text-xs leading-4 text-destructive">
+              {form.formState.errors.policy_acknowledged.message}
+            </p>
+          ) : null}
+          <p className="mt-2 pl-8 text-sm leading-6 text-muted-foreground">
+            I have read and agree to the{" "}
+            <ReservationPolicyDialog initialSlug="court-rules" triggerLabel="Court Rules & Policy" triggerVariant="link" />{", "}
+            <ReservationPolicyDialog initialSlug="reservation-rules" triggerLabel="Reservation Rules & Policy" triggerVariant="link" />{", "}
+            <ReservationPolicyDialog initialSlug="reschedule-policy" triggerLabel="Reschedule Policy" triggerVariant="link" />{", and "}
+            <ReservationPolicyDialog initialSlug="cancellation-policy" triggerLabel="Cancellation Policy" triggerVariant="link" />.
+          </p>
           <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground"><FiLock aria-hidden="true" /> Your payment proof is intended only for reservation verification.</div>
           <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod || submitMutation.isPending} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
             <FiShield aria-hidden="true" /> {submitMutation.isPending ? "Submitting reservation…" : "Submit reservation"}

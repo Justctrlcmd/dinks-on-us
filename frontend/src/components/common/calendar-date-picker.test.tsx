@@ -22,4 +22,10 @@ describe("ThemedCalendar", () => {
 
     expect(onChange).toHaveBeenCalledWith("2026-08-27");
   });
+
+  it("disables dates after the configured maximum", () => {
+    render(<ThemedCalendar value="2026-08-25" max="2026-08-27" onChange={vi.fn()} />);
+
+    expect(screen.getByRole("gridcell", { name: "Friday, August 28, 2026" })).toBeDisabled();
+  });
 });

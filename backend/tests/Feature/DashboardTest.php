@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AvailabilityClosure;
 use App\Models\Court;
 use App\Models\CourtConfiguration;
 use App\Models\Reservation;
@@ -89,6 +90,76 @@ class DashboardTest extends TestCase
         $this->assertSame($verified->id, $slots->first(fn (array $slot): bool => $slot['court_id'] === $this->courtTwo->id && $slot['start_hour'] === 12)['reservation_id']);
         $this->assertSame('COMPLETED', $slots->first(fn (array $slot): bool => $slot['court_id'] === $this->courtOne->id && $slot['start_hour'] === 13)['status']);
         $this->assertSame($completed->id, $slots->first(fn (array $slot): bool => $slot['court_id'] === $this->courtOne->id && $slot['start_hour'] === 13)['reservation_id']);
+    }
+
+    public function test_dashboard_keeps_reservation_status_and_detail_for_past_slots(): void
+    {
+        $completed = $this->reservation('RF-105', Reservation::STATUS_COMPLETED, $this->courtOne, 9, 500);
+        $pending = $this->reservation('RF-106', Reservation::STATUS_PENDING, $this->courtTwo, 9, 500, true);
+
+        $response = $this->actingAs($this->dashboardUser)->getJson(
+            '/api/v1/management/dashboard?week_start=2026-08-24&date=2026-08-27',
+        );
+
+        $response->assertOk();
+        $slots = collect($response->json('data.selected_date.courts'))->flatMap(
+            fn (array $court) => collect($court['slots'])->map(fn (array $slot): array => [...$slot, 'court_id' => $court['id']]),
+        );
+
+        $completedSlot = $slots->first(fn (array $slot): bool => $slot['court_id'] === $this->courtOne->id && $slot['start_hour'] === 9);
+        $this->assertSame('COMPLETED', $completedSlot['status']);
+        $this->assertSame($completed->id, $completedSlot['reservation_id']);
+        $this->assertSame('RF-105', $completedSlot['reservation_reference']);
+
+        $pendingSlot = $slots->first(fn (array $slot): bool => $slot['court_id'] === $this->courtTwo->id && $slot['start_hour'] === 9);
+        $this->assertSame('PENDING', $pendingSlot['status']);
+        $this->assertSame($pending->id, $pendingSlot['reservation_id']);
+        $this->assertSame('RF-106', $pendingSlot['reservation_reference']);
+    }
+
+    public function test_dashboard_keeps_all_final_statuses_and_closed_slots_visible_in_the_past(): void
+    {
+        $cancelled = $this->reservation('RF-107', Reservation::STATUS_CANCELLED, $this->courtOne, 9, 500);
+        $rejected = $this->reservation('RF-108', Reservation::STATUS_REJECTED, $this->courtTwo, 10, 500);
+        $noShow = $this->reservation('RF-109', Reservation::STATUS_NO_SHOW, $this->courtOne, 11, 500);
+        $closure = AvailabilityClosure::query()->create([
+            'type' => AvailabilityClosure::TYPE_COURT_TIME,
+            'date' => '2026-08-27',
+            'court_id' => $this->courtTwo->id,
+            'reason' => 'Dashboard status coverage',
+            'is_active' => true,
+        ]);
+        $closure->periods()->create(['start_hour' => 9, 'end_hour' => 10]);
+
+        $response = $this->actingAs($this->dashboardUser)->getJson(
+            '/api/v1/management/dashboard?week_start=2026-08-24&date=2026-08-27',
+        );
+
+        $response->assertOk();
+        $slots = collect($response->json('data.selected_date.courts'))->flatMap(
+            fn (array $court) => collect($court['slots'])->map(fn (array $slot): array => [...$slot, 'court_id' => $court['id']]),
+        );
+
+        foreach ([
+            [$this->courtOne->id, 9, Reservation::STATUS_CANCELLED, $cancelled],
+            [$this->courtTwo->id, 10, Reservation::STATUS_REJECTED, $rejected],
+            [$this->courtOne->id, 11, Reservation::STATUS_NO_SHOW, $noShow],
+        ] as [$courtId, $startHour, $status, $reservation]) {
+            $slot = $slots->first(fn (array $item): bool => $item['court_id'] === $courtId && $item['start_hour'] === $startHour);
+            $this->assertSame($status, $slot['status']);
+            $this->assertSame($reservation->id, $slot['reservation_id']);
+            $this->assertSame($reservation->reference_number, $slot['reservation_reference']);
+        }
+
+        foreach ([$cancelled, $rejected, $noShow] as $reservation) {
+            $this->actingAs($this->dashboardUser)
+                ->getJson("/api/v1/management/dashboard/reservations/{$reservation->id}")
+                ->assertOk()
+                ->assertJsonPath('data.status', $reservation->status);
+        }
+
+        $closedPastSlot = $slots->first(fn (array $slot): bool => $slot['court_id'] === $this->courtTwo->id && $slot['start_hour'] === 9);
+        $this->assertSame('CLOSED', $closedPastSlot['status']);
     }
 
     public function test_dashboard_only_staff_can_read_slot_details_and_proofs_but_not_reservation_management(): void

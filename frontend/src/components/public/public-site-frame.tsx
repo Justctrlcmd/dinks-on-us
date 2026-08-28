@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { FiMessageCircle } from "react-icons/fi";
 import { PublicFooter } from "@/components/public/public-footer";
 import { PublicHeader } from "@/components/public/public-header";
+import { siteConfig } from "@/config/site";
 
 type PublicSiteFrameProps = {
   children: ReactNode;
@@ -14,14 +14,16 @@ export function PublicSiteFrame({ children, showFooter = true, showMessageButton
   return (
     <>
       <PublicHeader />
-      {children}
+      <div className="animate-fade-up motion-reduce:animate-none">
+        {children}
+        {showFooter ? <PublicFooter /> : null}
+      </div>
       {showMessageButton ? (
-        <Link href="#contact" aria-label="Messenger details coming soon" className="fixed bottom-5 right-5 z-40 flex min-h-12 items-center gap-2 rounded-full bg-energy px-4 text-sm font-extrabold text-energy-foreground shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5 hover:bg-energy/90 sm:bottom-7 sm:right-7">
+        <a href={siteConfig.facebookUrl} target="_blank" rel="noreferrer" aria-label="Message us on Facebook" className="fixed bottom-5 right-5 z-40 flex min-h-12 animate-fade-up items-center gap-2 rounded-full bg-energy px-4 text-sm font-extrabold text-energy-foreground shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5 hover:bg-energy/90 motion-reduce:animate-none sm:bottom-7 sm:right-7">
           <FiMessageCircle className="size-5" aria-hidden="true" />
           <span className="hidden sm:inline">Message us</span>
-        </Link>
+        </a>
       ) : null}
-      {showFooter ? <PublicFooter /> : null}
     </>
   );
 }

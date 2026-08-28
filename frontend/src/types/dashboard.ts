@@ -5,7 +5,10 @@ export type DashboardSlotStatus =
   | "PENDING"
   | "VERIFIED"
   | "ONGOING"
-  | "COMPLETED";
+  | "COMPLETED"
+  | "CANCELLED"
+  | "REJECTED"
+  | "NO_SHOW";
 
 export type DashboardSlot = {
   start_hour: number;

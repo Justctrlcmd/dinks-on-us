@@ -504,48 +504,40 @@ The following policies are still subject to client confirmation:
 
 # 18. Reservation Email Notifications
 
-The system contains email structures for important reservation events. Delivery remains disabled until a mail provider is configured and reservation email delivery is explicitly enabled.
+The system contains email structures for payment-verification results and reservation rescheduling. Delivery occurs only when a mail provider is configured and reservation email delivery is explicitly enabled.
 
 ## Submission Confirmation
 
-Immediately after successful submission, the player should receive an acknowledgment email.
+Successful submission does not send an email. The reservation page confirms that the reservation was received, is pending payment review, and is not yet fully verified.
 
-Example information:
+## Verification Result Emails
+
+After Staff or Management reviews the payment, the customer receives either a Verified or Rejected email. Both messages include:
 
 ```text
-Reservation Received
-
 Reference:
 RF-001
 
 Status:
-Pending
+Verified or Rejected
 
-Court:
-Court 2
+Reservation summary:
+Court, date, time, and price
 
-Date:
-August 15, 2026
+Additional reservation details:
+Additional players and rental items
 
-Time:
-5:00 PM – 6:00 PM
-
-Amount:
-₱600
+Payment summary:
+Amount paid
 ```
 
-The purpose is to confirm that the reservation was received successfully.
+A rejection email also includes the concern and staff-provided reason. A verification email includes the arrival reminder.
 
-## Status Updates
+## Reschedule Email
 
-Additional emails should be sent for important status changes such as:
+After a successful reschedule, the customer receives an email containing the reservation reference, updated active court/date/time prices, additional players, rental items, and amount paid. The previous schedule remains in internal history and is not shown as the customer's active reservation schedule.
 
-* Verified
-* Rejected
-* Rescheduled
-* Cancelled
-
-A completed reservation does not necessarily require a customer email because it is primarily an internal operational status.
+Submission, cancellation, and completion do not send customer emails.
 
 ---
 
@@ -575,7 +567,7 @@ Payment Information
 
 Once the walk-in reservation is saved, the selected court/time slots immediately become unavailable online.
 
-The walk-in is created as **Verified** and its full calculated amount is recorded as paid. Staff chooses either **Cash** or **E-wallet / Bank**. A transaction reference number and receipt image may be recorded but are optional.
+The walk-in is created as **Verified** and its full calculated amount is recorded as paid. Staff chooses either **Cash** or **E-wallet / Bank**. A transaction reference number and receipt image may be recorded but are optional. When reservation emails are enabled, the customer receives the verification email immediately after the walk-in is created.
 
 The system should distinguish reservation sources such as:
 

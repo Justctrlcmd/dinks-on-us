@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "@/types/user";
 import { PortalNavigation } from "./portal-navigation";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/portal" }));
+
+afterEach(cleanup);
 
 const manager: User = {
   id: 1,
@@ -43,5 +45,20 @@ describe("PortalNavigation", () => {
     expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute("href", "/portal/management/events");
     expect(screen.getByRole("link", { name: "FAQs" })).toHaveAttribute("href", "/portal/management/faqs");
     expect(screen.getByRole("link", { name: "Gallery" })).toHaveAttribute("href", "/portal/management/gallery");
+  });
+
+  it("shows a pending count on the Reservations navigation item", () => {
+    render(<PortalNavigation user={manager} pendingReservationCount={3} />);
+
+    const reservations = screen.getByRole("link", { name: "Reservations, 3 pending reservations" });
+    expect(reservations).toHaveAttribute("href", "/portal/reservations");
+    expect(reservations).toHaveTextContent("3");
+  });
+
+  it("keeps the pending count attached to the Reservations icon when collapsed", () => {
+    render(<PortalNavigation user={manager} collapsed pendingReservationCount={3} />);
+
+    const reservations = screen.getByRole("link", { name: "Reservations, 3 pending reservations" });
+    expect(reservations).toHaveTextContent("3");
   });
 });

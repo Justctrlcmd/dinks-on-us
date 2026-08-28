@@ -12,8 +12,8 @@ use App\Http\Requests\Management\RescheduleReservationRequest;
 use App\Http\Requests\Management\StoreWalkInReservationRequest;
 use App\Http\Resources\ReservationResource;
 use App\Models\Reservation;
-use App\Services\ReservationService;
 use App\Services\ReservationMailDispatcher;
+use App\Services\ReservationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,13 +41,14 @@ class ReservationController extends Controller
         return $this->respondSuccess(ReservationResource::make($service->detail($reservation))->resolve($request), 'Reservation details retrieved.');
     }
 
-    public function storeWalkIn(StoreWalkInReservationRequest $request, ReservationService $service): JsonResponse
+    public function storeWalkIn(StoreWalkInReservationRequest $request, ReservationService $service, ReservationMailDispatcher $mail): JsonResponse
     {
         $reservation = $service->createWalkIn(
             $request->safe()->except('payment_proof'),
             $request->user(),
             $request->file('payment_proof'),
         );
+        $mail->dispatch($reservation, 'verified');
 
         return $this->respondSuccess(
             ReservationResource::make($reservation)->resolve($request),
@@ -60,6 +61,7 @@ class ReservationController extends Controller
     {
         $updated = $service->verify($reservation, $request->user());
         $mail->dispatch($updated, 'verified');
+
         return $this->actionResponse($request, $updated, 'Reservation verified.');
     }
 
@@ -67,6 +69,7 @@ class ReservationController extends Controller
     {
         $updated = $service->reject($reservation, $request->user(), $request->validated('concern'), $request->validated('reason'));
         $mail->dispatch($updated, 'rejected');
+
         return $this->actionResponse($request, $updated, 'Reservation rejected and its court times released.');
     }
 
@@ -79,6 +82,7 @@ class ReservationController extends Controller
     {
         $updated = $service->reschedule($reservation, $request->user(), $request->validated('slots'));
         $mail->dispatch($updated, 'rescheduled');
+
         return $this->actionResponse($request, $updated, 'Reservation rescheduled.');
     }
 
@@ -100,13 +104,13 @@ class ReservationController extends Controller
         return $this->actionResponse($request, $service->noShow($reservation, $request->user()), 'Reservation marked as no-show.');
     }
 
-    public function cancel(CancelReservationRequest $request, Reservation $reservation, ReservationService $service, ReservationMailDispatcher $mail): JsonResponse
+    public function cancel(CancelReservationRequest $request, Reservation $reservation, ReservationService $service): JsonResponse
     {
         $updated = $service->cancel(
             $reservation, $request->user(), $request->validated('reason'), $request->validated('refund_type'),
             $request->validated('refund_amount') === null ? null : (float) $request->validated('refund_amount'),
         );
-        $mail->dispatch($updated, 'cancelled');
+
         return $this->actionResponse($request, $updated, 'Reservation cancelled and refund recorded.');
     }
 

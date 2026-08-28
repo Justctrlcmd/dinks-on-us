@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getManagementArea, managementAreas } from "@/config/management";
+import { siteConfig } from "@/config/site";
 import { ManagementAreaView } from "@/views/portal/management-area-view";
 import { FaqManagementView } from "@/views/portal/faq-management-view";
 import { PolicyManagementView } from "@/views/portal/policy-management-view";
@@ -15,11 +16,7 @@ export function generateStaticParams() {
   return managementAreas.map(({ slug }) => ({ section: slug }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ section: string }> }): Promise<Metadata> {
-  const { section } = await params;
-  const area = getManagementArea(section);
-  return { title: area?.title ?? "Management" };
-}
+export const metadata: Metadata = { title: { absolute: siteConfig.name } };
 
 export default async function Page({ params }: { params: Promise<{ section: string }> }) {
   const { section } = await params;

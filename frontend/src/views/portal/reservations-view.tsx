@@ -257,11 +257,21 @@ export function ReservationsView() {
       <PageHeader
         title="Reservations"
         description="Review payment submissions and manage verified or ongoing court visits."
-        actions={<Button nativeButton={false} render={<Link href="/portal/reservations/walk-in" />}><FiPlus aria-hidden="true" /> Add Walk-in</Button>}
+        actionsClassName="absolute right-0 top-0"
+        actions={
+          <Button
+            nativeButton={false}
+            render={<Link href="/portal/reservations/walk-in" />}
+            className="h-8 px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm"
+          >
+            <FiPlus aria-hidden="true" />
+            Add Walk-in
+          </Button>
+        }
       />
       <section
         aria-label="Reservation KPIs"
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid grid-cols-2 gap-3 xl:grid-cols-4"
       >
         <PortalMetricCard
           label="Pending"
@@ -371,7 +381,7 @@ export function ReservationsView() {
                     <th scope="col" className="px-4 py-3">
                       Total
                     </th>
-                    <th scope="col" className="px-4 py-3">
+                    <th scope="col" className="w-36 px-4 py-3 text-center">
                       Status
                     </th>
                     <th scope="col" className="px-4 py-3 text-center">
@@ -403,7 +413,7 @@ export function ReservationsView() {
                       <td className="px-4 py-3 font-bold">
                         {currency.format(reservation.amounts.final)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="w-36 px-4 py-3 text-center align-middle">
                         <ReservationStatusBadge status={reservation.display_status} />
                       </td>
                       <td className="px-4 py-3 text-center align-middle">
@@ -423,17 +433,9 @@ export function ReservationsView() {
               {reservations.map((reservation) => (
                 <article
                   key={reservation.id}
-                  className="relative rounded-xl border p-4"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 rounded-xl border p-4"
                 >
-                  <div className="absolute right-2 top-2">
-                    <ReservationActions
-                      reservation={reservation}
-                      isManager={isManager}
-                      onDialog={openDialog}
-                      onConfirm={openConfirm}
-                    />
-                  </div>
-                  <div className="pr-10">
+                  <div className="min-w-0">
                     <p className="font-heading font-extrabold text-primary">
                       {reservation.reference_number}
                     </p>
@@ -444,7 +446,16 @@ export function ReservationsView() {
                       {reservation.customer.contact_number}
                     </p>
                   </div>
-                  <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="row-span-2 flex min-h-full flex-col items-end justify-between gap-8">
+                    <ReservationActions
+                      reservation={reservation}
+                      isManager={isManager}
+                      onDialog={openDialog}
+                      onConfirm={openConfirm}
+                    />
+                    <ReservationStatusBadge status={reservation.display_status} />
+                  </div>
+                  <dl className="mt-4 grid min-w-0 gap-3 text-sm">
                     <div>
                       <dt className="text-xs text-muted-foreground">
                         Booking date
@@ -454,19 +465,16 @@ export function ReservationsView() {
                       </dd>
                     </div>
                     <div>
+                      <dt className="text-xs text-muted-foreground">Source</dt>
+                      <dd className="font-medium capitalize">{reservation.source.toLowerCase().replaceAll("_", "-")}</dd>
+                    </div>
+                    <div>
                       <dt className="text-xs text-muted-foreground">Total</dt>
                       <dd className="font-bold">
                         {currency.format(reservation.amounts.final)}
                       </dd>
                     </div>
-                    <div>
-                      <dt className="text-xs text-muted-foreground">Source</dt>
-                      <dd className="font-medium capitalize">{reservation.source.toLowerCase().replaceAll("_", "-")}</dd>
-                    </div>
                   </dl>
-                  <div className="mt-3">
-                    <ReservationStatusBadge status={reservation.display_status} />
-                  </div>
                 </article>
               ))}
             </div>

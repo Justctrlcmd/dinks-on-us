@@ -26,7 +26,7 @@ export function PublicFooter() {
           <p className="mt-4 max-w-sm leading-7 text-white/70 dark:text-[#556771]">A welcoming pickleball home for players and community in Bulacan, Philippines.</p>
           <div className="mt-5 flex items-center gap-2" aria-label="Social media links">
             <a
-              href="https://www.facebook.com/profile.php?id=61593085117097"
+              href={siteConfig.facebookUrl}
               target="_blank"
               rel="noreferrer"
               aria-label="Dinks on Us on Facebook"

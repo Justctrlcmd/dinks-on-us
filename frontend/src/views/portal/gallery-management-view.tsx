@@ -166,17 +166,17 @@ export function GalleryManagementView() {
     <div className="grid gap-6">
       <PageHeader
         title="Landing Gallery"
-        description="Create categories and arrange the images displayed in the landing-page gallery."
+        description="Create categories and arrange the images displayed in the gallery."
       />
 
-      <section aria-labelledby="gallery-categories-title" className="rounded-2xl border bg-card p-3 sm:p-4">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+      <section aria-labelledby="gallery-categories-title" className="min-w-0 overflow-x-clip rounded-2xl border bg-card p-3 sm:p-4">
+        <div className="relative mb-4">
+          <div className="pr-32 sm:pr-40">
             <h2 id="gallery-categories-title" className="font-heading text-lg font-semibold">Categories</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Drag category tabs to update their public order. Changes save automatically.</p>
+            <p className="mt-1 text-sm sm:text-xs text-muted-foreground">Drag category tabs to update their order. Changes save automatically.</p>
             {orderedTabs.length > 0 ? <p className="mt-1 text-xs text-muted-foreground">{orderedTabs.length} {orderedTabs.length === 1 ? "category" : "categories"}</p> : null}
           </div>
-          <Button variant="outline" className="h-9 self-start" onClick={openCreateTab}>
+          <Button variant="outline" size="sm" className="absolute right-0 top-0" onClick={openCreateTab}>
             <FiPlus aria-hidden="true" />
             Add category
           </Button>

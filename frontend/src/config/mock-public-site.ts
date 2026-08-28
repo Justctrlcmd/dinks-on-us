@@ -47,10 +47,10 @@ export const mockPublicSite = {
     eyebrow: "How reservations work",
     title: "Less planning. More playing.",
     steps: [
-      { title: "Find your slot", description: "Choose your date, then check live court availability for the times that work best for your crew." },
-      { title: "Choose your play", description: "Select one or more one-hour slots. You can mix courts or choose non-consecutive times in one reservation." },
-      { title: "Send payment", description: "Pick a configured e-wallet, upload your payment receipt, and add the reference number so staff can review it." },
-      { title: "Get confirmed", description: "After staff verifies your payment, your reservation is confirmed and your selected court time is ready for play." },
+      { title: "Choose a date and time", description: "Pick an open date and select one or more available court time slots. All slots in one reservation use the same date." },
+      { title: "Add players / equipment", description: "Set your additional player count, optionally rent available equipment, and review the live total before continuing." },
+      { title: "Complete checkout", description: "Enter your contact details, choose an e-wallet or bank method, upload your receipt, add the reference number, and accept the policies." },
+      { title: "Wait for verification", description: "Your selected slots are held while staff verifies your payment. Once approved, your reservation is confirmed and ready for play." },
     ],
   },
   about: {

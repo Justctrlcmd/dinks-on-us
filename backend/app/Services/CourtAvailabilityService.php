@@ -19,6 +19,7 @@ class CourtAvailabilityService
      *   slots: list<array{start_hour: int, end_hour: int, price: float}>,
      *   is_date_closed: bool,
      *   unavailable_slots: list<array{court_id: int, start_hour: int}>,
+     *   closed_slots: list<array{court_id: int, start_hour: int}>,
      *   reserved_slots: list<array{court_id: int, start_hour: int}>,
      *   past_slots: list<array{court_id: int, start_hour: int}>,
      *   reservations_by_slot: array<string, Reservation>
@@ -56,6 +57,7 @@ class CourtAvailabilityService
             fn (AvailabilityClosure $closure): bool => $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION,
         );
         $unavailableSlots = [];
+        $closedSlots = [];
         $reservedSlots = [];
         $pastSlots = [];
         $reservationsBySlot = [];
@@ -74,23 +76,27 @@ class CourtAvailabilityService
         if ($isDateClosed) {
             foreach ($courts as $court) {
                 foreach ($slots as $slot) {
-                    $unavailableSlots[] = [
+                    $closedSlot = [
                         'court_id' => $court->id,
                         'start_hour' => $slot['start_hour'],
                     ];
+                    $unavailableSlots[] = $closedSlot;
+                    $closedSlots[] = $closedSlot;
                 }
             }
         } else {
             $closures
                 ->where('type', AvailabilityClosure::TYPE_COURT_TIME)
-                ->each(function (AvailabilityClosure $closure) use (&$unavailableSlots, $slots): void {
+                ->each(function (AvailabilityClosure $closure) use (&$unavailableSlots, &$closedSlots, $slots): void {
                     foreach ($closure->periods as $period) {
                         foreach ($slots as $slot) {
                             if ($slot['start_hour'] >= $period->start_hour && $slot['end_hour'] <= $period->end_hour) {
-                                $unavailableSlots[] = [
+                                $closedSlot = [
                                     'court_id' => $closure->court_id,
                                     'start_hour' => $slot['start_hour'],
                                 ];
+                                $unavailableSlots[] = $closedSlot;
+                                $closedSlots[] = $closedSlot;
                             }
                         }
                     }
@@ -117,6 +123,10 @@ class CourtAvailabilityService
             'slots' => $slots,
             'is_date_closed' => $isDateClosed,
             'unavailable_slots' => collect($unavailableSlots)
+                ->unique(fn (array $slot): string => $this->slotKey($slot['court_id'], $slot['start_hour']))
+                ->values()
+                ->all(),
+            'closed_slots' => collect($closedSlots)
                 ->unique(fn (array $slot): string => $this->slotKey($slot['court_id'], $slot['start_hour']))
                 ->values()
                 ->all(),

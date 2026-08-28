@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\Management\HistoryPaymentProofController;
 use App\Http\Controllers\Api\V1\Management\PaymentMethodController;
 use App\Http\Controllers\Api\V1\Management\PolicyController as ManagementPolicyController;
 use App\Http\Controllers\Api\V1\Management\RentalEquipmentController;
+use App\Http\Controllers\Api\V1\Management\ReportController;
 use App\Http\Controllers\Api\V1\Management\ReservationController as ManagementReservationController;
 use App\Http\Controllers\Api\V1\Management\ReservationPaymentProofController;
 use App\Http\Controllers\Api\V1\Management\RoleController;
@@ -90,6 +91,16 @@ Route::prefix('v1')->group(function (): void {
                 Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
                 Route::get('/history/{reservation}', [HistoryController::class, 'show'])->name('history.show');
                 Route::get('/history-payments/{payment}/proof', HistoryPaymentProofController::class)->name('history-payments.proof');
+            });
+
+            Route::prefix('reports')->middleware('module:REPORTS')->name('reports.')->group(function (): void {
+                Route::get('/overview', [ReportController::class, 'overview'])->name('overview');
+                Route::get('/revenue', [ReportController::class, 'revenue'])->name('revenue');
+                Route::get('/reservations', [ReportController::class, 'reservations'])->name('reservations');
+                Route::get('/court-utilization', [ReportController::class, 'courtUtilization'])->name('court-utilization');
+                Route::get('/popular-times', [ReportController::class, 'popularTimes'])->name('popular-times');
+                Route::get('/payments', [ReportController::class, 'payments'])->name('payments');
+                Route::get('/operations', [ReportController::class, 'operations'])->name('operations');
             });
 
             Route::middleware('module:MANAGEMENT_COURT_PRICING')->group(function (): void {

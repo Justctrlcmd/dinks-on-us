@@ -94,7 +94,7 @@ export function PublicHeader() {
 
   return (
     <header className={cn("fixed inset-x-0 top-0 z-50 transition-transform duration-300 motion-reduce:transition-none", headerVisible ? "translate-y-0" : "-translate-y-full", onHero ? "bg-gradient-to-b from-black/55 via-black/20 to-transparent" : "border-b border-border/70 bg-background/85 shadow-sm backdrop-blur-xl")}>
-      <div className="mx-auto flex h-20 w-full max-w-[96rem] items-center justify-between gap-3 px-6 sm:h-24 sm:px-10 lg:px-30">
+      <div className="mx-auto flex h-20 w-full max-w-[96rem] animate-fade-up items-center justify-between gap-3 px-6 sm:h-24 sm:px-10 lg:px-30 motion-reduce:animate-none">
         <Brand onHero={onHero} />
         <nav aria-label="Primary navigation" className={cn("hidden items-center gap-1 rounded-full border p-1.5 text-sm font-semibold shadow-sm backdrop-blur-md lg:flex", onHero ? "border-white/25 bg-black/15 text-white" : "border-border bg-card/75 text-foreground")}>
           {publicNavigation.map((item) => {
@@ -106,7 +106,7 @@ export function PublicHeader() {
             );
           })}
         </nav>
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
           <ThemeToggle className={cn("size-10 rounded-full border backdrop-blur-md", onHero ? "border-white/25 bg-black/15 text-white hover:bg-white/15 hover:text-white" : "border-border bg-card/80 text-foreground hover:bg-muted hover:text-foreground")} />
           <Button size="lg" nativeButton={false} className="h-10 rounded-full border border-white/70 bg-white px-3 text-[0.8rem] font-bold text-brand-surface shadow-sm hover:bg-white/90 sm:px-5 sm:text-sm" render={<Link href="/login" />}>
             Admin

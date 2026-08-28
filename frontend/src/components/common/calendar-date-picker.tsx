@@ -22,9 +22,10 @@ function calendarDays(month: Date): Date[] {
   return Array.from({ length: 42 }, (_, index) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
 }
 
-export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
+export function ThemedCalendar({ value, min, max, disabledDates = [], onChange }: {
   value?: string;
   min?: string;
+  max?: string;
   disabledDates?: Iterable<string>;
   onChange: (value: string) => void;
 }) {
@@ -33,7 +34,9 @@ export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
   const today = todayInTimeZone();
   const days = calendarDays(visibleMonth);
   const earliestMonth = min ? monthStart(min) : null;
+  const latestMonth = max ? monthStart(max) : null;
   const previousDisabled = earliestMonth ? visibleMonth <= earliestMonth : false;
+  const nextDisabled = latestMonth ? visibleMonth >= latestMonth : false;
 
   function changeMonth(amount: number) {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -44,7 +47,7 @@ export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
       <div className="flex items-center justify-between gap-3 px-0.5 pb-3">
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Previous month" disabled={previousDisabled} onClick={() => changeMonth(-1)}><FiChevronLeft aria-hidden="true" /></Button>
         <p className="font-heading text-sm font-bold">{monthLabel.format(visibleMonth)}</p>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Next month" onClick={() => changeMonth(1)}><FiChevronRight aria-hidden="true" /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Next month" disabled={nextDisabled} onClick={() => changeMonth(1)}><FiChevronRight aria-hidden="true" /></Button>
       </div>
       <div className="grid grid-cols-7 gap-1" role="grid">
         {weekDays.map((day) => <div key={day} role="columnheader" className="py-1 text-center text-[0.65rem] font-bold uppercase tracking-[.08em] text-muted-foreground">{day}</div>)}
@@ -52,7 +55,7 @@ export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
           const date = toDateOnly(day);
           const outsideMonth = day.getMonth() !== visibleMonth.getMonth();
           const closed = disabled.has(date);
-          const unavailable = Boolean(min && date < min) || closed;
+          const unavailable = Boolean((min && date < min) || (max && date > max)) || closed;
           const selected = value === date;
           const isToday = date === (min ?? today);
           const ariaLabel = `${dayLabel.format(day)}${closed ? ", Closed" : ""}`;
@@ -88,10 +91,11 @@ export function ThemedCalendar({ value, min, disabledDates = [], onChange }: {
   );
 }
 
-export function CalendarDatePicker({ id, value, min, disabledDates, onChange, placeholder = "Select a date", iconOnly = false, invalid = false, disabled = false }: {
+export function CalendarDatePicker({ id, value, min, max, disabledDates, onChange, placeholder = "Select a date", iconOnly = false, invalid = false, disabled = false }: {
   id?: string;
   value?: string;
   min?: string;
+  max?: string;
   disabledDates?: Iterable<string>;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -115,7 +119,7 @@ export function CalendarDatePicker({ id, value, min, disabledDates, onChange, pl
         align={iconOnly ? "end" : "start"}
         collisionAvoidance={iconOnly ? undefined : { side: "shift", align: "shift", fallbackAxisSide: "none" }}
       >
-        <ThemedCalendar key={value || min} value={value} min={min} disabledDates={disabledDates} onChange={(date) => { onChange(date); setOpen(false); }} />
+        <ThemedCalendar key={value || min || max} value={value} min={min} max={max} disabledDates={disabledDates} onChange={(date) => { onChange(date); setOpen(false); }} />
       </PopoverContent>
     </Popover>
   );

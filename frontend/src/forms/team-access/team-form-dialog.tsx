@@ -71,6 +71,9 @@ export function TeamFormDialog({ member, accesses, open, onOpenChange }: {
             maxLength={11}
             pattern="09[0-9]{9}"
             required
+            onInput={(event) => {
+              event.currentTarget.value = event.currentTarget.value.replace(/\D/g, "").slice(0, 11);
+            }}
             {...form.register("contact_number")}
             error={form.formState.errors.contact_number?.message}
             description="Must start with 09 and contain exactly 11 digits."

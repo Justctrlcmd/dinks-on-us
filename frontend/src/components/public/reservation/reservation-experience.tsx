@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { FiCheck, FiChevronDown, FiChevronLeft, FiChevronRight, FiMinus, FiPlus, FiTrash2, FiUsers } from "react-icons/fi";
 import { FaTableTennisPaddleBall } from "react-icons/fa6";
@@ -19,6 +20,7 @@ const currency = new Intl.NumberFormat("en-PH", { style: "currency", currency: "
 const shortDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const longDate = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const subscribeToNothing = () => () => {};
 function slotKey(slot: Pick<ReservationSlot, "date" | "courtId" | "startHour">) {
   return `${slot.date}-${slot.courtId}-${slot.startHour}`;
 }
@@ -97,10 +99,10 @@ function Availability({ date, options, loading, error, selectedSlots, onToggle, 
 }
 
 function AdditionalPlayers({ included, price, quantity, disabled, onChange }: { included: number; price: number; quantity: number; disabled: boolean; onChange: (amount: number) => void }) {
-  return <section className="flex min-h-24 items-center gap-3 rounded-2xl border border-primary/35 bg-card p-4 sm:gap-5 sm:p-7">
+  return <section className="grid min-h-24 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-4 rounded-2xl border border-primary/35 bg-card p-4 sm:flex sm:items-center sm:gap-5 sm:p-7">
     <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-energy/15 text-energy sm:size-14"><FiUsers className="size-5 sm:size-6" aria-hidden="true" /></span>
     <div className="min-w-0 flex-1"><h2 className="font-heading text-lg font-extrabold tracking-[-.035em] sm:text-2xl">Add additional players?</h2><p className="mt-1 text-sm leading-5 text-muted-foreground sm:text-base">Each court includes up to {included} players. Each additional player adds {currency.format(price)} once for the whole reservation.</p></div>
-    <div className="flex shrink-0 items-center rounded-full border border-border bg-background p-1" aria-label="Additional player quantity"><Button type="button" variant="ghost" size="icon-lg" aria-label="Remove one additional player" disabled={disabled || quantity === 0} onClick={() => onChange(-1)}><FiMinus aria-hidden="true" /></Button><output className="w-10 text-center font-heading text-lg font-extrabold" aria-live="polite">{quantity}</output><Button type="button" variant="ghost" size="icon-lg" aria-label="Add one additional player" disabled={disabled} onClick={() => onChange(1)}><FiPlus aria-hidden="true" /></Button></div>
+    <div className="col-span-2 flex justify-end sm:ml-auto" aria-label="Additional player quantity"><div className="flex shrink-0 items-center rounded-full border border-border bg-background p-1"><Button type="button" variant="ghost" size="icon-lg" aria-label="Remove one additional player" disabled={disabled || quantity === 0} onClick={() => onChange(-1)}><FiMinus aria-hidden="true" /></Button><output className="w-10 text-center font-heading text-lg font-extrabold" aria-live="polite">{quantity}</output><Button type="button" variant="ghost" size="icon-lg" aria-label="Add one additional player" disabled={disabled} onClick={() => onChange(1)}><FiPlus aria-hidden="true" /></Button></div></div>
   </section>;
 }
 
@@ -119,7 +121,14 @@ function StickyReservationBar({ selectedSlots, total, onClear, onContinue }: { s
   const firstSlot = selectedSlots[0];
   const courtCount = new Set(selectedSlots.map((slot) => slot.courtId)).size;
   const dateCount = new Set(selectedSlots.map((slot) => slot.date)).size;
-  return <aside aria-label="Current reservation selection" aria-live="polite" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/15 bg-brand-surface text-brand-surface-foreground shadow-[0_-12px_36px_rgba(0,0,0,.16)]"><div className="mx-auto grid max-w-[76rem] gap-3 px-6 py-3 sm:px-10 sm:py-4"><div className="grid min-w-0 grid-cols-4 items-center gap-3"><div className="col-span-3 min-w-0"><p className="text-sm text-white/72"><strong className="text-white">{selectedSlots.length} {selectedSlots.length === 1 ? "slot" : "slots"}</strong> across <strong className="text-energy">{courtCount} {courtCount === 1 ? "court" : "courts"}</strong> · {dateCount === 1 ? shortDate.format(parseDateOnly(firstSlot.date)) : `${dateCount} dates`}</p><p className="mt-1 truncate text-sm text-white/70">{firstSlot.courtName}: {formatHourRange(firstSlot.startHour, firstSlot.endHour)} ({currency.format(firstSlot.price)}){selectedSlots.length > 1 ? ` · +${selectedSlots.length - 1} more` : ""}</p></div><p className="col-span-1 text-right font-heading text-xl font-extrabold text-white sm:text-2xl">{currency.format(total)}</p></div><div className="grid grid-cols-4 gap-2"><Button type="button" variant="outline" size="icon-lg" aria-label="Clear reservation" className="col-span-1 h-12 w-full rounded-full border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={onClear}><FiTrash2 aria-hidden="true" /></Button><Button type="button" className="col-span-3 h-12 rounded-full bg-energy px-4 font-extrabold text-energy-foreground hover:bg-energy/90" onClick={onContinue}>Continue to reservation <FiChevronRight aria-hidden="true" /></Button></div></div></aside>;
+  const mounted = useSyncExternalStore(subscribeToNothing, () => true, () => false);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <aside aria-label="Current reservation selection" aria-live="polite" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/15 bg-brand-surface text-brand-surface-foreground shadow-[0_-12px_36px_rgba(0,0,0,.16)]"><div className="mx-auto grid max-w-[76rem] gap-3 px-6 py-3 sm:px-10 sm:py-4"><div className="grid min-w-0 grid-cols-4 items-center gap-3"><div className="col-span-3 min-w-0"><p className="text-sm text-white/72"><strong className="text-white">{selectedSlots.length} {selectedSlots.length === 1 ? "slot" : "slots"}</strong> across <strong className="text-energy">{courtCount} {courtCount === 1 ? "court" : "courts"}</strong> · {dateCount === 1 ? shortDate.format(parseDateOnly(firstSlot.date)) : `${dateCount} dates`}</p><p className="mt-1 truncate text-sm text-white/70">{firstSlot.courtName}: {formatHourRange(firstSlot.startHour, firstSlot.endHour)} ({currency.format(firstSlot.price)}){selectedSlots.length > 1 ? ` · +${selectedSlots.length - 1} more` : ""}</p></div><p className="col-span-1 text-right font-heading text-xl font-extrabold text-white sm:text-2xl">{currency.format(total)}</p></div><div className="grid grid-cols-4 gap-2"><Button type="button" variant="outline" size="icon-lg" aria-label="Clear reservation" className="col-span-1 h-12 w-full rounded-full border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={onClear}><FiTrash2 aria-hidden="true" /></Button><Button type="button" className="col-span-3 h-12 rounded-full bg-energy px-4 font-extrabold text-energy-foreground hover:bg-energy/90" onClick={onContinue}>Continue to reservation <FiChevronRight aria-hidden="true" /></Button></div></div></aside>,
+    document.body,
+  );
 }
 
 export function ReservationExperience() {

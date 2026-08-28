@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@config "../../tailwind.config.mjs";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -64,8 +65,8 @@
   --primary-foreground: #fffdfc;
   --brand-surface: #174e56;
   --brand-surface-foreground: #fffdfc;
-  --energy: #ff7a59;
-  --energy-foreground: #213547;
+  --energy: #B53A6D;
+  --energy-foreground: #fffdfc;
   --secondary: #fffdfc;
   --secondary-foreground: #213547;
   --muted: #fffdfc;
@@ -80,7 +81,7 @@
   --chart-1: #174e56;
   --chart-2: #1e6f78;
   --chart-3: #bee3db;
-  --chart-4: #ff7a59;
+  --chart-4: #B53A6D;
   --chart-5: #bee3db;
   --radius: 0.625rem;
   --sidebar: #f7f3e9;
@@ -104,8 +105,8 @@
   --primary-foreground: #102f39;
   --brand-surface: #102f39;
   --brand-surface-foreground: #fffdfc;
-  --energy: #ff8d70;
-  --energy-foreground: #213547;
+  --energy: #B53A6D;
+  --energy-foreground: #fffdfc;
   --secondary: #174a54;
   --secondary-foreground: #fffdfc;
   --muted: #174a54;
@@ -119,7 +120,7 @@
   --ring: #bee3db;
   --chart-1: #bee3db;
   --chart-2: #174a54;
-  --chart-3: #ff8d70;
+  --chart-3: #B53A6D;
   --chart-4: #bee3db;
   --chart-5: #174a54;
   --sidebar: #102f39;

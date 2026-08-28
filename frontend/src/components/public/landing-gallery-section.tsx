@@ -20,8 +20,8 @@ export function LandingGallerySection() {
     <section id="gallery" className="border-y border-border bg-card py-20 sm:py-28">
       <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
         <div className="max-w-2xl">
-          <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-energy">
-            <span className="h-px w-8 bg-energy" aria-hidden="true" />
+          <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-foreground">
+            <span className="h-5 w-px bg-foreground" aria-hidden="true" />
             {mockPublicSite.gallery.eyebrow}
           </p>
           <h2 className="mt-4 font-heading text-4xl font-extrabold leading-[0.98] tracking-[-0.05em] text-foreground sm:text-5xl">

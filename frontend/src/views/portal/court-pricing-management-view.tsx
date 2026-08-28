@@ -160,13 +160,12 @@ export function CourtPricingManagementView() {
                     <CardContent className="flex min-h-16 flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-3">
-                          <h3 className="truncate font-heading text-sm font-bold">{item.name}</h3>
+                          <h3 className="min-w-0 flex-1 truncate font-heading text-sm font-bold">{item.name}</h3>
                           <p className="shrink-0 border-l border-border pl-3 text-xs text-muted-foreground">{item.total_quantity} in stock</p>
                         </div>
                         <p className="mt-0.5 font-heading text-base font-extrabold text-primary">{currency.format(item.price)}</p>
                       </div>
                       <div className="ml-auto flex shrink-0 items-center gap-2">
-                        <p className="flex items-center gap-2 text-xs text-muted-foreground"><FiClock aria-hidden="true" />Last modified {formatDateTime(item.updated_at)}</p>
                         <DropdownMenu>
                           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${item.name}`} />}><FiMoreHorizontal aria-hidden="true" /></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">

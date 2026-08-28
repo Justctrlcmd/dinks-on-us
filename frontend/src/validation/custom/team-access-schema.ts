@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AccessModule } from "@/types/api";
+import { philippineMobileNumberSchema } from "./contact-number-schema";
 
 export const accessSchema = z.object({
   name: z.string().trim().min(1, "Please enter an Access name.").max(100, "The Access name must not exceed 100 characters."),
@@ -10,7 +11,7 @@ export type AccessValues = z.infer<typeof accessSchema>;
 const teamBaseSchema = z.object({
   name: z.string().trim().min(1, "Please enter the Team member's name.").max(150),
   email: z.email("Please enter a valid email address."),
-  contact_number: z.string().regex(/^09[0-9]{9}$/, "The contact number must start with 09 and contain exactly 11 digits."),
+  contact_number: philippineMobileNumberSchema("Enter the contact number."),
   role_id: z.number().int().positive("Select an Access profile."),
   password: z.string(),
   password_confirmation: z.string(),

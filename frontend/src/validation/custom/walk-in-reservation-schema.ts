@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { philippineMobileNumberSchema } from "./contact-number-schema";
 
 export const WALK_IN_RECEIPT_ACCEPT = "image/jpeg,image/png,image/webp";
 export const WALK_IN_RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
@@ -7,7 +8,7 @@ const acceptedReceiptTypes = new Set(WALK_IN_RECEIPT_ACCEPT.split(","));
 export const walkInReservationSchema = z.object({
   customer_name: z.string().trim().min(1, "Enter the customer's name.").max(180, "Keep the name under 180 characters."),
   customer_email: z.email("Enter a valid email address.").trim().max(180, "Keep the email under 180 characters."),
-  customer_contact_number: z.string().trim().min(1, "Enter the customer's contact number.").max(30, "Keep the contact number under 30 characters."),
+  customer_contact_number: philippineMobileNumberSchema("Enter the customer's contact number."),
   date: z.string().min(1, "Choose a reservation date."),
   slots: z.array(z.object({
     court_id: z.number().int().positive(),

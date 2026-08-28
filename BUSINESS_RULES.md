@@ -434,7 +434,9 @@ Walk-ins must use the same availability rules as online reservations.
 
 A successfully created walk-in begins as **Verified** because Staff records the payment while creating it. The reservation does not pass through the online Pending/payment-review stage. It may later be started, completed, cancelled, or marked no-show through the normal reservation lifecycle.
 
-Staff must record the customer's name, email address, and contact number. A walk-in may include multiple available one-hour court slots on one booking date, additional players, and active rental equipment using the same configured prices and historical snapshots as an online reservation.
+Creating a walk-in sends the customer a verification email when reservation email delivery is enabled because its payment is recorded as verified at creation. A later approved reschedule may send another email with the updated schedule.
+
+Staff must record the customer's name, email address, and contact number. Customer contact numbers must contain exactly 11 digits and start with `09`. A walk-in may include multiple available one-hour court slots on one booking date, additional players, and active rental equipment using the same configured prices and historical snapshots as an online reservation.
 
 ---
 
@@ -736,11 +738,11 @@ If an event requires courts to become unavailable, management must separately:
 
 ---
 
-# 43. Email Acknowledgment Rule
+# 43. Submission Notification Rule
 
-After successful online reservation submission, the system has an acknowledgment email template ready for the customer.
+After successful online reservation submission, the system does not send a customer email.
 
-The acknowledgment should communicate that:
+The API response and on-screen confirmation should communicate that:
 
 * The reservation was received.
 * Payment is waiting for verification.
@@ -751,17 +753,15 @@ The acknowledgment should communicate that:
 
 # 44. Reservation Status Email Rule
 
-Email templates are prepared for important reservation changes, but reservation delivery remains disabled until a mail provider is configured and `RESERVATION_EMAILS_ENABLED` is explicitly enabled.
+Customer emails are sent only for an explicit reservation status event, and only when a mail provider is configured and `RESERVATION_EMAILS_ENABLED` is explicitly enabled.
 
 Current expected notification events:
 
-* Reservation submitted
 * Reservation verified
 * Reservation rejected
 * Reservation rescheduled
-* Reservation cancelled
 
-Completion email is not currently required.
+The reschedule email shows the newly active court, date, and time. Public online submission, cancellation, completion, and other reservation changes do not send customer emails. Walk-in creation is an immediate verified event and sends the verification email when enabled.
 
 ---
 

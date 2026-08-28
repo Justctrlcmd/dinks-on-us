@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ReservationStatusMail;
 use App\Models\Court;
 use App\Models\CourtConfiguration;
 use App\Models\PaymentMethod;
@@ -101,8 +102,118 @@ class ReservationManagementTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_public_submission_requires_an_eleven_digit_contact_number_starting_with_zero_nine(): void
+    {
+        foreach (['0912345678', '091234567890', '09A23456789', '+639123456789'] as $contactNumber) {
+            $payload = $this->submissionPayload();
+            $payload['customer_contact_number'] = $contactNumber;
+
+            $this->post('/api/v1/public/reservations', $payload, ['Accept' => 'application/json'])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['customer_contact_number']);
+        }
+    }
+
+    public function test_walk_in_submission_requires_an_eleven_digit_contact_number_starting_with_zero_nine(): void
+    {
+        foreach (['0912345678', '091234567890', '09A23456789', '+639123456789'] as $contactNumber) {
+            $payload = $this->walkInPayload();
+            $payload['customer_contact_number'] = $contactNumber;
+
+            $this->actingAs($this->manager)
+                ->postJson('/api/v1/management/reservations/walk-in', $payload)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['customer_contact_number']);
+        }
+    }
+
+    public function test_only_verification_rejection_and_rescheduling_send_customer_emails(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+
+        $verified = $this->submit(9);
+        Mail::assertNothingSent();
+
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/management/reservations/{$verified['id']}/verify")
+            ->assertOk();
+
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail) use ($verified): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'verified'
+                && $mail->hasTo('juan@example.com')
+                && $mail->envelope()->subject === "Reservation Verified — {$verified['reference_number']}"
+                && str_contains($html, 'Your reservation is verified')
+                && str_contains($html, 'your payment has been verified and your reservation is confirmed')
+                && str_contains($html, $verified['reference_number']);
+        });
+        Mail::assertSent(ReservationStatusMail::class, 1);
+
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/management/reservations/{$verified['id']}/reschedule", [
+                'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 11]],
+            ])
+            ->assertOk();
+
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail) use ($verified): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'rescheduled'
+                && $mail->hasTo('juan@example.com')
+                && $mail->envelope()->subject === "Reservation Rescheduled — {$verified['reference_number']}"
+                && str_contains($html, 'Your reservation has been rescheduled')
+                && str_contains($html, '11:00 AM – 12:00 PM')
+                && str_contains($html, '>Court</div>')
+                && str_contains($html, '>Price</div>')
+                && str_contains($html, '>Date</div>')
+                && str_contains($html, '>Time</div>')
+                && str_contains($html, '1 Additional Player')
+                && str_contains($html, 'Court rental')
+                && str_contains($html, 'Reservation total')
+                && str_contains($html, 'Amount paid')
+                && ! str_contains($html, 'Original reservation subtotal')
+                && ! str_contains($html, 'Current total')
+                && str_contains($html, 'Follow us for more information')
+                && str_contains($html, 'facebook.com/profile.php?id=61593085117097')
+                && ! str_contains($html, '<img')
+                && ! str_contains($html, '9:00 AM – 10:00 AM');
+        });
+        Mail::assertSent(ReservationStatusMail::class, 2);
+
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/management/reservations/{$verified['id']}/cancel", [
+                'reason' => 'Approved force majeure', 'refund_type' => 'FULL',
+            ])
+            ->assertOk();
+        Mail::assertSent(ReservationStatusMail::class, 2);
+
+        $rejected = $this->submit(10);
+        Mail::assertSent(ReservationStatusMail::class, 2);
+
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/management/reservations/{$rejected['id']}/reject", [
+                'concern' => 'INVALID_PAYMENT_PROOF', 'reason' => 'Receipt cannot be read.',
+            ])
+            ->assertOk();
+
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail) use ($rejected): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'rejected'
+                && $mail->hasTo('juan@example.com')
+                && $mail->envelope()->subject === "Reservation Not Approved — {$rejected['reference_number']}"
+                && str_contains($html, 'Your reservation was not approved')
+                && str_contains($html, 'Invalid Payment Proof')
+                && str_contains($html, 'Receipt cannot be read.');
+        });
+        Mail::assertSent(ReservationStatusMail::class, 3);
+    }
+
     public function test_authorized_staff_can_create_a_verified_walk_in_with_an_optional_receipt(): void
     {
+        config(['reservations.emails_enabled' => true]);
+
         $equipment = RentalEquipment::query()->create([
             'name' => 'Paddle', 'price' => 50, 'total_quantity' => 10, 'is_active' => true,
         ]);
@@ -137,6 +248,22 @@ class ReservationManagementTest extends TestCase
         ]);
         $payment = $reservation->payments()->firstOrFail();
         Storage::disk('local')->assertExists($payment->proof_path);
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'verified'
+                && $mail->hasTo('maria.walkin@example.com')
+                && str_contains($html, 'Your reservation is verified')
+                && str_contains($html, '2 Paddle')
+                && str_contains($html, '2 Additional Players')
+                && str_contains($html, 'Court rental')
+                && str_contains($html, 'Rental equipment')
+                && str_contains($html, 'Reservation total')
+                && str_contains($html, 'Amount paid')
+                && ! str_contains($html, 'Original reservation subtotal')
+                && ! str_contains($html, 'Current total')
+                && ! str_contains($html, '<img');
+        });
     }
 
     public function test_walk_in_cash_payment_allows_an_empty_reference_and_receipt(): void

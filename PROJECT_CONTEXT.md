@@ -887,13 +887,11 @@ The implementation should preserve these business effects even if the internal a
 
 Current customer email events:
 
-* Reservation received
 * Verified
 * Rejected
 * Rescheduled
-* Cancelled
 
-Reservation completion currently does not require a customer email.
+The reschedule email contains the newly active reservation schedule. Public online submission, cancellation, completion, and other reservation changes do not send customer emails. Walk-in creation is immediately verified and sends the verification email when enabled.
 
 ---
 

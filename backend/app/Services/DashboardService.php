@@ -67,10 +67,8 @@ class DashboardService
     public function reservationDetail(Reservation $reservation): Reservation
     {
         if (! in_array($reservation->status, [
-            Reservation::STATUS_PENDING,
-            Reservation::STATUS_VERIFIED,
-            Reservation::STATUS_ONGOING,
-            Reservation::STATUS_COMPLETED,
+            ...Reservation::OPERATIONAL_STATUSES,
+            ...Reservation::FINAL_STATUSES,
         ], true)) {
             throw (new ModelNotFoundException)->setModel(Reservation::class, [$reservation->id]);
         }
@@ -106,31 +104,35 @@ class DashboardService
     {
         $unavailable = collect($snapshot['unavailable_slots'])
             ->mapWithKeys(fn (array $slot): array => [$this->slotKey($slot['court_id'], $slot['start_hour']) => true]);
+        $closed = collect($snapshot['closed_slots'] ?? [])
+            ->mapWithKeys(fn (array $slot): array => [$this->slotKey($slot['court_id'], $slot['start_hour']) => true]);
         $activeReservations = $snapshot['reservations_by_slot'];
-        $completedReservations = [];
+        $finalReservations = [];
 
         Reservation::query()
-            ->where('status', Reservation::STATUS_COMPLETED)
+            ->whereIn('status', Reservation::FINAL_STATUSES)
             ->whereHas('currentSlots', fn ($slots) => $slots->whereDate('date', $date))
             ->with(['currentSlots' => fn ($slots) => $slots->whereDate('date', $date)])
             ->get()
-            ->each(function (Reservation $reservation) use (&$completedReservations): void {
+            ->each(function (Reservation $reservation) use (&$finalReservations): void {
                 foreach ($reservation->currentSlots as $slot) {
-                    $completedReservations[$this->slotKey($slot->court_id, $slot->start_hour)] = $reservation;
+                    $finalReservations[$this->slotKey($slot->court_id, $slot->start_hour)] = $reservation;
                 }
             });
 
-        $courts = $snapshot['courts']->map(function ($court) use ($date, $snapshot, $now, $unavailable, $activeReservations, $completedReservations): array {
+        $courts = $snapshot['courts']->map(function ($court) use ($date, $snapshot, $now, $unavailable, $closed, $activeReservations, $finalReservations): array {
             return [
                 'id' => $court->id,
                 'name' => "Court {$court->court_number}",
-                'slots' => collect($snapshot['slots'])->map(function (array $slot) use ($court, $date, $now, $unavailable, $activeReservations, $completedReservations): array {
+                'slots' => collect($snapshot['slots'])->map(function (array $slot) use ($court, $date, $now, $unavailable, $closed, $activeReservations, $finalReservations): array {
                     $key = $this->slotKey($court->id, $slot['start_hour']);
-                    $reservation = $activeReservations[$key] ?? $completedReservations[$key] ?? null;
+                    $reservation = $activeReservations[$key] ?? $finalReservations[$key] ?? null;
                     $status = match (true) {
+                        // Keep the reservation's status for historical slots so staff can open the record.
+                        $reservation !== null => $reservation->status,
+                        // Keep an explicit closure visible even when the closed slot is in the past.
+                        $closed->has($key) => 'CLOSED',
                         $this->isPastSlot($date, $slot['end_hour'], $now) => 'PAST',
-                        isset($activeReservations[$key]) => $reservation->status,
-                        isset($completedReservations[$key]) => Reservation::STATUS_COMPLETED,
                         $unavailable->has($key) => 'CLOSED',
                         default => 'AVAILABLE',
                     };
@@ -140,8 +142,8 @@ class DashboardService
                         'end_hour' => $slot['end_hour'],
                         'price' => $slot['price'],
                         'status' => $status,
-                        'reservation_id' => $status === 'PAST' ? null : $reservation?->id,
-                        'reservation_reference' => $status === 'PAST' ? null : $reservation?->reference_number,
+                        'reservation_id' => $reservation?->id,
+                        'reservation_reference' => $reservation?->reference_number,
                     ];
                 })->values()->all(),
             ];

@@ -79,16 +79,24 @@ function PolicyBoard({ section }: { section: PolicySection }) {
   const subheaderFormItem = subheaderForm === "create" ? null : subheaderForm;
 
   return (
-    <section aria-labelledby={`policy-section-${section.id}`} className="rounded-2xl border bg-muted/45 p-3 sm:p-4">
-      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+    <section aria-labelledby={`policy-section-${section.id}`} className="min-w-0 overflow-x-clip rounded-2xl border bg-muted/45 p-3 sm:p-4">
+      <div className="relative mb-4">
+        <div className="pr-40 sm:pr-56">
           <p className="text-xs font-bold uppercase tracking-[.16em] text-muted-foreground">Policy section</p>
           <h2 id={`policy-section-${section.id}`} className="mt-1 font-heading text-lg font-semibold">{section.name}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{current.subheaders.reduce((count, item) => count + item.rules.length, 0)} {current.subheaders.reduce((count, item) => count + item.rules.length, 0) === 1 ? "rule" : "rules"}. Drag sub-headers or rules to update the public order.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="h-10" onClick={() => setSubheaderForm("create")}><FiPlus aria-hidden="true" />Add sub-header</Button>
-          <Button className="h-10" onClick={() => setRuleForm("create")}><FiPlus aria-hidden="true" />Add rule</Button>
+        <p className="mt-1 text-sm text-muted-foreground">{current.subheaders.reduce((count, item) => count + item.rules.length, 0)} {current.subheaders.reduce((count, item) => count + item.rules.length, 0) === 1 ? "rule" : "rules"}. Drag sub-headers or rules to update the public order.</p>
+        <div className="absolute right-0 top-0 flex gap-1.5 sm:gap-2">
+          <Button variant="outline" size="sm" onClick={() => setSubheaderForm("create")}>
+            <FiPlus aria-hidden="true" />
+            <span className="sm:hidden">Sub-header</span>
+            <span className="hidden sm:inline">Add sub-header</span>
+          </Button>
+          <Button size="sm" onClick={() => setRuleForm("create")}>
+            <FiPlus aria-hidden="true" />
+            <span className="sm:hidden">Rule</span>
+            <span className="hidden sm:inline">Add rule</span>
+          </Button>
         </div>
       </div>
 
@@ -99,7 +107,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
           {current.subheaders.map((subheader, subheaderIndex) => {
             const rules = subheader.rules;
             return (
-              <div key={subheader.id} role="listitem" className="grid gap-2">
+              <div key={subheader.id} role="listitem" className="grid min-w-0 gap-2">
                 <Card
                   draggable={!subheaderOrder.isPending}
                   className={cn(

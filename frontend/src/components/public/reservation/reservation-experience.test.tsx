@@ -75,6 +75,7 @@ describe("ReservationExperience", () => {
     await user.click(screen.getAllByRole("button", { name: /Select Court 1, 7:00 AM/ })[0]);
 
     const reservationBar = screen.getByRole("complementary", { name: "Current reservation selection" });
+    expect(reservationBar.parentElement).toBe(document.body);
     expect(within(reservationBar).getByText("₱500")).toBeInTheDocument();
     expect(within(reservationBar).getByText(/1 slot/)).toBeInTheDocument();
 

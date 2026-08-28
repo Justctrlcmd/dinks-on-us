@@ -74,4 +74,14 @@ describe("WalkInReservationForm", () => {
     }));
     expect(mocks.push).toHaveBeenCalledWith("/portal/reservations");
   });
+
+  it("keeps contact-number input to eleven digits", async () => {
+    const user = userEvent.setup();
+    render(<WalkInReservationForm />);
+
+    const contact = screen.getByRole("textbox", { name: /Contact number/ });
+    await user.type(contact, "a09171234567899");
+
+    expect(contact).toHaveValue("09171234567");
+  });
 });

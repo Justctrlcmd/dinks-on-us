@@ -40,8 +40,8 @@ function SectionHeading({
 }) {
   return (
     <div className="max-w-2xl">
-      <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-energy">
-        <span className="h-px w-8 bg-energy" aria-hidden="true" />
+      <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-foreground">
+        <span className="h-5 w-px bg-foreground" aria-hidden="true" />
         {eyebrow}
       </p>
       <h2 className="mt-4 font-heading text-4xl font-extrabold leading-[0.98] tracking-[-0.05em] text-foreground sm:text-5xl">
@@ -81,7 +81,7 @@ export function LandingView() {
             <div className="flex flex-1 items-center py-10 sm:py-14">
               <div className="max-w-3xl text-white">
                 <p className="mb-5 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.22em] text-white/72 sm:text-sm">
-                  <span className="h-px w-8 bg-white/65" aria-hidden="true" />
+                  <span className="h-5 w-px bg-white/65 sm:h-6" aria-hidden="true" />
                   {mockPublicSite.hero.eyebrow}
                 </p>
                 <h1 className="font-heading text-[clamp(2rem,8.2vw,2.55rem)] font-extrabold leading-[0.96] tracking-[-0.055em] sm:text-[clamp(3rem,5vw,4.8rem)]">
@@ -162,8 +162,8 @@ export function LandingView() {
           <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
             <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
               <div className="max-w-2xl">
-                <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-energy">
-                  <span className="h-px w-8 bg-energy" aria-hidden="true" />
+                <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-foreground">
+                  <span className="h-5 w-px bg-foreground" aria-hidden="true" />
                   {mockPublicSite.reservation.eyebrow}
                 </p>
                 <h2 className="mt-4 font-heading text-4xl font-extrabold leading-[0.98] tracking-[-0.05em] text-foreground sm:text-5xl">

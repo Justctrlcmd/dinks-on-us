@@ -3,14 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { FiChevronLeft, FiMenu } from "react-icons/fi";
+import { FiChevronLeft, FiClock, FiMenu } from "react-icons/fi";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PendingReservationBadge } from "@/components/portal/pending-reservation-badge";
+import { canAccessPortalModule } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
+import { usePendingReservationCount } from "@/hooks/queries/use-reservations";
 import { cn } from "@/lib/utils";
 import { PortalNavigation } from "./portal-navigation";
 import { PortalUserMenu } from "./portal-user-menu";
@@ -20,8 +23,11 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   const { data: user } = useCurrentUser();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pendingReservationQuery = usePendingReservationCount(Boolean(user && canAccessPortalModule(user, "RESERVATION")));
 
   if (!user) return null;
+
+  const pendingReservationCount = pendingReservationQuery.data;
 
   return (
     <div className="min-h-svh bg-background">
@@ -46,7 +52,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
                     alt=""
                     width={36}
                     height={36}
-                    className="size-9 rounded-lg object-cover"
+                    className="size-9 rounded-lg object-contain"
                     priority
                   />
                 </button>
@@ -84,6 +90,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           <PortalNavigation
             user={user}
             collapsed={collapsed}
+            pendingReservationCount={pendingReservationCount}
             onRequestExpand={() => setCollapsed(false)}
           />
         </div>
@@ -98,12 +105,12 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           <SheetContent side="left" className="w-72 bg-sidebar text-sidebar-foreground">
             <SheetHeader className="border-b border-sidebar-border">
               <SheetTitle className="flex items-center gap-2.5 text-sidebar-foreground">
-                <Image src="/images/dinks-on-us-logo.png" alt="" width={36} height={36} className="size-9 rounded-lg object-cover" />
+                <Image src="/images/dinks-on-us-logo.png" alt="" width={36} height={36} className="size-9 rounded-lg object-contain" />
                 {siteConfig.name}
               </SheetTitle>
             </SheetHeader>
             <div className="min-h-0 flex-1 overflow-y-auto px-3">
-              <PortalNavigation user={user} onNavigate={() => setMobileOpen(false)} />
+              <PortalNavigation user={user} pendingReservationCount={pendingReservationCount} onNavigate={() => setMobileOpen(false)} />
             </div>
             <div className="mt-auto border-t border-sidebar-border p-3">
               <PortalUserMenu user={user} />
@@ -111,10 +118,18 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           </SheetContent>
         </Sheet>
         <Link href="/portal" className="flex items-center gap-2 font-heading font-semibold">
-          <Image src="/images/dinks-on-us-logo.png" alt="" width={30} height={30} className="size-7 rounded-md object-cover" />
+          <Image src="/images/dinks-on-us-logo.png" alt="" width={30} height={30} className="size-7 rounded-md object-contain" />
           {siteConfig.name}
         </Link>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          {pendingReservationCount ? (
+            <Link href="/portal/reservations" aria-label={`${pendingReservationCount} pending reservation${pendingReservationCount === 1 ? "" : "s"}`} className="relative grid size-10 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-ring">
+              <FiClock aria-hidden="true" className="size-[18px]" />
+              <PendingReservationBadge count={pendingReservationCount} icon className="border-background" />
+            </Link>
+          ) : null}
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className={cn("transition-[padding] duration-200 motion-reduce:transition-none", collapsed ? "md:pl-[72px]" : "md:pl-64")}>

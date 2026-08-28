@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { FiChevronDown } from "react-icons/fi";
+import { PendingReservationBadge } from "@/components/portal/pending-reservation-badge";
 import { managementAreas } from "@/config/management";
 import { canAccessPortalModule, getPortalNavigation } from "@/config/navigation";
 import { cn } from "@/lib/utils";
@@ -13,11 +14,13 @@ import type { User } from "@/types/user";
 export function PortalNavigation({
   user,
   collapsed = false,
+  pendingReservationCount,
   onNavigate,
   onRequestExpand,
 }: {
   user: User;
   collapsed?: boolean;
+  pendingReservationCount?: number;
   onNavigate?: () => void;
   onRequestExpand?: () => void;
 }) {
@@ -33,6 +36,8 @@ export function PortalNavigation({
           ? pathname === item.href
           : pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;
+        const pendingCount = item.module === "RESERVATION" ? pendingReservationCount : undefined;
+        const reservationLabel = pendingCount ? `${item.title}, ${pendingCount} pending reservation${pendingCount === 1 ? "" : "s"}` : item.title;
 
         if (item.module === "MANAGEMENT") {
           const managementButton = (
@@ -109,21 +114,25 @@ export function PortalNavigation({
             href={item.href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
+            aria-label={collapsed || pendingCount ? reservationLabel : undefined}
             className={cn(
               "flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               active && "bg-sidebar-primary font-medium text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",
               collapsed && "justify-center px-0",
+              pendingCount && "relative",
             )}
           >
             <Icon aria-hidden="true" className="size-[18px] shrink-0" />
             {!collapsed && <span>{item.title}</span>}
+            {!collapsed && pendingCount ? <PendingReservationBadge count={pendingCount} className="ml-auto" /> : null}
+            {collapsed && pendingCount ? <PendingReservationBadge count={pendingCount} icon /> : null}
           </Link>
         );
 
         return collapsed ? (
           <Tooltip key={item.href}>
             <TooltipTrigger render={link} />
-            <TooltipContent side="right">{item.title}</TooltipContent>
+            <TooltipContent side="right">{pendingCount ? `${item.title} · ${pendingCount} pending` : item.title}</TooltipContent>
           </Tooltip>
         ) : <div key={item.href}>{link}</div>;
       })}

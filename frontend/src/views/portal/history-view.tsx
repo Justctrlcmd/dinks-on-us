@@ -67,7 +67,7 @@ export function HistoryView() {
     <div className="grid gap-5">
       <PageHeader title="History" description="Review finalized reservation records and their preserved operational details." />
 
-      <section aria-label="History KPIs" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="History KPIs" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <PortalMetricCard label="Completed" value={kpis?.completed} icon={FiCheckCircle} iconClassName="bg-success/10 text-success" />
         <PortalMetricCard label="Cancelled" value={kpis?.cancelled} icon={FiXCircle} iconClassName="bg-destructive/10 text-destructive" />
         <PortalMetricCard label="Rejected" value={kpis?.rejected} icon={FiSlash} iconClassName="bg-destructive/10 text-destructive" />
@@ -124,7 +124,7 @@ export function HistoryView() {
                     <th scope="col" className="px-4 py-3">Booking Date</th>
                     <th scope="col" className="px-4 py-3">Source</th>
                     <th scope="col" className="px-4 py-3">Total</th>
-                    <th scope="col" className="px-4 py-3">Final Status</th>
+                    <th scope="col" className="w-36 px-4 py-3 text-center">Final Status</th>
                     <th scope="col" className="px-4 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
@@ -137,7 +137,7 @@ export function HistoryView() {
                       <td className="px-4 py-3">{formatDateOnly(reservation.booking_date)}</td>
                       <td className="px-4 py-3 capitalize">{reservation.source.toLowerCase().replaceAll("_", "-")}</td>
                       <td className="px-4 py-3 font-bold">{currency.format(reservation.amounts.final)}</td>
-                      <td className="px-4 py-3"><ReservationStatusBadge status={reservation.display_status} /></td>
+                      <td className="w-36 px-4 py-3 text-center align-middle"><ReservationStatusBadge status={reservation.display_status} /></td>
                       <td className="px-4 py-3 text-center"><ViewAction reservation={reservation} onView={viewReservation} /></td>
                     </tr>
                   ))}
@@ -147,19 +147,21 @@ export function HistoryView() {
 
             <div className="grid gap-3 p-3 md:hidden">
               {reservations.map((reservation) => (
-                <article key={reservation.id} className="relative rounded-xl border p-4">
-                  <div className="absolute right-2 top-2"><ViewAction reservation={reservation} onView={viewReservation} /></div>
-                  <div className="pr-24">
+                <article key={reservation.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 rounded-xl border p-4">
+                  <div className="min-w-0">
                     <p className="font-heading font-extrabold text-primary">{reservation.reference_number}</p>
                     <h3 className="mt-1 font-semibold">{reservation.customer.name}</h3>
                     <p className="text-sm text-muted-foreground">{reservation.customer.contact_number}</p>
                   </div>
-                  <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="row-span-2 flex min-h-full flex-col items-end justify-between gap-8">
+                    <ViewAction reservation={reservation} onView={viewReservation} />
+                    <ReservationStatusBadge status={reservation.display_status} />
+                  </div>
+                  <dl className="mt-4 grid min-w-0 gap-3 text-sm">
                     <div><dt className="text-xs text-muted-foreground">Booking date</dt><dd className="font-medium">{formatDateOnly(reservation.booking_date)}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">Total</dt><dd className="font-bold">{currency.format(reservation.amounts.final)}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium capitalize">{reservation.source.toLowerCase().replaceAll("_", "-")}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Total</dt><dd className="font-bold">{currency.format(reservation.amounts.final)}</dd></div>
                   </dl>
-                  <div className="mt-3"><ReservationStatusBadge status={reservation.display_status} /></div>
                 </article>
               ))}
             </div>

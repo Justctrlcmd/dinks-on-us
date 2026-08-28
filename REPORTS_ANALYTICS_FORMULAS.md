@@ -419,6 +419,9 @@ Important rules:
 - do not count future unelapsed hours in the denominator
 - exclude closures/blocks from sellable capacity
 - apply the selected court filter when present
+- include only courts with at least one reservation-slot record in the selected
+  date/source scope; inactive courts remain visible when they have history
+- treat courts without any scoped slot records as nonexistent for the report
 
 ---
 
@@ -1464,6 +1467,17 @@ Purpose: share of theoretical court capacity left open for sale.
 ---
 
 # 47. Final rule
+
+## Current schema capacity basis
+
+The current schema does not version court operating hours or court activation
+history. Capacity reports therefore apply the current court configuration to
+the selected historical dates and subtract the recorded closure history. The
+API and UI disclose this basis. Exact historical capacity requires a future
+versioned operating-schedule and court-status history model; reports must not
+fabricate that history.
+
+---
 
 When a formula changes because of a new client decision:
 
