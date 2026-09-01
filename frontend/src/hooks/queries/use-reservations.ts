@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { reservationKeys } from "@/config/query-keys";
-import { getReservation, getReservations } from "@/services/reservations/reservation-service";
+import { getPendingReservationSummary, getReservation, getReservations } from "@/services/reservations/reservation-service";
 import type { ReservationFilters } from "@/types/reservation";
 
 export function useReservations(filters: ReservationFilters) {
@@ -12,10 +12,12 @@ export function useReservations(filters: ReservationFilters) {
 export function usePendingReservationCount(enabled = true) {
   return useQuery({
     queryKey: reservationKeys.pendingCount(),
-    queryFn: ({ signal }) => getReservations({ page: 1, search: "", status: "PENDING" }, signal).then((response) => response.meta?.total ?? response.data.kpis.pending),
+    queryFn: ({ signal }) => getPendingReservationSummary(signal).then((response) => response.data),
     enabled,
     staleTime: 30_000,
     refetchInterval: enabled ? 30_000 : false,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   });
 }
 

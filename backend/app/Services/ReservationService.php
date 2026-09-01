@@ -17,11 +17,11 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -29,16 +29,22 @@ class ReservationService
 {
     private const DETAIL_RELATIONS = ['currentSlots.court', 'payments', 'equipmentItems', 'adjustments', 'scheduleHistories', 'refunds'];
 
+    public function __construct(private readonly PaymentProofStorageService $proofStorage) {}
+
     /** @param array<string, mixed> $input */
-    public function submit(array $input, UploadedFile $proof): Reservation
+    public function submit(array $input, UploadedFile $proof, ?string $idempotencyKey = null): Reservation
     {
-        $proofPath = $proof->store('reservation-payment-proofs', 'local');
-        if (! is_string($proofPath)) {
-            throw new ReservationConflictException('The payment proof could not be stored. Please try again.');
+        if ($idempotencyKey) {
+            $existing = Reservation::query()->where('idempotency_key', $idempotencyKey)->first();
+            if ($existing) {
+                return $existing->fresh(self::DETAIL_RELATIONS);
+            }
         }
 
+        $proofPath = $this->proofStorage->store($proof);
+
         try {
-            return DB::transaction(function () use ($input, $proofPath): Reservation {
+            return DB::transaction(function () use ($input, $proofPath, $idempotencyKey): Reservation {
                 $slots = collect($input['slots'])->sortBy(fn (array $slot): string => sprintf('%010d-%02d', $slot['court_id'], $slot['start_hour']))->values()->all();
                 $date = $slots[0]['date'];
                 $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
@@ -67,6 +73,7 @@ class ReservationService
                 $originalAmount = round($courtAmount + $playerAmount + $equipmentAmount, 2);
 
                 $reservation = Reservation::query()->create([
+                    'idempotency_key' => $idempotencyKey,
                     'source' => 'ONLINE', 'booking_date' => $date, 'customer_name' => $input['customer_name'],
                     'customer_email' => $input['customer_email'], 'customer_contact_number' => $input['customer_contact_number'],
                     'status' => Reservation::STATUS_PENDING, 'original_additional_players' => $input['additional_players'],
@@ -95,8 +102,18 @@ class ReservationService
 
                 return $reservation->fresh(self::DETAIL_RELATIONS);
             });
+        } catch (QueryException $exception) {
+            if ($idempotencyKey && $exception->getCode() === '23000' && str_contains($exception->getMessage(), 'idempotency_key')) {
+                $this->proofStorage->delete($proofPath);
+                $existing = Reservation::query()->where('idempotency_key', $idempotencyKey)->first();
+                if ($existing) {
+                    return $existing->fresh(self::DETAIL_RELATIONS);
+                }
+            }
+            $this->proofStorage->delete($proofPath);
+            throw $exception;
         } catch (Throwable $exception) {
-            Storage::disk('local')->delete($proofPath);
+            $this->proofStorage->delete($proofPath);
             throw $exception;
         }
     }
@@ -104,10 +121,7 @@ class ReservationService
     /** @param array<string, mixed> $input */
     public function createWalkIn(array $input, User $user, ?UploadedFile $proof = null): Reservation
     {
-        $proofPath = $proof?->store('reservation-payment-proofs', 'local');
-        if ($proof && ! is_string($proofPath)) {
-            throw new ReservationConflictException('The receipt could not be stored. Please try again.');
-        }
+        $proofPath = $proof ? $this->proofStorage->store($proof) : null;
 
         try {
             return DB::transaction(function () use ($input, $user, $proofPath): Reservation {
@@ -135,6 +149,14 @@ class ReservationService
                 $equipmentAmount = $equipment->sum(fn (array $item): float => $item['quantity'] * $item['unit_amount']);
                 $originalAmount = round($courtAmount + $playerAmount + $equipmentAmount, 2);
                 $now = now();
+                $channel = $input['payment_channel'];
+                $paymentMethod = null;
+                if ($channel === 'EWALLET_BANK') {
+                    $paymentMethod = PaymentMethod::query()->active()->lockForUpdate()->find($input['payment_method_id']);
+                    if (! $paymentMethod) {
+                        throw ValidationException::withMessages(['payment_method_id' => ['Choose an active e-wallet or bank payment method.']]);
+                    }
+                }
 
                 $reservation = Reservation::query()->create([
                     'source' => 'WALK_IN',
@@ -180,9 +202,9 @@ class ReservationService
                 }
                 $this->assertEquipmentAvailable($reservation);
 
-                $channel = $input['payment_channel'];
                 $reservation->payments()->create([
-                    'payment_method_name' => $channel === 'CASH' ? 'Cash' : 'E-wallet / Bank',
+                    'payment_method_id' => $paymentMethod?->id,
+                    'payment_method_name' => $paymentMethod?->name ?? 'Cash',
                     'channel' => $channel,
                     'kind' => 'INITIAL',
                     'status' => 'VERIFIED',
@@ -209,7 +231,7 @@ class ReservationService
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
-                Storage::disk('local')->delete($proofPath);
+                $this->proofStorage->delete($proofPath);
             }
             throw $exception;
         }
@@ -238,14 +260,37 @@ class ReservationService
             }
         }
 
+        $kpis = Reservation::query()
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending', [Reservation::STATUS_PENDING])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as ongoing', [Reservation::STATUS_ONGOING])
+            ->selectRaw('SUM(CASE WHEN status = ? AND is_rescheduled = 0 THEN 1 ELSE 0 END) as verified', [Reservation::STATUS_VERIFIED])
+            ->selectRaw('SUM(CASE WHEN status = ? AND is_rescheduled = 1 THEN 1 ELSE 0 END) as rescheduled', [Reservation::STATUS_VERIFIED])
+            ->first();
+
         return [
             'paginator' => $query->paginate(10),
             'kpis' => [
-                'pending' => Reservation::query()->where('status', Reservation::STATUS_PENDING)->count(),
-                'ongoing' => Reservation::query()->where('status', Reservation::STATUS_ONGOING)->count(),
-                'verified' => Reservation::query()->where('status', Reservation::STATUS_VERIFIED)->where('is_rescheduled', false)->count(),
-                'rescheduled' => Reservation::query()->where('status', Reservation::STATUS_VERIFIED)->where('is_rescheduled', true)->count(),
+                'pending' => (int) ($kpis?->pending ?? 0),
+                'ongoing' => (int) ($kpis?->ongoing ?? 0),
+                'verified' => (int) ($kpis?->verified ?? 0),
+                'rescheduled' => (int) ($kpis?->rescheduled ?? 0),
             ],
+        ];
+    }
+
+    /** @return array{pending_count: int, latest_online_submission_id: int|null, latest_online_submission_at: string|null} */
+    public function pendingSummary(): array
+    {
+        $summary = Reservation::query()
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count', [Reservation::STATUS_PENDING])
+            ->selectRaw("MAX(CASE WHEN source = 'ONLINE' THEN id ELSE NULL END) as latest_online_submission_id")
+            ->selectRaw("MAX(CASE WHEN source = 'ONLINE' THEN submitted_at ELSE NULL END) as latest_online_submission_at")
+            ->first();
+
+        return [
+            'pending_count' => (int) ($summary?->pending_count ?? 0),
+            'latest_online_submission_id' => $summary?->latest_online_submission_id === null ? null : (int) $summary->latest_online_submission_id,
+            'latest_online_submission_at' => $summary?->latest_online_submission_at,
         ];
     }
 
@@ -422,6 +467,15 @@ class ReservationService
                     throw ValidationException::withMessages(['add_ons' => ['Court pricing has not been configured.']]);
                 }
 
+                $channel = $input['payment_channel'];
+                $paymentMethod = null;
+                if ($channel === 'EWALLET_BANK') {
+                    $paymentMethod = PaymentMethod::query()->active()->lockForUpdate()->find($input['payment_method_id']);
+                    if (! $paymentMethod) {
+                        throw ValidationException::withMessages(['payment_method_id' => ['Choose an active e-wallet or bank payment method.']]);
+                    }
+                }
+
                 $slots = $input['slots'] ?? [];
                 $addOnAmount = 0.0;
                 if ($slots) {
@@ -458,15 +512,10 @@ class ReservationService
                 $this->recalculate($reservation);
                 $amountDue = max(0, round((float) $reservation->final_amount - (float) $reservation->amount_paid, 2));
                 if ($amountDue > 0) {
-                    $proofPath = $proof?->store('reservation-payment-proofs', 'local');
-                    if ($proof && ! is_string($proofPath)) {
-                        throw new ReservationConflictException('The add-on payment proof could not be stored.');
-                    }
-                    $channel = $input['payment_channel'];
+                    $proofPath = $proof ? $this->proofStorage->store($proof) : null;
                     $reservation->payments()->create([
-                        'payment_method_name' => match ($channel) {
-                            'EWALLET' => 'E-wallet', 'BANK' => 'Bank', default => 'Cash'
-                        },
+                        'payment_method_id' => $paymentMethod?->id,
+                        'payment_method_name' => $paymentMethod?->name ?? 'Cash',
                         'channel' => $channel, 'kind' => 'ADD_ON', 'status' => 'VERIFIED', 'amount' => $amountDue,
                         'reference_number' => $input['payment_reference_number'] ?? null, 'proof_path' => $proofPath,
                         'recorded_by_user_id' => $user->id, 'verified_by_user_id' => $user->id, 'verified_at' => now(),
@@ -480,7 +529,7 @@ class ReservationService
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
-                Storage::disk('local')->delete($proofPath);
+                $this->proofStorage->delete($proofPath);
             }
             throw $exception;
         }
@@ -488,12 +537,9 @@ class ReservationService
 
     public function complete(Reservation $reservation, User $user, ?string $channel, ?string $reference, ?UploadedFile $proof): Reservation
     {
-        $proofPath = $proof?->store('reservation-payment-proofs', 'local');
-        if ($proof && ! is_string($proofPath)) {
-            throw new ReservationConflictException('The additional payment proof could not be stored.');
-        }
+        $proofPath = null;
         try {
-            return DB::transaction(function () use ($reservation, $user, $channel, $reference, $proofPath): Reservation {
+            return DB::transaction(function () use ($reservation, $user, $channel, $reference, $proof, &$proofPath): Reservation {
                 $reservation = $this->lockReservation($reservation);
                 $this->requireStatus($reservation, Reservation::STATUS_ONGOING, 'Only ongoing reservations can be completed.');
                 $this->recalculate($reservation);
@@ -502,6 +548,7 @@ class ReservationService
                     throw ValidationException::withMessages(['payment_channel' => ['Choose how the outstanding amount was collected.']]);
                 }
                 if ($outstanding > 0) {
+                    $proofPath = $proof ? $this->proofStorage->store($proof) : null;
                     $reservation->payments()->create(['payment_method_name' => $channel, 'channel' => $channel, 'kind' => 'SETTLEMENT', 'status' => 'VERIFIED', 'amount' => $outstanding, 'reference_number' => $reference, 'proof_path' => $proofPath, 'recorded_by_user_id' => $user->id, 'verified_by_user_id' => $user->id, 'verified_at' => now()]);
                     $reservation->update(['amount_paid' => round((float) $reservation->amount_paid + $outstanding, 2)]);
                 }
@@ -518,7 +565,7 @@ class ReservationService
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
-                Storage::disk('local')->delete($proofPath);
+                $this->proofStorage->delete($proofPath);
             }
             throw $exception;
         }

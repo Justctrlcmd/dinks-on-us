@@ -11,6 +11,7 @@ const reservationConcernValues = [
 ] as const;
 
 const paymentChannelSchema = z.enum(["CASH", "EWALLET", "BANK"], { error: "Choose a payment method." });
+const addOnPaymentChannelSchema = z.enum(["CASH", "EWALLET_BANK"], { error: "Choose a payment method." });
 const fileListSchema = z.custom<FileList | undefined>((value) => {
   if (value === undefined) return true;
   if (typeof value !== "object" || value === null) return false;
@@ -50,9 +51,10 @@ const addOnsBaseSchema = z.object({
   ranges: z.array(slotSelectionSchema).min(1),
   additional_players: z.number().int().min(0).max(1000),
   equipment: z.record(z.string(), z.number().int().min(0).max(1000)),
-  payment_channel: paymentChannelSchema.nullable(),
+  payment_channel: addOnPaymentChannelSchema.nullable(),
+  payment_method_id: z.number().int().positive().optional(),
   payment_reference_number: z.string().trim().max(180, "Keep the transaction reference under 180 characters.").optional(),
-  payment_proof: fileListSchema,
+  payment_proof: fileListSchema.optional(),
 });
 
 export const reservationAddOnsSchema = addOnsBaseSchema.superRefine((values, context) => {
@@ -68,6 +70,18 @@ export const reservationAddOnsSchema = addOnsBaseSchema.superRefine((values, con
   }
   if (!values.payment_channel) {
     context.addIssue({ code: "custom", path: ["payment_channel"], message: "Choose a payment method." });
+  }
+
+  if (values.payment_channel === "EWALLET_BANK") {
+    if (!values.payment_method_id) {
+      context.addIssue({ code: "custom", path: ["payment_method_id"], message: "Choose an active e-wallet or bank payment method." });
+    }
+    if (!values.payment_reference_number?.trim()) {
+      context.addIssue({ code: "custom", path: ["payment_reference_number"], message: "Enter the transaction reference for this payment method." });
+    }
+    if (!(values.payment_proof?.item(0))) {
+      context.addIssue({ code: "custom", path: ["payment_proof"], message: "Select a receipt image for this payment method." });
+    }
   }
 
   validateReceipt(values.payment_proof, context);

@@ -116,6 +116,7 @@ It contains the authoritative operational rules for:
 * Duplicate-reservation prevention
 * Reservation statuses
 * Payment verification
+* Manual payment-proof retention and cleanup
 * Rejection
 * Walk-ins
 * Pricing
@@ -164,6 +165,7 @@ It contains conceptual entities such as:
 * FAQ
 * Website Settings
 * Audit Logs
+* Payment-proof deletion metadata
 
 This is a **conceptual model**, not an instruction to replace existing boilerplate database conventions.
 
@@ -194,6 +196,7 @@ It describes:
 * No-show
 * Cancellation
 * History
+* Manual payment-proof cleanup preview, deletion, and activity
 * Dynamic content management
 * Reports
 * Validation
@@ -201,6 +204,12 @@ It describes:
 * Transaction boundaries
 
 The exact controller/service/file structure should still follow the existing boilerplate.
+
+The focused implementation sequence and current-to-target behavior for this
+capability are recorded in
+`docs/plans/payment-proof-retention.md`. That plan is subordinate to the domain
+documents above and must be marked implemented only after code and verification
+are complete.
 
 ---
 
@@ -622,7 +631,7 @@ Staff can create them through management.
 
 Walk-ins must consume the same reservation-slot availability as online reservations.
 
-Walk-ins are created as Verified reservations. Staff records the customer's name, email, contact number, court times, additional players, rental equipment, and payment. Payment uses either Cash or E-wallet / Bank; the transaction reference and receipt are optional.
+Walk-ins are created as Verified reservations. Staff records the customer's name, email, contact number, court times, additional players, rental equipment, and payment. Payment uses either Cash or a specific active e-wallet/bank method configured for public checkout. Cash may omit the transaction reference and receipt; both are required for non-cash payments so reports retain the actual selected method.
 
 Conceptually:
 

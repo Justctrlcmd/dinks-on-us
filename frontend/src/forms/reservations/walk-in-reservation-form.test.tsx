@@ -28,6 +28,16 @@ vi.mock("@/hooks/queries/use-court-pricing", () => ({
     isError: false,
   }),
 }));
+vi.mock("@/hooks/queries/use-payment-methods", () => ({
+  usePublicPaymentMethods: () => ({
+    data: [
+      { id: 7, name: "GCash", account_name: "Dinks on Us", account_number: "09123456789", qr_image_url: "/gcash.png" },
+      { id: 8, name: "BPI", account_name: "Dinks on Us", account_number: "1234567890", qr_image_url: "/bpi.png" },
+    ],
+    isPending: false,
+    isError: false,
+  }),
+}));
 vi.mock("@/forms/reservations/reservation-form-controls", () => ({
   expandReservationRanges: (date: string, ranges: Array<{ courtId: string; slot: string }>) => ranges.flatMap((range) => range.courtId && range.slot ? [{ court_id: Number(range.courtId), date, start_hour: Number(range.slot) }] : []),
   ReservationScheduleFields: ({ setRanges }: { setRanges: (ranges: Array<{ courtId: string; slot: string }>) => void }) => <button type="button" onClick={() => setRanges([{ courtId: "1", slot: "9" }])}>Choose test slot</button>,
@@ -69,10 +79,26 @@ describe("WalkInReservationForm", () => {
       equipment: [{ id: 5, quantity: 1 }],
       additional_players: 1,
       payment_channel: "CASH",
+      payment_method_id: undefined,
       payment_reference_number: undefined,
       payment_proof: undefined,
     }));
     expect(mocks.push).toHaveBeenCalledWith("/portal/reservations");
+  });
+
+  it("offers checkout payment methods and requires non-cash payment evidence", async () => {
+    const user = userEvent.setup();
+    render(<WalkInReservationForm />);
+
+    await user.click(screen.getByRole("combobox", { name: /Payment method/ }));
+    expect(await screen.findByRole("option", { name: "GCash" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "BPI" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "E-wallet / Bank" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "GCash" }));
+
+    expect(screen.getByText("09123456789")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Transaction reference/ })).toBeRequired();
+    expect(screen.getByLabelText(/Receipt image/)).toBeRequired();
   });
 
   it("keeps contact-number input to eleven digits", async () => {

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -24,6 +25,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /** @return HasMany<PushSubscription, $this> */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
     }
 
     public function canAccessModule(string $module): bool

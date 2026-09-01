@@ -86,11 +86,13 @@ type ConfirmAction = "verify" | "start" | "no-show" | null;
 function ReservationActions({
   reservation,
   isManager,
+  disabled,
   onDialog,
   onConfirm,
 }: {
   reservation: ManagementReservation;
   isManager: boolean;
+  disabled: boolean;
   onDialog: (kind: DialogKind, reservation: ManagementReservation) => void;
   onConfirm: (
     action: ConfirmAction,
@@ -106,6 +108,7 @@ function ReservationActions({
             variant="ghost"
             size="icon-sm"
             aria-label={`Actions for ${reservation.reference_number}`}
+            disabled={disabled}
           />
         }
       >
@@ -118,13 +121,14 @@ function ReservationActions({
         </DropdownMenuItem>
         {reservation.status === "PENDING" ? (
           <>
-            <DropdownMenuItem onClick={() => onConfirm("verify", reservation)}>
+            <DropdownMenuItem disabled={disabled} onClick={() => onConfirm("verify", reservation)}>
               <FiCheckCircle aria-hidden />
               Verify
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
+              disabled={disabled}
               onClick={() => onDialog("reject", reservation)}
             >
               <FiXCircle aria-hidden />
@@ -134,13 +138,14 @@ function ReservationActions({
         ) : null}
         {verified ? (
           <>
-            <DropdownMenuItem onClick={() => onConfirm("start", reservation)}>
+            <DropdownMenuItem disabled={disabled} onClick={() => onConfirm("start", reservation)}>
               <FiPlay aria-hidden />
               Mark ongoing
             </DropdownMenuItem>
             {isManager ? (
               <>
                 <DropdownMenuItem
+                  disabled={disabled}
                   onClick={() => onDialog("reschedule", reservation)}
                 >
                   <FiRefreshCw aria-hidden />
@@ -149,6 +154,7 @@ function ReservationActions({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
+                  disabled={disabled}
                   onClick={() => onDialog("cancel", reservation)}
                 >
                   <FiXCircle aria-hidden />
@@ -158,6 +164,7 @@ function ReservationActions({
             ) : null}
             <DropdownMenuItem
               variant="destructive"
+              disabled={disabled}
               onClick={() => onConfirm("no-show", reservation)}
             >
               <FiSlash aria-hidden />
@@ -167,11 +174,11 @@ function ReservationActions({
         ) : null}
         {reservation.status === "ONGOING" ? (
           <>
-            <DropdownMenuItem onClick={() => onDialog("addons", reservation)}>
+            <DropdownMenuItem disabled={disabled} onClick={() => onDialog("addons", reservation)}>
               <FiRefreshCw aria-hidden />
               Add-ons
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDialog("complete", reservation)}>
+            <DropdownMenuItem disabled={disabled} onClick={() => onDialog("complete", reservation)}>
               <FiCheckCircle aria-hidden />
               Complete
             </DropdownMenuItem>
@@ -211,8 +218,18 @@ export function ReservationsView() {
   const kpis = query.data?.data.kpis;
   const meta = query.data?.meta;
   const isManager = currentUser.data?.role?.is_full_access === true;
+  const actionPending = verifyMutation.isPending || startMutation.isPending || noShowMutation.isPending;
+  const confirmPending =
+    confirmAction === "verify"
+      ? verifyMutation.isPending
+      : confirmAction === "start"
+        ? startMutation.isPending
+        : confirmAction === "no-show"
+          ? noShowMutation.isPending
+          : false;
 
   function openDialog(kind: DialogKind, reservation: ManagementReservation) {
+    if (actionPending) return;
     setSelected(reservation);
     setDialog(kind);
   }
@@ -220,11 +237,12 @@ export function ReservationsView() {
     action: ConfirmAction,
     reservation: ManagementReservation,
   ) {
+    if (actionPending) return;
     setSelected(reservation);
     setConfirmAction(action);
   }
   function confirm() {
-    if (!selected || !confirmAction) return;
+    if (!selected || !confirmAction || actionPending) return;
     const mutation =
       confirmAction === "verify"
         ? verifyMutation
@@ -420,6 +438,7 @@ export function ReservationsView() {
                         <ReservationActions
                           reservation={reservation}
                           isManager={isManager}
+                          disabled={actionPending}
                           onDialog={openDialog}
                           onConfirm={openConfirm}
                         />
@@ -450,6 +469,7 @@ export function ReservationsView() {
                     <ReservationActions
                       reservation={reservation}
                       isManager={isManager}
+                      disabled={actionPending}
                       onDialog={openDialog}
                       onConfirm={openConfirm}
                     />
@@ -529,7 +549,7 @@ export function ReservationsView() {
       />
       <Dialog
         open={confirmAction !== null}
-        onOpenChange={(open) => !open && setConfirmAction(null)}
+        onOpenChange={(open) => !open && !confirmPending && setConfirmAction(null)}
       >
         <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
@@ -537,12 +557,19 @@ export function ReservationsView() {
             <DialogDescription>{confirmCopy[1]}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <DialogClose render={<Button variant="outline">Not yet</Button>} />
+            <DialogClose render={<Button variant="outline" disabled={confirmPending}>Not yet</Button>} />
             <Button
               variant={confirmAction === "no-show" ? "destructive" : "default"}
+              disabled={confirmPending}
               onClick={confirm}
             >
-              {confirmCopy[2]}
+              {confirmPending
+                ? confirmAction === "verify"
+                  ? "Verifying…"
+                  : confirmAction === "start"
+                    ? "Marking ongoing…"
+                    : "Marking no-show…"
+                : confirmCopy[2]}
             </Button>
           </DialogFooter>
         </DialogContent>

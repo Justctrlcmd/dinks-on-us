@@ -19,7 +19,9 @@ use App\Http\Controllers\Api\V1\Management\GalleryTabController;
 use App\Http\Controllers\Api\V1\Management\HistoryController;
 use App\Http\Controllers\Api\V1\Management\HistoryPaymentProofController;
 use App\Http\Controllers\Api\V1\Management\PaymentMethodController;
+use App\Http\Controllers\Api\V1\Management\PaymentProofRetentionController;
 use App\Http\Controllers\Api\V1\Management\PolicyController as ManagementPolicyController;
+use App\Http\Controllers\Api\V1\Management\PushSubscriptionController;
 use App\Http\Controllers\Api\V1\Management\RentalEquipmentController;
 use App\Http\Controllers\Api\V1\Management\ReportController;
 use App\Http\Controllers\Api\V1\Management\ReservationController as ManagementReservationController;
@@ -73,6 +75,9 @@ Route::prefix('v1')->group(function (): void {
             });
 
             Route::middleware('module:RESERVATION')->group(function (): void {
+                Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store'])->middleware('throttle:20,1')->name('push-subscriptions.store');
+                Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy'])->middleware('throttle:20,1')->name('push-subscriptions.destroy');
+                Route::get('/reservations/pending-summary', [ManagementReservationController::class, 'pendingSummary'])->name('reservations.pending-summary');
                 Route::get('/reservations', [ManagementReservationController::class, 'index'])->name('reservations.index');
                 Route::post('/reservations/walk-in', [ManagementReservationController::class, 'storeWalkIn'])->name('reservations.walk-in.store');
                 Route::get('/reservations/{reservation}', [ManagementReservationController::class, 'show'])->name('reservations.show');
@@ -112,6 +117,12 @@ Route::prefix('v1')->group(function (): void {
 
             Route::middleware('module:MANAGEMENT_PAYMENT_METHODS')->group(function (): void {
                 Route::apiResource('payment-methods', PaymentMethodController::class)->only(['index', 'store', 'update', 'destroy']);
+            });
+
+            Route::prefix('payment-proof-retention')->middleware('module:MANAGEMENT_STORAGE_RETENTION')->name('payment-proof-retention.')->group(function (): void {
+                Route::get('/preview', [PaymentProofRetentionController::class, 'preview'])->name('preview');
+                Route::post('/delete', [PaymentProofRetentionController::class, 'delete'])->name('delete');
+                Route::get('/activity', [PaymentProofRetentionController::class, 'activity'])->name('activity');
             });
 
             Route::middleware('module:MANAGEMENT_AVAILABILITY_CLOSURES')->group(function (): void {

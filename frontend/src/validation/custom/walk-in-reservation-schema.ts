@@ -18,10 +18,11 @@ export const walkInReservationSchema = z.object({
   equipment: z.array(z.object({ id: z.number().int().positive(), quantity: z.number().int().positive() })),
   additional_players: z.number().int().min(0).max(1000),
   payment_channel: z.enum(["CASH", "EWALLET_BANK"], { error: "Choose a payment method." }),
+  payment_method_id: z.number().int().positive().optional(),
   payment_reference_number: z.string().trim().max(180, "Keep the transaction reference under 180 characters.").optional(),
   payment_proof: z.custom<FileList | undefined>((value) => value === undefined || (typeof value === "object" && value !== null), {
     message: "Choose a valid receipt image.",
-  }),
+  }).optional(),
 }).superRefine((values, context) => {
   const keys = values.slots.map((slot) => `${slot.court_id}-${slot.date}-${slot.start_hour}`);
   if (new Set(keys).size !== keys.length) {
@@ -29,6 +30,18 @@ export const walkInReservationSchema = z.object({
   }
 
   const file = values.payment_proof?.item(0) ?? undefined;
+  if (values.payment_channel === "EWALLET_BANK") {
+    if (!values.payment_method_id) {
+      context.addIssue({ code: "custom", path: ["payment_method_id"], message: "Choose an active e-wallet or bank payment method." });
+    }
+    if (!values.payment_reference_number?.trim()) {
+      context.addIssue({ code: "custom", path: ["payment_reference_number"], message: "Enter the transaction reference for this payment method." });
+    }
+    if (!file) {
+      context.addIssue({ code: "custom", path: ["payment_proof"], message: "Select a receipt image for this payment method." });
+    }
+  }
+
   if (!file) return;
   if (!acceptedReceiptTypes.has(file.type)) {
     context.addIssue({ code: "custom", path: ["payment_proof"], message: "Choose a JPG, PNG, or WebP receipt image." });

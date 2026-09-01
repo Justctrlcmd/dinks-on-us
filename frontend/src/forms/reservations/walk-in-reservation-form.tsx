@@ -11,11 +11,12 @@ import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PaymentMethodQrDialog } from "@/components/common/payment-method-qr-dialog";
 import { useCreateWalkInReservation } from "@/hooks/mutations/use-reservation-mutations";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
+import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { formatDateOnly, todayInTimeZone } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
-import type { WalkInPaymentChannel } from "@/types/reservation";
 import {
   expandReservationRanges,
   ReservationQuantityStepper,
@@ -29,11 +30,6 @@ import {
 } from "@/validation/custom/walk-in-reservation-schema";
 
 const currency = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
-const paymentOptions: Array<{ value: WalkInPaymentChannel; label: string }> = [
-  { value: "CASH", label: "Cash" },
-  { value: "EWALLET_BANK", label: "E-wallet / Bank" },
-];
-
 function SectionHeading({ id, title, description }: { id?: string; title: string; description: string }) {
   return <div><h2 id={id} className="font-heading text-lg font-bold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>;
 }
@@ -41,6 +37,7 @@ function SectionHeading({ id, title, description }: { id?: string; title: string
 export function WalkInReservationForm() {
   const router = useRouter();
   const mutation = useCreateWalkInReservation();
+  const paymentMethodsQuery = usePublicPaymentMethods();
   const [ranges, setRanges] = useState<ReservationSlotSelection[]>([{ courtId: "", slot: "" }]);
   const form = useForm<WalkInReservationValues>({
     resolver: zodResolver(walkInReservationSchema),
@@ -53,6 +50,7 @@ export function WalkInReservationForm() {
       equipment: [],
       additional_players: 0,
       payment_channel: "CASH",
+      payment_method_id: undefined,
       payment_reference_number: "",
       payment_proof: undefined,
     },
@@ -61,8 +59,13 @@ export function WalkInReservationForm() {
   const additionalPlayers = useWatch({ control: form.control, name: "additional_players" });
   const equipment = useWatch({ control: form.control, name: "equipment" });
   const paymentChannel = useWatch({ control: form.control, name: "payment_channel" });
+  const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
   const optionsQuery = useReservationOptions(date);
   const options = optionsQuery.data;
+  const paymentMethods = paymentMethodsQuery.data ?? [];
+  const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
+  const paymentSelection = paymentChannel === "CASH" ? "CASH" : paymentMethodId ? `METHOD:${paymentMethodId}` : null;
+  const nonCashPayment = paymentChannel === "EWALLET_BANK";
   const selectedSlots = useMemo(() => expandReservationRanges(date, ranges), [date, ranges]);
 
   useEffect(() => {
@@ -112,6 +115,7 @@ export function WalkInReservationForm() {
         equipment: values.equipment,
         additional_players: values.additional_players,
         payment_channel: values.payment_channel,
+        payment_method_id: values.payment_method_id,
         payment_reference_number: values.payment_reference_number?.trim() || undefined,
         payment_proof: values.payment_proof?.item(0) ?? undefined,
       });
@@ -208,19 +212,35 @@ export function WalkInReservationForm() {
       <Card className="gap-4 p-4 sm:p-5">
         <SectionHeading title="Payment" description="The payment is recorded as verified when this walk-in is submitted." />
         <SelectWithLabel
-          id="walk-in-payment-channel"
+          id="walk-in-payment-method"
           label="Payment method"
           required
-          value={paymentChannel}
-          options={paymentOptions}
-          onValueChange={(value) => value && form.setValue("payment_channel", value as WalkInPaymentChannel, { shouldValidate: true, shouldDirty: true })}
-          error={form.formState.errors.payment_channel?.message}
+          value={paymentSelection}
+          options={[
+            { value: "CASH", label: "Cash" },
+            ...paymentMethods.map((method) => ({ value: `METHOD:${method.id}`, label: method.name })),
+          ]}
+          onValueChange={(value) => {
+            if (!value) return;
+            if (value === "CASH") {
+              form.setValue("payment_channel", "CASH", { shouldValidate: true, shouldDirty: true });
+              form.setValue("payment_method_id", undefined, { shouldValidate: true, shouldDirty: true });
+              return;
+            }
+            const id = Number(value.replace("METHOD:", ""));
+            form.setValue("payment_channel", "EWALLET_BANK", { shouldValidate: true, shouldDirty: true });
+            form.setValue("payment_method_id", id, { shouldValidate: true, shouldDirty: true });
+          }}
+          description={paymentMethodsQuery.isPending ? "Loading active e-wallet and bank methods…" : "Cash or an active payment account from the public checkout."}
+          error={form.formState.errors.payment_method_id?.message ?? form.formState.errors.payment_channel?.message}
         />
-        <InputWithLabel label="Transaction reference (optional)" {...form.register("payment_reference_number")} error={form.formState.errors.payment_reference_number?.message} />
-        <FormFieldWrapper id="walk-in-payment-proof" label="Receipt image (optional)" description="JPG, PNG, or WebP; maximum 5 MB." error={form.formState.errors.payment_proof?.message}>
+        {paymentMethodsQuery.isError ? <p role="alert" className="text-sm text-destructive">Active e-wallet and bank methods could not be loaded. Cash remains available.</p> : null}
+        {selectedPaymentMethod ? <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-muted-foreground">Account name</dt><dd className="font-medium">{selectedPaymentMethod.account_name}</dd></div><div><dt className="text-muted-foreground">Account number</dt><dd className="font-medium">{selectedPaymentMethod.account_number}</dd></div></dl><PaymentMethodQrDialog method={selectedPaymentMethod} /></div> : null}
+        <InputWithLabel label={nonCashPayment ? "Transaction reference" : "Transaction reference (optional)"} required={nonCashPayment} {...form.register("payment_reference_number")} error={form.formState.errors.payment_reference_number?.message} />
+        <FormFieldWrapper id="walk-in-payment-proof" label={nonCashPayment ? "Receipt image" : "Receipt image (optional)"} required={nonCashPayment} description="JPG, PNG, or WebP; maximum 5 MB." error={form.formState.errors.payment_proof?.message}>
           <div className="relative">
             <FiImage className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input id="walk-in-payment-proof" type="file" accept={WALK_IN_RECEIPT_ACCEPT} className="cursor-pointer pl-9 file:mr-3" aria-invalid={Boolean(form.formState.errors.payment_proof)} aria-describedby={["walk-in-payment-proof-description", form.formState.errors.payment_proof && "walk-in-payment-proof-error"].filter(Boolean).join(" ")} {...form.register("payment_proof")} />
+            <Input id="walk-in-payment-proof" type="file" accept={WALK_IN_RECEIPT_ACCEPT} required={nonCashPayment} className="cursor-pointer pl-9 file:mr-3" aria-invalid={Boolean(form.formState.errors.payment_proof)} aria-describedby={["walk-in-payment-proof-description", form.formState.errors.payment_proof && "walk-in-payment-proof-error"].filter(Boolean).join(" ")} {...form.register("payment_proof")} />
           </div>
         </FormFieldWrapper>
       </Card>

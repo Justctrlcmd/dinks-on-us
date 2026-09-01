@@ -13,6 +13,12 @@ function responseMessage(value: unknown): string | null {
     : null;
 }
 
+function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 1) return false;
+  if (!isApiError(error)) return false;
+  return error.code === "NETWORK_ERROR" || error.status >= 500;
+}
+
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const toast = useToast();
   const [client] = useState(() => new QueryClient({
@@ -34,7 +40,13 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         toast.error(message);
       },
     }),
-    defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
+    defaultOptions: {
+      queries: {
+        refetchOnWindowFocus: false,
+        retry: shouldRetryQuery,
+        retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 10_000),
+      },
+    },
   }));
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

@@ -254,6 +254,31 @@ follow the Team & Access table shell for repeated management data, and use
 reference for spacing, typography, borders, states, and responsive behavior;
 new modules should vary their content and actions, not recreate those patterns.
 
+### Storage & Data Retention screen
+
+Treat payment-proof cleanup as a compact, deliberate management task rather than
+a reservation browser. The primary panel contains two labeled
+`CalendarDatePicker` controls, one **Preview cleanup** action, and an aggregate
+result showing only the selected booking-date range, eligible reservation count,
+proof-image count, and estimated reclaimable storage. Count only proof images
+that still physically exist; already-deleted proofs must not appear. Do not add a customer,
+reservation, payment, or file-path table to this screen.
+
+Changing a date clears the prior preview. The destructive **Delete payment proof
+images** action appears only for a non-empty preview and opens a confirmation
+dialog that repeats the exact range, image count, and estimated size. Copy must
+state that only proof images are removed and that reservation and payment records
+remain. Use the destructive semantic variant and preserve a clear cancel action.
+
+Below the cleanup panel, reuse the Availability & Closures activity-log density:
+five compact newest-first cards per page with shared pagination. A card shows the
+images deleted, booking-date range, reservations affected, reclaimed storage,
+actor, time, and a clear successful/partial result. Successful deletions must
+appear after the mutation refreshes activity. Show missing/failed counts only
+when non-zero. Never display
+customer details, payment references, private paths, database IDs, IP addresses,
+user agents, or raw audit data.
+
 ## 8. Accessibility and responsive rules
 
 Preserve every accessibility rule in `DESIGN_SYSTEM.md`, especially semantic

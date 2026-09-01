@@ -9,6 +9,7 @@ use Illuminate\Validation\Rule;
 class RejectReservationRequest extends FormRequest
 {
     use NormalizesInput;
+
     public const CONCERNS = ['INVALID_PAYMENT_PROOF', 'UNVERIFIABLE_REFERENCE', 'INCORRECT_AMOUNT', 'DUPLICATE_OR_SUSPICIOUS_PAYMENT', 'RESERVATION_INFORMATION_ISSUE', 'OTHER'];
 
     protected function prepareForValidation(): void

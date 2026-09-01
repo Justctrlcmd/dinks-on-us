@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FiMail, FiMapPin, FiPhone } from "react-icons/fi";
 import { FaFacebookF, FaInstagram } from "react-icons/fa6";
+import { mockPublicSite } from "@/config/mock-public-site";
 import { siteConfig } from "@/config/site";
 
 const exploreNavigation = [
@@ -68,10 +69,15 @@ export function PublicFooter() {
             </a>
             <div className="flex items-start gap-2 text-white/70 dark:text-[#556771]">
               <FiMapPin className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span>
+              <a
+                href={mockPublicSite.location.mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-white hover:underline hover:underline-offset-4 dark:hover:text-brand-surface"
+              >
                 <span className="block font-semibold text-white/85 dark:text-[#213547]">Sta. Lucia, Angat, Bulacan</span>
                 <span className="mt-0.5 block text-xs leading-5">In front of Boss Gasoline Station</span>
-              </span>
+              </a>
             </div>
           </div>
         </div>

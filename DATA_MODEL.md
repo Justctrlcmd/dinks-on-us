@@ -33,10 +33,11 @@ This is not yet the final Laravel migration specification.
 MANAGER / STAFF
 │
 ├── User
+│      ├── Role
+│      │      │
+│      │      └── Role Modules
 │      │
-│      └── Role
-│             │
-│             └── Role Modules
+│      └── Push Subscriptions
 │
 ├── Reservation
 │      │
@@ -182,6 +183,14 @@ INACTIVE
 * Staff access is determined by their assigned role.
 * Players must not be stored in this table unless the project requirements later introduce customer accounts.
 
+## Push Subscriptions
+
+`push_subscriptions` stores one browser/device endpoint for an authenticated
+management account. `endpoint_hash` is unique for safe upserts; endpoint and
+encryption key fields are hidden from API resources and used only by the server
+when delivering Web Push messages. Expired endpoints are removed and failed
+endpoints are marked so delivery does not repeatedly target a dead device.
+
 ---
 
 # 5. Roles
@@ -258,12 +267,21 @@ Possible module identifiers:
 DASHBOARD
 RESERVATION
 HISTORY
-MANAGEMENT
+MANAGEMENT_COURT_PRICING
+MANAGEMENT_AVAILABILITY_CLOSURES
+MANAGEMENT_PAYMENT_METHODS
+MANAGEMENT_TEAM_ACCESS
+MANAGEMENT_RULES_POLICIES
+MANAGEMENT_EVENTS
+MANAGEMENT_GALLERY
+MANAGEMENT_FAQS
+MANAGEMENT_STORAGE_RETENTION
 REPORTS
-SETTINGS
 ```
 
-Management submodules may either inherit access from `MANAGEMENT` or be modeled separately later if needed.
+The frontend derives its Management parent navigation item when a user has at
+least one `MANAGEMENT_*` module. The full-access Manager role bypasses individual
+module assignments; Staff access remains role-based.
 
 ---
 
@@ -343,6 +361,7 @@ All current slots belonging to one reservation use the reservation's single `boo
 ```text
 id
 reference_number
+idempotency_key
 
 source
 booking_date
@@ -731,23 +750,27 @@ Stores payment information submitted for a reservation.
 id
 reservation_id
 payment_method_id
-
-payment_method_name_snapshot
-
+payment_method_name
+channel
+kind
+status
+amount
 reference_number
-receipt_image_path
-
-submitted_amount
-
-verification_status
+proof_path
+proof_deleted_at
+proof_deleted_by_user_id
+recorded_by_user_id
 verified_by_user_id
 verified_at
-
-verification_notes
-
 created_at
 updated_at
 ```
+
+`proof_path` points to the private file and is nullable because some Staff-created
+payments do not require an image. The cleanup migration adds
+`proof_deleted_at` and `proof_deleted_by_user_id`; these fields distinguish a
+deliberately removed proof from a payment that never had one. They do not replace
+or delete any payment business fields.
 
 ---
 
@@ -809,7 +832,7 @@ CASH
 EWALLET_BANK
 ```
 
-The payment method name snapshot is `Cash` or `E-wallet / Bank`. The payment amount equals the backend-calculated initial reservation total, and the reservation's `amount_paid` is updated immediately. The payment reference and proof path are nullable because both are optional for walk-ins.
+Cash payments have no configured `payment_method_id` and use the `Cash` name snapshot. Non-cash payments reference the same active `payment_methods` entity used by public checkout and snapshot that method's actual name, such as `GCash` or `BPI`. The payment amount equals the backend-calculated initial reservation total, and the reservation's `amount_paid` is updated immediately. The payment reference and proof path remain nullable at the database layer for Cash and historical compatibility, but both are required by validation for `EWALLET_BANK` Walk-ins.
 
 ---
 
@@ -1482,7 +1505,13 @@ DATE_CLOSED
 
 PAYMENT_METHOD_UPDATED
 RATE_UPDATED
+PAYMENT_PROOFS_DELETED
 ```
+
+`PAYMENT_PROOFS_DELETED` is one aggregate audit record per manual cleanup batch.
+Its API resource exposes only the booking-date range, image and reservation
+counts, reclaimed storage, meaningful partial-result counts, actor, and time.
+Private paths and customer/payment details are not activity-list data.
 
 ---
 
@@ -1604,6 +1633,7 @@ payment_methods
   └──< reservation_payments
 
 users
+  ├──< push_subscriptions
   └── referenced by operational/audit actions
 ```
 
@@ -2170,6 +2200,10 @@ The following must remain true:
 19. Important management actions must be auditable.
 
 20. Final statuses belong to History.
+
+21. A finalized payment proof may be manually removed without deleting its payment or reservation.
+
+22. A failed proof-file deletion must retain its active path for retry.
 ```
 
 ---
@@ -2193,7 +2227,7 @@ No refund entity is required in the current confirmed scope.
 
 ## Walk-In Payments
 
-Confirmed walk-in payments use `CASH` or `EWALLET_BANK`. They are stored as verified initial payments for the calculated reservation total. Reference numbers and receipts are optional.
+Confirmed walk-in payments use `CASH` or `EWALLET_BANK`. They are stored as verified initial payments for the calculated reservation total. Cash may omit a reference number and receipt. Non-cash Walk-ins must link an active configured payment method and include both a reference number and receipt.
 
 ---
 

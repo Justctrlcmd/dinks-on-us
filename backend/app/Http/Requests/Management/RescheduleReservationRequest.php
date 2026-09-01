@@ -20,11 +20,17 @@ class RescheduleReservationRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator): void {
-            if ($validator->errors()->isNotEmpty()) return;
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
             $slots = collect($this->input('slots'));
-            if ($slots->pluck('date')->unique()->count() !== 1) $validator->errors()->add('slots', 'All replacement slots must use the same date.');
+            if ($slots->pluck('date')->unique()->count() !== 1) {
+                $validator->errors()->add('slots', 'All replacement slots must use the same date.');
+            }
             $keys = $slots->map(fn (array $slot): string => "{$slot['court_id']}-{$slot['date']}-{$slot['start_hour']}");
-            if ($keys->unique()->count() !== $keys->count()) $validator->errors()->add('slots', 'Replacement slots cannot contain duplicates.');
+            if ($keys->unique()->count() !== $keys->count()) {
+                $validator->errors()->add('slots', 'Replacement slots cannot contain duplicates.');
+            }
         }];
     }
 }

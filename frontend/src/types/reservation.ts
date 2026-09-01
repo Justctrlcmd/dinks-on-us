@@ -29,6 +29,7 @@ export type ReservationDraft = {
 };
 
 export type ReservationPaymentChannel = "CASH" | "EWALLET" | "BANK";
+export type ReservationAddOnPaymentChannel = "CASH" | "EWALLET_BANK";
 export type WalkInPaymentChannel = "CASH" | "EWALLET_BANK";
 
 export type ReservationStatus = "PENDING" | "VERIFIED" | "RESCHEDULED" | "ONGOING" | "COMPLETED" | "REJECTED" | "CANCELLED" | "NO_SHOW";
@@ -70,6 +71,11 @@ export type ManagementReservation = {
 export type ReservationKpis = { pending: number; ongoing: number; verified: number; rescheduled: number };
 export type ReservationListData = { reservations: ManagementReservation[]; kpis: ReservationKpis };
 export type ReservationListResponse = ReservationListData & { meta?: PaginationMeta };
+export type PendingReservationSummary = {
+  pending_count: number;
+  latest_online_submission_id: number | null;
+  latest_online_submission_at: string | null;
+};
 export type ReservationFilters = { page: number; search: string; status: "" | ReservationStatus };
 export type FinalReservationStatus = Extract<ReservationStatus, "COMPLETED" | "CANCELLED" | "REJECTED" | "NO_SHOW">;
 export type ReservationSource = "ONLINE" | "WALK_IN";
@@ -81,7 +87,8 @@ export type ReservationAddOnsInput = {
   slots?: SlotInput[];
   additional_players?: number;
   equipment?: Array<{ id: number; quantity: number }>;
-  payment_channel: ReservationPaymentChannel;
+  payment_channel: ReservationAddOnPaymentChannel;
+  payment_method_id?: number;
   payment_reference_number?: string;
   payment_proof?: File;
 };
@@ -94,6 +101,7 @@ export type WalkInReservationInput = {
   equipment: Array<{ id: number; quantity: number }>;
   additional_players: number;
   payment_channel: WalkInPaymentChannel;
+  payment_method_id?: number;
   payment_reference_number?: string;
   payment_proof?: File;
 };

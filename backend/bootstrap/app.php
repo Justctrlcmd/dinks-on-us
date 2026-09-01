@@ -1,8 +1,8 @@
 <?php
 
+use App\Exceptions\ReservationConflictException;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\RequireModuleAccess;
-use App\Exceptions\ReservationConflictException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;

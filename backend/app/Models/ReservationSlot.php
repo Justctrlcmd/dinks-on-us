@@ -10,9 +10,20 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 #[Fillable(['reservation_id', 'court_id', 'date', 'start_hour', 'end_hour', 'unit_amount', 'kind', 'is_current', 'added_by_user_id'])]
 class ReservationSlot extends Model
 {
-    public function reservation(): BelongsTo { return $this->belongsTo(Reservation::class); }
-    public function court(): BelongsTo { return $this->belongsTo(Court::class); }
-    public function lock(): HasOne { return $this->hasOne(ReservationSlotLock::class); }
+    public function reservation(): BelongsTo
+    {
+        return $this->belongsTo(Reservation::class);
+    }
+
+    public function court(): BelongsTo
+    {
+        return $this->belongsTo(Court::class);
+    }
+
+    public function lock(): HasOne
+    {
+        return $this->hasOne(ReservationSlotLock::class);
+    }
 
     protected function casts(): array
     {

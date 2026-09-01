@@ -3,12 +3,27 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class AvailabilityClosuresManagementTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-31 12:00:00', 'Asia/Manila'));
+    }
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+
+        parent::tearDown();
+    }
 
     private function configureCourts(User $user): int
     {

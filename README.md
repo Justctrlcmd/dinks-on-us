@@ -26,7 +26,7 @@ Read `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, and `PRODUCTION.md` before extending
 
 ## Local installation
 
-Requirements: PHP 8.3+, Composer 2, Node 24 LTS, npm 11+, and MySQL. The committed testing configuration uses in-memory SQLite for fast isolated tests; application configuration defaults to MySQL.
+Requirements: PHP 8.4.1+, Composer 2, Node 24 LTS, npm 11+, and MySQL. The committed testing configuration uses in-memory SQLite for fast isolated tests; application configuration defaults to MySQL.
 
 ```bash
 cd backend

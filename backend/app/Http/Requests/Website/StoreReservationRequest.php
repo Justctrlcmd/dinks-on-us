@@ -16,6 +16,7 @@ class StoreReservationRequest extends FormRequest
             'customer_name' => $this->normalizedText($this->input('customer_name')),
             'customer_email' => is_string($this->input('customer_email')) ? mb_strtolower(trim($this->input('customer_email'))) : $this->input('customer_email'),
             'customer_contact_number' => $this->normalizedText($this->input('customer_contact_number')),
+            'idempotency_key' => $this->header('Idempotency-Key'),
         ]);
     }
 
@@ -26,6 +27,7 @@ class StoreReservationRequest extends FormRequest
             'customer_name' => ['required', 'string', 'max:180'],
             'customer_email' => ['required', 'email:rfc', 'max:180'],
             'customer_contact_number' => ['required', 'string', 'size:11', 'regex:/^09[0-9]{9}$/'],
+            'idempotency_key' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._~-]+$/'],
             'slots' => ['required', 'array', 'min:1', 'max:48'],
             'slots.*.court_id' => ['required', 'integer', 'exists:courts,id'],
             'slots.*.date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
@@ -44,7 +46,9 @@ class StoreReservationRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator): void {
-            if ($validator->errors()->isNotEmpty()) return;
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
 
             $dates = collect($this->input('slots'))->pluck('date')->unique();
             if ($dates->count() !== 1) {

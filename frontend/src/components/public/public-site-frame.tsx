@@ -19,7 +19,7 @@ export function PublicSiteFrame({ children, showFooter = true, showMessageButton
         {showFooter ? <PublicFooter /> : null}
       </div>
       {showMessageButton ? (
-        <a href={siteConfig.facebookUrl} target="_blank" rel="noreferrer" aria-label="Message us on Facebook" className="fixed bottom-5 right-5 z-40 flex min-h-12 animate-fade-up items-center gap-2 rounded-full bg-energy px-4 text-sm font-extrabold text-energy-foreground shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5 hover:bg-energy/90 motion-reduce:animate-none sm:bottom-7 sm:right-7">
+        <a href={siteConfig.messengerUrl} target="_blank" rel="noreferrer" aria-label="Message us on Facebook Messenger" className="fixed bottom-5 right-5 z-40 flex min-h-12 animate-fade-up items-center gap-2 rounded-full bg-energy px-4 text-sm font-extrabold text-energy-foreground shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5 hover:bg-energy/90 motion-reduce:animate-none sm:bottom-7 sm:right-7">
           <FiMessageCircle className="size-5" aria-hidden="true" />
           <span className="hidden sm:inline">Message us</span>
         </a>

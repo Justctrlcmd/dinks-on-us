@@ -16,11 +16,13 @@ import { useReservation } from "@/hooks/queries/use-reservations";
 import { useHistoryReservation } from "@/hooks/queries/use-history";
 import { useDashboardReservation } from "@/hooks/queries/use-dashboard";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
+import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { useAddReservationAddOns, useCancelReservation, useCompleteReservation, useRejectReservation, useRescheduleReservation } from "@/hooks/mutations/use-reservation-mutations";
 import { formatDateOnly } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
 import { reservationProofUrl } from "@/services/reservations/reservation-service";
-import type { ManagementReservation, ReservationAddOnsInput, ReservationPaymentChannel } from "@/types/reservation";
+import type { ManagementReservation, ReservationAddOnsInput } from "@/types/reservation";
+import { PaymentMethodQrDialog } from "@/components/common/payment-method-qr-dialog";
 import {
   expandReservationRanges as expandRanges,
   ReservationQuantityStepper as QuantityStepper,
@@ -186,19 +188,25 @@ export function RescheduleReservationDialog({ reservation, open, onOpenChange }:
 export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const date = reservation?.booking_date ?? "";
   const options = useReservationOptions(date).data;
+  const paymentMethodsQuery = usePublicPaymentMethods();
+  const paymentMethods = paymentMethodsQuery.data ?? [];
   const [courtOpen, setCourtOpen] = useState(false);
   const mutation = useAddReservationAddOns();
   const form = useForm<ReservationAddOnsValues>({
     resolver: zodResolver(reservationAddOnsSchema),
-    defaultValues: { ranges: [{ courtId: "", slot: "" }], additional_players: 0, equipment: {}, payment_channel: null, payment_reference_number: "", payment_proof: undefined },
+    defaultValues: { ranges: [{ courtId: "", slot: "" }], additional_players: 0, equipment: {}, payment_channel: null, payment_method_id: undefined, payment_reference_number: "", payment_proof: undefined },
   });
   const players = useWatch({ control: form.control, name: "additional_players" }) ?? 0;
   const equipment = useWatch({ control: form.control, name: "equipment" }) ?? {};
   const ranges = useWatch({ control: form.control, name: "ranges" }) ?? [{ courtId: "", slot: "" }];
   const paymentChannel = useWatch({ control: form.control, name: "payment_channel" }) ?? null;
+  const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
+  const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
+  const paymentSelection = paymentChannel === "CASH" ? "CASH" : paymentMethodId ? `METHOD:${paymentMethodId}` : null;
+  const nonCashPayment = paymentChannel === "EWALLET_BANK";
   useEffect(() => {
     if (open) {
-      form.reset({ ranges: [{ courtId: "", slot: "" }], additional_players: 0, equipment: {}, payment_channel: null, payment_reference_number: "", payment_proof: undefined });
+      form.reset({ ranges: [{ courtId: "", slot: "" }], additional_players: 0, equipment: {}, payment_channel: null, payment_method_id: undefined, payment_reference_number: "", payment_proof: undefined });
     }
   }, [form, open, reservation?.id]);
   const selectedSlots = expandRanges(date, ranges);
@@ -228,6 +236,7 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
       additional_players: values.additional_players,
       equipment: selectedEquipment.map((item) => ({ id: item.id, quantity: values.equipment[item.id] ?? 0 })),
       payment_channel: values.payment_channel,
+      payment_method_id: values.payment_method_id,
       payment_reference_number: values.payment_reference_number?.trim() || undefined,
       payment_proof: proof && proof.size > 0 ? proof : undefined,
     };
@@ -235,6 +244,7 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
   });
   const scheduleError = form.formState.errors.ranges?.message ?? (form.formState.errors.ranges ? "Complete each selected court time." : undefined);
   const paymentChannelError = form.formState.errors.payment_channel?.message;
+  const paymentMethodError = form.formState.errors.payment_method_id?.message;
   return <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) setCourtOpen(false); onOpenChange(nextOpen); }}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-4"><DialogHeader><DialogTitle>Add these items to {reservation?.reference_number}?</DialogTitle><DialogDescription>Add available court time, players, or rental equipment to this ongoing reservation.</DialogDescription></DialogHeader>
     <section className="rounded-xl border"><button type="button" className="flex min-h-12 w-full items-center justify-between px-4 font-semibold" onClick={() => setCourtOpen(!courtOpen)}>Add court time?<FiChevronDown className={courtOpen ? "rotate-180" : ""} aria-hidden /></button>{courtOpen ? <div className="border-t p-4"><ScheduleFields date={date} setDate={() => undefined} dateLocked ranges={ranges} setRanges={(nextRanges) => form.setValue("ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} onRemoveRange={(index) => form.setValue("ranges", ranges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={scheduleError} /><Button type="button" variant="link" size="sm" className="mt-3 h-auto px-0" onClick={() => form.setValue("ranges", [...ranges, { courtId: "", slot: "" }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another time slot</Button></div> : null}</section>
     <section className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><h3 className="font-semibold">Add players</h3><p className="text-sm text-muted-foreground">{currency.format(options?.configuration?.additional_player_price ?? 0)} each</p></div><QuantityStepper value={players} decreaseDisabled={players === 0} increaseDisabled={false} decreaseLabel="Remove one additional player" increaseLabel="Add one additional player" onDecrease={() => form.setValue("additional_players", Math.max(0, players - 1), { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("additional_players", players + 1, { shouldDirty: true, shouldValidate: true })} /></section>
@@ -253,9 +263,20 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
       </section>
       <section className="grid gap-4 rounded-xl border p-4">
         <div><h3 className="font-semibold">Payment method</h3><p className="text-sm text-muted-foreground">Record how the add-on amount was collected.</p></div>
-        <SelectWithLabel id="reservation-addon-payment-channel" label="Payment method" required value={paymentChannel} error={paymentChannelError} options={[{ value: "CASH", label: "Cash" }, { value: "EWALLET", label: "E-wallet" }, { value: "BANK", label: "Bank" }]} placeholder="Select payment method" onValueChange={(value) => form.setValue("payment_channel", value as ReservationPaymentChannel | null, { shouldDirty: true, shouldValidate: true })} />
-        <Field label="Transaction reference (optional)" error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} {...form.register("payment_reference_number")} /></Field>
-        <Field label="Payment receipt (optional)" error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field>
+        <SelectWithLabel id="reservation-addon-payment-method" label="Payment method" required value={paymentSelection} error={paymentMethodError ?? paymentChannelError} options={[{ value: "CASH", label: "Cash" }, ...paymentMethods.map((method) => ({ value: `METHOD:${method.id}`, label: method.name }))]} placeholder="Select payment method" onValueChange={(value) => {
+          if (!value) return;
+          if (value === "CASH") {
+            form.setValue("payment_channel", "CASH", { shouldDirty: true, shouldValidate: true });
+            form.setValue("payment_method_id", undefined, { shouldDirty: true, shouldValidate: true });
+          } else {
+            form.setValue("payment_channel", "EWALLET_BANK", { shouldDirty: true, shouldValidate: true });
+            form.setValue("payment_method_id", Number(value.replace("METHOD:", "")), { shouldDirty: true, shouldValidate: true });
+          }
+        }} description={paymentMethodsQuery.isPending ? "Loading active e-wallet and bank methods…" : "Cash or an active payment account from the public checkout."} />
+        {paymentMethodsQuery.isError ? <p role="alert" className="text-sm text-destructive">Active e-wallet and bank methods could not be loaded. Cash remains available.</p> : null}
+        {selectedPaymentMethod ? <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-muted-foreground">Account name</dt><dd className="font-medium">{selectedPaymentMethod.account_name}</dd></div><div><dt className="text-muted-foreground">Account number</dt><dd className="font-medium">{selectedPaymentMethod.account_number}</dd></div></dl><PaymentMethodQrDialog method={selectedPaymentMethod} /></div> : null}
+        <Field label={nonCashPayment ? "Transaction reference" : "Transaction reference (optional)"} required={nonCashPayment} error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} required={nonCashPayment} {...form.register("payment_reference_number")} /></Field>
+        <Field label={nonCashPayment ? "Payment receipt" : "Payment receipt (optional)"} required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field>
       </section>
     </> : null}
     <DialogFooter><DialogClose render={<Button type="button" variant="outline">Cancel</Button>} /><Button type="submit" disabled={!hasInput || !paymentChannel || mutation.isPending}>{mutation.isPending ? "Adding…" : "Add and record payment"}</Button></DialogFooter>

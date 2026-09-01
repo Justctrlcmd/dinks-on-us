@@ -8,7 +8,7 @@ export const mockPublicSite = {
     titleLines: ["Find Your Crew.", "Play Your Game.", "The Dinks Are on US!"],
     description:
       "An easygoing place to rally, recharge, and reserve a court with your favorite people.",
-    image: "/images/pickleball-courts-hero.png",
+    image: "/images/dinks-hero.png",
     imageAlt: "Indoor pickleball courts ready for play",
   },
   etiquette: {
@@ -67,11 +67,13 @@ export const mockPublicSite = {
   },
   location: {
     eyebrow: "Location",
-    title: "See you in Bulacan.",
+    title: "See you at Dinks on Us PH - Sports Center.",
     description:
-      "Dinks on Us is located in Bulacan, Philippines. Staff will publish the final venue address, operating hours, and contact channels here.",
-    detailLabel: "Preview venue details",
-    detail: "Exact address and opening hours to be announced",
-    mapQuery: "Bulacan, Philippines",
+      "Dinks on Us PH - Sports Center is located in Sta. Lucia, Angat, Bulacan, Philippines, in front of Boss Gasoline Station.",
+    detailLabel: "Dinks on Us PH - Sports Center",
+    detail: "Sta. Lucia, Angat, Bulacan • In front of Boss Gasoline Station",
+    mapEmbedUrl:
+      "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3854.8765176276224!2d121.02628279999999!3d14.943971399999999!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3397073afa464c81%3A0x7e894d289085de7a!2sDinks%20on%20Us%20PH%20-%20Sports%20Center!5e0!3m2!1sen!2sph!4v1788256731625!5m2!1sen!2sph",
+    mapUrl: "https://maps.app.goo.gl/gj9q4epVo6NDSALu8?g_st=ic",
   },
 } as const;

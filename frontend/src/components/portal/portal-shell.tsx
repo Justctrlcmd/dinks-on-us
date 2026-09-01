@@ -27,7 +27,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
-  const pendingReservationCount = pendingReservationQuery.data;
+  const pendingReservationCount = pendingReservationQuery.data?.pending_count;
 
   return (
     <div className="min-h-svh bg-background">

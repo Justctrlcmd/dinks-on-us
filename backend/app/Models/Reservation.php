@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'reference_number', 'source', 'booking_date', 'customer_name', 'customer_email',
+    'reference_number', 'idempotency_key', 'source', 'booking_date', 'customer_name', 'customer_email',
     'customer_contact_number', 'status', 'is_rescheduled', 'reschedule_count',
     'original_additional_players', 'additional_player_unit_amount', 'original_amount',
     'adjustment_amount', 'final_amount', 'amount_paid', 'refundable_credit',
@@ -21,24 +21,62 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Reservation extends Model
 {
     public const STATUS_PENDING = 'PENDING';
+
     public const STATUS_VERIFIED = 'VERIFIED';
+
     public const STATUS_ONGOING = 'ONGOING';
+
     public const STATUS_COMPLETED = 'COMPLETED';
+
     public const STATUS_CANCELLED = 'CANCELLED';
+
     public const STATUS_REJECTED = 'REJECTED';
+
     public const STATUS_NO_SHOW = 'NO_SHOW';
 
     public const OPERATIONAL_STATUSES = [self::STATUS_PENDING, self::STATUS_VERIFIED, self::STATUS_ONGOING];
+
     public const FINAL_STATUSES = [self::STATUS_COMPLETED, self::STATUS_CANCELLED, self::STATUS_REJECTED, self::STATUS_NO_SHOW];
 
-    public function slots(): HasMany { return $this->hasMany(ReservationSlot::class); }
-    public function currentSlots(): HasMany { return $this->slots()->where('is_current', true); }
-    public function payments(): HasMany { return $this->hasMany(ReservationPayment::class); }
-    public function equipmentItems(): HasMany { return $this->hasMany(ReservationEquipmentItem::class); }
-    public function adjustments(): HasMany { return $this->hasMany(ReservationAdjustment::class); }
-    public function statusHistories(): HasMany { return $this->hasMany(ReservationStatusHistory::class); }
-    public function scheduleHistories(): HasMany { return $this->hasMany(ReservationScheduleHistory::class); }
-    public function refunds(): HasMany { return $this->hasMany(ReservationRefund::class); }
+    public function slots(): HasMany
+    {
+        return $this->hasMany(ReservationSlot::class);
+    }
+
+    public function currentSlots(): HasMany
+    {
+        return $this->slots()->where('is_current', true);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(ReservationPayment::class);
+    }
+
+    public function equipmentItems(): HasMany
+    {
+        return $this->hasMany(ReservationEquipmentItem::class);
+    }
+
+    public function adjustments(): HasMany
+    {
+        return $this->hasMany(ReservationAdjustment::class);
+    }
+
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(ReservationStatusHistory::class);
+    }
+
+    public function scheduleHistories(): HasMany
+    {
+        return $this->hasMany(ReservationScheduleHistory::class);
+    }
+
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(ReservationRefund::class);
+    }
 
     public function scopeOperational(Builder $query): void
     {

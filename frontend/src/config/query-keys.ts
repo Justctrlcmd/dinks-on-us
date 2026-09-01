@@ -53,6 +53,12 @@ export const paymentMethodKeys = {
   management: () => [...paymentMethodKeys.all, "management"] as const,
 };
 
+export const paymentProofRetentionKeys = {
+  all: ["payment-proof-retention"] as const,
+  preview: (range: { from: string; to: string } | null) => [...paymentProofRetentionKeys.all, "preview", range] as const,
+  activity: (page: number) => [...paymentProofRetentionKeys.all, "activity", page] as const,
+};
+
 export const teamAccessKeys = {
   all: ["team-access"] as const,
   accesses: () => [...teamAccessKeys.all, "accesses"] as const,

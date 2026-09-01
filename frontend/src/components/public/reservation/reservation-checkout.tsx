@@ -23,6 +23,7 @@ import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { useSubmitReservation } from "@/hooks/mutations/use-reservation-mutations";
@@ -45,6 +46,16 @@ const longDate = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   year: "numeric",
 });
+
+function createIdempotencyKey() {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
+  if (!cryptoApi?.getRandomValues) throw new Error("Secure submission identifiers are unavailable in this browser.");
+
+  const bytes = new Uint8Array(16);
+  cryptoApi.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 function parseDateOnly(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -240,6 +251,8 @@ export function ReservationCheckout() {
   }, [loaded]);
   const [submitted, setSubmitted] = useState<ManagementReservation | null>(null);
   const [submitMessage, setSubmitMessage] = useState<string>();
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
+  const [emailConfirmationValues, setEmailConfirmationValues] = useState<ReservationCheckoutValues | null>(null);
   const submitMutation = useSubmitReservation();
 
   const paymentMethods = paymentMethodsQuery.data ?? noPaymentMethods;
@@ -257,7 +270,7 @@ export function ReservationCheckout() {
     }
   }, [form, paymentMethodId, paymentMethods]);
 
-  async function submitReservationForm(values: ReservationCheckoutValues) {
+  async function submitReservation(values: ReservationCheckoutValues) {
     if (!selectedPaymentMethod || !draft) return;
     setSubmitMessage(undefined);
     const input = new FormData();
@@ -280,8 +293,12 @@ export function ReservationCheckout() {
       input.set(`equipment[${index}][quantity]`, String(item.quantity));
     });
     try {
-      const response = await submitMutation.mutateAsync(input);
+      const requestKey = idempotencyKey ?? createIdempotencyKey();
+      if (!idempotencyKey) setIdempotencyKey(requestKey);
+      const response = await submitMutation.mutateAsync({ input, idempotencyKey: requestKey });
+      setIdempotencyKey(null);
       setSubmitted(response.data);
+      setEmailConfirmationValues(null);
       window.sessionStorage.removeItem(RESERVATION_DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -289,7 +306,10 @@ export function ReservationCheckout() {
     }
   }
 
-  const submit = form.handleSubmit(submitReservationForm, () => {
+  const submit = form.handleSubmit((values) => {
+    setSubmitMessage(undefined);
+    setEmailConfirmationValues(values);
+  }, () => {
     toast.error("Please complete all required fields before submitting.");
   });
 
@@ -499,6 +519,40 @@ export function ReservationCheckout() {
           ) : null}
         </section>
       </form>
+
+      <Dialog
+        open={emailConfirmationValues !== null}
+        onOpenChange={(open) => {
+          if (!open && !submitMutation.isPending) setEmailConfirmationValues(null);
+        }}
+      >
+        <DialogContent showCloseButton={false} className="gap-5 p-6 sm:max-w-lg sm:p-8">
+          <DialogHeader className="text-left">
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-energy">One final check</p>
+            <DialogTitle className="font-heading text-2xl font-extrabold tracking-[-.04em]">Is this email address correct?</DialogTitle>
+            <DialogDescription className="leading-6">Your reservation result, including whether it is verified or rejected, will be sent to this address.</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-primary/35 bg-primary/8 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-[.14em] text-muted-foreground">Reservation email</p>
+            <p className="mt-1 break-all font-heading text-lg font-extrabold text-primary">{emailConfirmationValues?.customer_email}</p>
+          </div>
+          <DialogFooter className="sm:grid sm:grid-cols-2 sm:gap-3">
+            <DialogClose render={<Button type="button" variant="outline" disabled={submitMutation.isPending} className="h-12 rounded-full font-extrabold" />}>
+              Edit email
+            </DialogClose>
+            <Button
+              type="button"
+              disabled={submitMutation.isPending}
+              className="h-12 rounded-full bg-energy font-extrabold text-energy-foreground hover:bg-energy/90"
+              onClick={() => {
+                if (emailConfirmationValues) void submitReservation(emailConfirmationValues);
+              }}
+            >
+              <FiShield aria-hidden="true" /> {submitMutation.isPending ? "Submitting reservation…" : "Yes, submit reservation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

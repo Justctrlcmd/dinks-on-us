@@ -88,7 +88,10 @@ class ReservationManagementTest extends TestCase
         $reservation = $this->submit();
         $this->assertSame('RF-001', $reservation['reference_number']);
         $this->assertDatabaseHas('reservation_slot_locks', ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]);
-        Storage::disk('local')->assertExists(Reservation::query()->firstOrFail()->payments()->firstOrFail()->proof_path);
+        $proofPath = Reservation::query()->firstOrFail()->payments()->firstOrFail()->proof_path;
+        Storage::disk('local')->assertExists($proofPath);
+        $this->assertIsString($proofPath);
+        $this->assertStringEndsWith('.webp', $proofPath);
 
         $this->getJson("/api/v1/public/reservation-options?date={$this->date}")
             ->assertOk()
@@ -100,6 +103,29 @@ class ReservationManagementTest extends TestCase
             ->assertConflict()->assertJsonPath('code', 'RESERVATION_CONFLICT');
         $this->assertDatabaseCount('reservations', 1);
         Mail::assertNothingSent();
+    }
+
+    public function test_public_submission_is_idempotent_when_the_same_key_is_replayed(): void
+    {
+        $headers = ['Accept' => 'application/json', 'Idempotency-Key' => 'reservation-submit-001'];
+
+        $this->post('/api/v1/public/reservations', $this->submissionPayload(), $headers)->assertCreated();
+        $this->post('/api/v1/public/reservations', $this->submissionPayload(), $headers)
+            ->assertOk()
+            ->assertJsonPath('data.reference_number', 'RF-001');
+
+        $this->assertDatabaseCount('reservations', 1);
+    }
+
+    public function test_pending_summary_returns_a_lightweight_count_and_latest_submission_marker(): void
+    {
+        $this->submit();
+
+        $this->actingAs($this->manager)->getJson('/api/v1/management/reservations/pending-summary')
+            ->assertOk()
+            ->assertJsonPath('data.pending_count', 1)
+            ->assertJsonPath('data.latest_online_submission_id', 1)
+            ->assertJsonPath('data.latest_online_submission_at', fn ($value): bool => is_string($value));
     }
 
     public function test_public_submission_requires_an_eleven_digit_contact_number_starting_with_zero_nine(): void
@@ -210,7 +236,7 @@ class ReservationManagementTest extends TestCase
         Mail::assertSent(ReservationStatusMail::class, 3);
     }
 
-    public function test_authorized_staff_can_create_a_verified_walk_in_with_an_optional_receipt(): void
+    public function test_authorized_staff_can_create_a_verified_walk_in_with_a_configured_non_cash_method(): void
     {
         config(['reservations.emails_enabled' => true]);
 
@@ -220,6 +246,7 @@ class ReservationManagementTest extends TestCase
         $payload = $this->walkInPayload();
         $payload['equipment'] = [['id' => $equipment->id, 'quantity' => 2]];
         $payload['payment_channel'] = 'EWALLET_BANK';
+        $payload['payment_method_id'] = $this->paymentMethod->id;
         $payload['payment_reference_number'] = 'BANK-9081';
         $payload['payment_proof'] = UploadedFile::fake()->image('walk-in-receipt.jpg');
 
@@ -233,7 +260,7 @@ class ReservationManagementTest extends TestCase
             ->assertJsonPath('data.amounts.original', 800)
             ->assertJsonPath('data.amounts.paid', 800)
             ->assertJsonPath('data.amounts.outstanding', 0)
-            ->assertJsonPath('data.payments.0.method', 'E-wallet / Bank')
+            ->assertJsonPath('data.payments.0.method', 'GCash')
             ->assertJsonPath('data.payments.0.reference_number', 'BANK-9081');
 
         $reservation = Reservation::query()->findOrFail($response->json('data.id'));
@@ -247,6 +274,8 @@ class ReservationManagementTest extends TestCase
             'quantity' => 2, 'kind' => 'ORIGINAL',
         ]);
         $payment = $reservation->payments()->firstOrFail();
+        $this->assertSame($this->paymentMethod->id, $payment->payment_method_id);
+        $this->assertSame('GCash', $payment->payment_method_name);
         Storage::disk('local')->assertExists($payment->proof_path);
         Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail): bool {
             $html = $mail->render();
@@ -278,7 +307,35 @@ class ReservationManagementTest extends TestCase
 
         $this->assertDatabaseHas('reservation_payments', [
             'reservation_id' => $created['id'], 'channel' => 'CASH', 'status' => 'VERIFIED',
+            'payment_method_id' => null, 'payment_method_name' => 'Cash',
         ]);
+    }
+
+    public function test_walk_in_non_cash_payment_requires_an_active_method_reference_and_receipt(): void
+    {
+        $missingDetails = $this->walkInPayload(15);
+        $missingDetails['payment_channel'] = 'EWALLET_BANK';
+        unset($missingDetails['payment_reference_number']);
+
+        $this->actingAs($this->manager)
+            ->postJson('/api/v1/management/reservations/walk-in', $missingDetails)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['payment_method_id', 'payment_reference_number', 'payment_proof']);
+
+        $this->paymentMethod->update(['is_active' => false]);
+        $inactiveMethod = $this->walkInPayload(15);
+        $inactiveMethod['payment_channel'] = 'EWALLET_BANK';
+        $inactiveMethod['payment_method_id'] = $this->paymentMethod->id;
+        $inactiveMethod['payment_reference_number'] = 'GCASH-1001';
+        $inactiveMethod['payment_proof'] = UploadedFile::fake()->image('inactive-method-receipt.jpg');
+
+        $this->actingAs($this->manager)
+            ->post('/api/v1/management/reservations/walk-in', $inactiveMethod)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['payment_method_id']);
+
+        $this->assertDatabaseCount('reservations', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('reservation-payment-proofs'));
     }
 
     public function test_walk_in_creation_rejects_duplicate_or_already_reserved_slots_without_partial_writes(): void
@@ -371,6 +428,41 @@ class ReservationManagementTest extends TestCase
         $this->assertDatabaseHas('reservation_equipment_items', ['reservation_id' => $created['id'], 'rental_equipment_id' => $equipment->id, 'quantity' => 1, 'kind' => 'ADD_ON']);
         $this->assertDatabaseHas('reservation_payments', ['reservation_id' => $created['id'], 'kind' => 'ADD_ON', 'channel' => 'CASH', 'amount' => 230]);
         $this->assertDatabaseMissing('reservation_payments', ['reservation_id' => $created['id'], 'kind' => 'SETTLEMENT']);
+    }
+
+    public function test_add_on_non_cash_payment_uses_a_configured_method_and_requires_evidence(): void
+    {
+        $created = $this->submit(17);
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/verify")->assertOk();
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/start")->assertOk();
+
+        $missingDetails = [
+            'additional_players' => 1,
+            'payment_channel' => 'EWALLET_BANK',
+        ];
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/management/reservations/{$created['id']}/add-ons", $missingDetails)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['payment_method_id', 'payment_reference_number', 'payment_proof']);
+
+        $payload = [
+            'additional_players' => 1,
+            'payment_channel' => 'EWALLET_BANK',
+            'payment_method_id' => $this->paymentMethod->id,
+            'payment_reference_number' => 'GCASH-ADDON-1',
+            'payment_proof' => UploadedFile::fake()->image('add-on-receipt.jpg'),
+        ];
+        $response = $this->actingAs($this->manager)
+            ->post("/api/v1/management/reservations/{$created['id']}/add-ons", $payload)
+            ->assertOk()
+            ->assertJsonPath('data.amounts.paid', 800)
+            ->assertJsonPath('data.payments.1.method', 'GCash')
+            ->assertJsonPath('data.payments.1.reference_number', 'GCASH-ADDON-1');
+
+        $payment = Reservation::query()->findOrFail($response->json('data.id'))->payments()->where('kind', 'ADD_ON')->firstOrFail();
+        $this->assertSame($this->paymentMethod->id, $payment->payment_method_id);
+        $this->assertSame('GCash', $payment->payment_method_name);
+        Storage::disk('local')->assertExists($payment->proof_path);
     }
 
     public function test_manager_can_reschedule_repeatedly_and_cheaper_slot_creates_credit(): void

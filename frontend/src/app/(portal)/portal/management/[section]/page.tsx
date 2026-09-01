@@ -11,6 +11,7 @@ import { PaymentMethodManagementView } from "@/views/portal/payment-method-manag
 import { TeamAccessManagementView } from "@/views/portal/team-access-management-view";
 import { EventManagementView } from "@/views/portal/event-management-view";
 import { GalleryManagementView } from "@/views/portal/gallery-management-view";
+import { PaymentProofRetentionManagementView } from "@/views/portal/payment-proof-retention-management-view";
 
 export function generateStaticParams() {
   return managementAreas.map(({ slug }) => ({ section: slug }));
@@ -29,6 +30,7 @@ export default async function Page({ params }: { params: Promise<{ section: stri
   if (area.slug === "court-pricing") return <CourtPricingManagementView />;
   if (area.slug === "close-date-slot") return <AvailabilityClosuresManagementView />;
   if (area.slug === "payment-method") return <PaymentMethodManagementView />;
+  if (area.slug === "storage-retention") return <PaymentProofRetentionManagementView />;
   if (area.slug === "staff-accounts") return <TeamAccessManagementView />;
   if (area.slug === "events") return <EventManagementView />;
   if (area.slug === "gallery") return <GalleryManagementView />;

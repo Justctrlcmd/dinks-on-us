@@ -6,6 +6,8 @@
 
 No backend host, frontend host, managed database, public domains, storage provider, email provider, queue worker, scheduler, persistent process, concurrency target, monitoring service, backup policy, or rollback mechanism has been selected.
 
+The backend runtime baseline is PHP 8.4.1 or newer within the PHP 8.x release line. Deploy the latest supported PHP 8.4 patch release and keep CLI, web server/PHP-FPM, and worker runtimes aligned. The deployed runtime must provide Laravel's required extensions plus GD with WebP support before payment-proof normalization is enabled.
+
 ## Required deployment discovery
 
 Before deploying, record the Laravel and Next.js platforms, exact Node/PHP/MySQL versions, frontend/API domains, TLS termination, reverse proxies, environment-secret mechanism, writable storage, mail provider, build commands, migration procedure, and platform limits. Confirm whether Next.js runs as a Node server or static output; this foundation assumes a Node-capable deployment unless adapted.
@@ -18,10 +20,45 @@ Production requires HTTPS. Align `APP_URL`, `FRONTEND_URL`, `NEXT_PUBLIC_APP_URL
 
 Use MySQL backups with documented retention and restore drills. Run migrations as a controlled release step and back up before destructive changes. Never edit an already-deployed migration; add a new one. A production release needs health checks, centralized logs without secrets, error monitoring, uptime monitoring, and a rollback plan for application code and schema compatibility.
 
+Manual payment-proof cleanup removes active files from the configured private
+storage provider, but infrastructure snapshots, replicas, or backups may retain
+copies until their separate retention windows expire. Document those windows and
+their restore implications before enabling cleanup in production. A database
+backup must precede the migration that adds proof-deletion metadata. The business
+owner must also confirm the applicable accounting, dispute, and privacy retention
+policy; the application must not invent or silently automate that policy.
+
+## PWA and Web Push
+
+The Next.js frontend exposes a web app manifest, install icons, and a
+push-only `/sw.js` service worker. Production must serve the frontend over
+HTTPS. Set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and the matching backend
+`PUSH_VAPID_SUBJECT`, `PUSH_VAPID_PUBLIC_KEY`, and `PUSH_VAPID_PRIVATE_KEY`,
+and set `PUSH_NOTIFICATIONS_ENABLED=true` only after testing delivery with the
+chosen push provider. Keep the private VAPID key server-side; it must never be
+included in the frontend bundle.
+
+New reservation push delivery is dispatched after the reservation transaction
+commits. The repository defaults to a synchronous queue, which is suitable for
+local development but can add request-tail latency in production; configure a
+durable queue worker before enabling high-volume push delivery. Expired push
+endpoints are removed automatically, while other failures are marked for
+retry/inspection.
+
+Browsers control notification permission and background delivery. The app's
+optional chime is best-effort foreground Web Audio and is not a guaranteed
+background notification sound.
+
 ## Unconfigured facilities
 
 - Files use the local disk only in development. Choose durable shared storage before user uploads.
 - Reservation payment proofs are private files and currently rely on the local disk. Choose durable private storage with authorized retrieval before production.
+- Payment-proof cleanup is manually triggered and synchronous. It must
+  not introduce a scheduler, cron task, queue worker, automatic lifecycle rule,
+  or time-based purge. Confirm the selected private provider supports authorized
+  existence, size, read, and delete operations and define a safe synchronous
+  request/batch limit for the deployed host. Confirm that the deployed PHP image
+  runtime can encode WebP before enabling upload normalization.
 - The repository defaults to the log mailer. Verification, rejection, reschedule, and walk-in verification email templates exist, but delivery is disabled by default through `RESERVATION_EMAILS_ENABLED=false`; choose a real provider and verified sender before enabling it in a production environment.
 - Queues run synchronously; no worker is required or assumed.
 - Scheduler and WebSockets are unused.

@@ -327,7 +327,11 @@ Inactive payment methods must not be selectable by players.
 
 Online reservation submission requires a payment reference number together with the uploaded payment receipt.
 
-Both pieces of information should be retained for manual payment verification and audit purposes.
+Both pieces of information must remain available while manual payment
+verification or an active reservation workflow still requires them. The payment
+reference remains part of the permanent payment record. After the reservation is
+finalized, the receipt image may be removed only through the manual cleanup rule
+below; removing an image must not remove the payment record or reference.
 
 ---
 
@@ -336,6 +340,63 @@ Both pieces of information should be retained for manual payment verification an
 A player must upload a payment receipt before an online reservation can be submitted.
 
 The system should not accept an online reservation when the required proof of payment is missing.
+
+---
+
+## 19.1 Manual Payment Proof Cleanup Rule
+
+Payment-proof cleanup is manual only. The system must not automatically remove
+proofs based on age, status, a scheduler, a cron task, a queue, or a storage
+lifecycle rule.
+
+Authorized personnel must select an inclusive reservation `booking_date` range,
+review an aggregate preview, and explicitly confirm the cleanup. Only finalized
+reservations are eligible:
+
+```text
+COMPLETED
+CANCELLED
+REJECTED
+NO_SHOW
+```
+
+The cleanup includes every proof-bearing payment attached to eligible
+reservations, including initial, add-on, and settlement payments. Operational
+reservations must never be included.
+
+The preview counts only payments whose active managed proof file still exists.
+Payments whose proof was already deleted or whose path is already `NULL` must
+not appear in preview counts.
+
+---
+
+## 19.2 Proof-Only Deletion Rule
+
+Cleanup may remove only:
+
+* The private payment-proof image file
+* The active file-path reference for that proof
+
+Cleanup must preserve:
+
+* Reservation and payment rows
+* Payment amounts, methods, references, statuses, and timestamps
+* Customer and reservation details
+* Adjustments, refunds, status history, and schedule history
+* Reporting and audit data
+* Payment-method QR codes and every unrelated uploaded image
+
+A storage failure must leave the affected proof path available for a later retry.
+An already-missing file may have its stale path cleared and must be reported as
+missing rather than falsely counted as reclaimed storage.
+
+Each cleanup that successfully deletes at least one physical image records one
+summarized activity entry containing the selected booking-date range, images
+deleted, reservations affected, storage reclaimed, actor, timestamp, and any
+meaningful partial-result count. Missing-only or failed attempts belong outside
+the successful activity list and must not create a misleading deletion entry.
+The activity interface must not expose customer information, payment references,
+private paths, or raw technical errors.
 
 ---
 
@@ -1113,9 +1174,9 @@ Pending:
 Staff records one of two payment modes:
 
 * Cash
-* E-wallet / Bank
+* A specific active e-wallet or bank method configured for public checkout
 
-The full calculated reservation amount is recorded as a verified initial payment. The transaction reference number and receipt image are optional for either mode.
+The full calculated reservation amount is recorded as a verified initial payment. Cash may omit the transaction reference number and receipt image. A non-cash payment must reference the selected configured payment method and include both a transaction reference number and receipt image. The payment method link and name snapshot keep reporting specific to the actual method, such as GCash or BPI.
 
 ---
 
@@ -1159,6 +1220,10 @@ The following should always remain true:
 17. Availability rules must be enforced server-side.
 
 18. Reservation records should not normally be permanently deleted.
+
+19. Payment-proof cleanup is manually triggered and is limited to finalized reservations.
+
+20. Removing a payment-proof image must preserve its reservation, payment, and reporting records.
 ```
 
 ---

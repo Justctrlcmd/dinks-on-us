@@ -36,6 +36,11 @@ class ReservationController extends Controller
         ]);
     }
 
+    public function pendingSummary(ReservationService $service): JsonResponse
+    {
+        return $this->respondSuccess($service->pendingSummary(), 'Pending reservation summary retrieved.');
+    }
+
     public function show(Request $request, Reservation $reservation, ReservationService $service): JsonResponse
     {
         return $this->respondSuccess(ReservationResource::make($service->detail($reservation))->resolve($request), 'Reservation details retrieved.');

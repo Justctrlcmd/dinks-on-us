@@ -22,14 +22,15 @@ export interface ApiFetchOptions extends RequestInit {
 }
 
 function networkError(cause: unknown): NormalizedApiError {
+  const aborted = cause instanceof DOMException && cause.name === "AbortError";
   return new NormalizedApiError({
     status: 0,
-    message: cause instanceof DOMException && cause.name === "AbortError"
+    message: aborted
       ? "The request was cancelled."
       : process.env.NODE_ENV === "development"
         ? "The local API is unavailable. Start the project with npm run dev, then try again."
         : "We couldn't connect to the service. Check your connection and try again.",
-    code: "NETWORK_ERROR",
+    code: aborted ? "REQUEST_CANCELLED" : "NETWORK_ERROR",
   });
 }
 

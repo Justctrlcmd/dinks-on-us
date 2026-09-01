@@ -36,6 +36,25 @@ describe("reservation management schemas", () => {
     expect(result.success).toBe(true);
   });
 
+  it("requires a configured method, reference, and proof for non-cash add-ons", () => {
+    const result = reservationAddOnsSchema.safeParse({
+      ranges: [{ courtId: "", slot: "" }],
+      additional_players: 1,
+      equipment: {},
+      payment_channel: "EWALLET_BANK",
+      payment_reference_number: "",
+      payment_proof: fileList(),
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.flatten().fieldErrors).toMatchObject({
+      payment_method_id: ["Choose an active e-wallet or bank payment method."],
+      payment_reference_number: ["Enter the transaction reference for this payment method."],
+      payment_proof: ["Select a receipt image for this payment method."],
+    });
+  });
+
   it("requires payment for a completed reservation with an outstanding balance", () => {
     const result = completeReservationSchema(true).safeParse({ payment_channel: null, payment_reference_number: "", payment_proof: fileList() });
 

@@ -53,8 +53,6 @@ function SectionHeading({
 }
 
 export function LandingView() {
-  const mapSource = `https://www.google.com/maps?q=${encodeURIComponent(mockPublicSite.location.mapQuery)}&output=embed`;
-
   return (
     <PublicSiteFrame>
       <main>
@@ -236,28 +234,23 @@ export function LandingView() {
                 title={mockPublicSite.location.title}
                 description={mockPublicSite.location.description}
               />
-              <div className="mt-6 flex gap-4 rounded-xl bg-muted p-5 text-sm">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-energy/15 text-energy">
-                  <FiMapPin className="size-4" aria-hidden="true" />
-                </span>
-                <div>
-                  <p className="font-extrabold text-foreground">
-                    {mockPublicSite.location.detailLabel}
-                  </p>
-                  <p className="mt-1.5 leading-6 text-muted-foreground">
-                    {mockPublicSite.location.detail}
-                  </p>
-                </div>
-              </div>
             </div>
             <div className="min-h-90 overflow-hidden rounded-2xl border border-border bg-muted">
               <iframe
-                title="Map showing Bulacan, Philippines"
-                src={mapSource}
+                title={`Map showing ${mockPublicSite.location.detailLabel}`}
+                src={mockPublicSite.location.mapEmbedUrl}
                 className="h-full min-h-90 w-full border-0 grayscale-[20%]"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
               />
+              <a
+                href={mockPublicSite.location.mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="sr-only focus:not-sr-only"
+              >
+                Open Dinks on Us PH - Sports Center in Google Maps
+              </a>
             </div>
           </div>
         </section>

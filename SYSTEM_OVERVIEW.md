@@ -567,7 +567,7 @@ Payment Information
 
 Once the walk-in reservation is saved, the selected court/time slots immediately become unavailable online.
 
-The walk-in is created as **Verified** and its full calculated amount is recorded as paid. Staff chooses either **Cash** or **E-wallet / Bank**. A transaction reference number and receipt image may be recorded but are optional. When reservation emails are enabled, the customer receives the verification email immediately after the walk-in is created.
+The walk-in is created as **Verified** and its full calculated amount is recorded as paid. Staff chooses either **Cash** or a specific active e-wallet/bank method already configured for public checkout. Cash may omit the transaction reference number and receipt image; both are required for non-cash payments. The selected method is linked to the payment for method-specific reporting. When reservation emails are enabled, the customer receives the verification email immediately after the walk-in is created.
 
 The system should distinguish reservation sources such as:
 
@@ -902,7 +902,8 @@ Management
 ├── Reservation Policies
 ├── Events
 ├── Gallery
-└── FAQs
+├── FAQs
+└── Storage & Data Retention
 ```
 
 ---
@@ -948,6 +949,29 @@ Authorized management users can create and manage gallery tabs, then add, order,
 # 38. Payment Methods
 
 Management can add and edit supported e-wallet payment methods, including the wallet name, account number, and QR image. Only active methods are available for player payment selection.
+
+---
+
+## 38.1 Storage & Data Retention
+
+Authorized personnel can manually reduce private storage usage by selecting an
+inclusive reservation booking-date range, previewing eligible finalized payment
+proofs, and explicitly confirming deletion. The operation removes only payment
+proof image files and their active file references. Reservations, payments,
+amounts, payment references, statuses, customers, histories, and reporting data
+remain unchanged.
+
+Only `COMPLETED`, `CANCELLED`, `REJECTED`, and `NO_SHOW` reservations are
+eligible. Preview totals include only proof images that still physically exist;
+already-deleted proofs do not appear. The module includes initial, add-on, and
+settlement proofs, records one summarized activity entry for each cleanup that
+successfully deletes at least one image, and does not expose private paths or
+customer/payment details in its activity list. Cleanup is never automatic and
+does not use a scheduler, cron task, queue worker, or storage lifecycle timer.
+
+New uploads continue to accept JPG, JPEG, PNG, and WebP. The backend normalizes
+new proof uploads to a readable private WebP file; customers are not required to
+convert images themselves, and existing proofs are not converted automatically.
 
 ---
 
@@ -1268,9 +1292,9 @@ Confirm whether additional information is required.
 Staff selects one payment mode:
 
 * Cash
-* E-wallet / Bank
+* A specific active e-wallet or bank method configured for public checkout
 
-The transaction reference number and receipt are optional. The reservation is stored as Verified with the calculated amount recorded as paid.
+Cash may omit the transaction reference number and receipt. Both are required for a configured non-cash method. The reservation is stored as Verified with the calculated amount recorded as paid, and the payment is linked to its configured method for reporting.
 
 ---
 
@@ -1317,7 +1341,8 @@ DINKS ON US
         │   ├── Reservation Policies
         │   ├── Events
         │   ├── Gallery
-        │   └── FAQs
+        │   ├── FAQs
+        │   └── Storage & Data Retention
         │
         ├── Reports & Analytics
         └── Logout
@@ -1364,6 +1389,7 @@ Focused on allowing authorized Staff and Managers to:
 * Manage business content
 * Manage pricing
 * Manage payment methods
+* Manually clean up finalized payment-proof images without deleting business records
 * Manage Staff roles and accounts
 * Review reports and analytics
 

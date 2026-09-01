@@ -57,6 +57,11 @@ return [
             'description' => 'Manage public frequently asked questions.',
             'group' => 'MANAGEMENT',
         ],
+        'MANAGEMENT_STORAGE_RETENTION' => [
+            'name' => 'Storage & Data Retention',
+            'description' => 'Manually remove finalized payment-proof images without deleting business records.',
+            'group' => 'MANAGEMENT',
+        ],
         'REPORTS' => [
             'name' => 'Reports',
             'description' => 'View reports, exports, and business analytics.',

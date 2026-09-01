@@ -40,6 +40,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
 
+vi.mock("@/lib/date", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/date")>("@/lib/date");
+  return { ...actual, todayInTimeZone: () => "2026-08-25" };
+});
+
 vi.mock("@/hooks/queries/use-policies", () => ({
   usePublicPolicies: () => ({ data: policySectionsMock, isPending: false, isError: false }),
 }));

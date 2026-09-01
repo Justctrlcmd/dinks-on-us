@@ -91,11 +91,18 @@ class DashboardService
             $weekEnd->toDateString(),
         ]);
 
+        $kpis = $base
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending', [Reservation::STATUS_PENDING])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as verified', [Reservation::STATUS_VERIFIED])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed', [Reservation::STATUS_COMPLETED])
+            ->selectRaw('COALESCE(SUM(CASE WHEN status = ? THEN final_amount ELSE 0 END), 0) as revenue', [Reservation::STATUS_COMPLETED])
+            ->first();
+
         return [
-            'pending' => (clone $base)->where('status', Reservation::STATUS_PENDING)->count(),
-            'verified' => (clone $base)->where('status', Reservation::STATUS_VERIFIED)->count(),
-            'completed' => (clone $base)->where('status', Reservation::STATUS_COMPLETED)->count(),
-            'revenue' => (float) (clone $base)->where('status', Reservation::STATUS_COMPLETED)->sum('final_amount'),
+            'pending' => (int) ($kpis?->pending ?? 0),
+            'verified' => (int) ($kpis?->verified ?? 0),
+            'completed' => (int) ($kpis?->completed ?? 0),
+            'revenue' => (float) ($kpis?->revenue ?? 0),
         ];
     }
 

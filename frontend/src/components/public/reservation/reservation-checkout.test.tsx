@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationCheckout } from "@/components/public/reservation/reservation-checkout";
 import { RESERVATION_DRAFT_STORAGE_KEY } from "@/types/reservation";
 
-const { toastErrorMock } = vi.hoisted(() => ({ toastErrorMock: vi.fn() }));
+const { submitReservationMock, toastErrorMock } = vi.hoisted(() => ({ submitReservationMock: vi.fn(), toastErrorMock: vi.fn() }));
 
 vi.mock("@/components/common/toast-provider", () => ({
   useToast: () => ({ success: vi.fn(), error: toastErrorMock, warning: vi.fn(), info: vi.fn() }),
@@ -65,11 +65,13 @@ vi.mock("@/hooks/queries/use-payment-methods", () => ({
 }));
 
 vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
-  useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: submitReservationMock, isPending: false }),
 }));
 
 beforeEach(() => {
   toastErrorMock.mockReset();
+  submitReservationMock.mockReset();
+  submitReservationMock.mockResolvedValue({ data: { id: 1, reference_number: "RSV-100", status: "PENDING" } });
   window.sessionStorage.setItem(
     RESERVATION_DRAFT_STORAGE_KEY,
     JSON.stringify({
@@ -164,5 +166,29 @@ describe("ReservationCheckout", () => {
     expect(screen.getByText("Enter the transaction reference number.")).toBeInTheDocument();
     expect(screen.getByText("Select a payment proof image.")).toBeInTheDocument();
     expect(toastErrorMock).toHaveBeenCalledWith("Please complete all required fields before submitting.");
+  });
+
+  it("requires email confirmation before sending the reservation", async () => {
+    const user = userEvent.setup();
+    render(<ReservationCheckout />);
+
+    await user.type(screen.getByRole("textbox", { name: "Full name" }), "Mark Justin Sayson");
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
+    await user.type(screen.getByRole("textbox", { name: "Mobile number" }), "09123456789");
+    await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-12345");
+    const receiptInput = document.getElementById("payment-receipt");
+    expect(receiptInput).toBeInstanceOf(HTMLInputElement);
+    await user.upload(receiptInput as HTMLInputElement, new File(["receipt"], "receipt.png", { type: "image/png" }));
+    await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
+    await user.click(screen.getByRole("button", { name: "Submit reservation" }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Is this email address correct?" })).toBeInTheDocument();
+    expect(screen.getByText("mark@example.com")).toBeInTheDocument();
+    expect(submitReservationMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Yes, submit reservation" }));
+
+    expect(submitReservationMock).toHaveBeenCalledTimes(1);
   });
 });

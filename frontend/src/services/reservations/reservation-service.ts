@@ -1,9 +1,14 @@
 import { authFetch, publicFetch } from "@/lib/api";
 import type { ApiResponse } from "@/types/api";
-import type { ManagementReservation, ReservationAddOnsInput, ReservationFilters, ReservationListData, SlotInput, WalkInReservationInput } from "@/types/reservation";
+import type { ManagementReservation, PendingReservationSummary, ReservationAddOnsInput, ReservationFilters, ReservationListData, SlotInput, WalkInReservationInput } from "@/types/reservation";
 
-export const submitReservation = (input: FormData) =>
-  publicFetch<ManagementReservation>("/api/v1/public/reservations", { method: "POST", csrf: true, body: input });
+export const submitReservation = ({ input, idempotencyKey }: { input: FormData; idempotencyKey: string }) =>
+  publicFetch<ManagementReservation>("/api/v1/public/reservations", {
+    method: "POST",
+    csrf: true,
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: input,
+  });
 
 export const getReservations = (filters: ReservationFilters, signal?: AbortSignal) => {
   const params = new URLSearchParams({ page: String(filters.page), per_page: "10" });
@@ -11,6 +16,9 @@ export const getReservations = (filters: ReservationFilters, signal?: AbortSigna
   if (filters.status) params.set("status", filters.status);
   return authFetch<ReservationListData>(`/api/v1/management/reservations?${params}`, { signal });
 };
+
+export const getPendingReservationSummary = (signal?: AbortSignal) =>
+  authFetch<PendingReservationSummary>("/api/v1/management/reservations/pending-summary", { signal });
 
 export const getReservation = (id: number, signal?: AbortSignal) =>
   authFetch<ManagementReservation>(`/api/v1/management/reservations/${id}`, { signal });
@@ -22,6 +30,7 @@ export const createWalkInReservation = (input: WalkInReservationInput) => {
   body.set("customer_contact_number", input.customer_contact_number);
   body.set("additional_players", String(input.additional_players));
   body.set("payment_channel", input.payment_channel);
+  if (input.payment_method_id !== undefined) body.set("payment_method_id", String(input.payment_method_id));
   if (input.payment_reference_number?.trim()) body.set("payment_reference_number", input.payment_reference_number.trim());
   if (input.payment_proof) body.set("payment_proof", input.payment_proof);
   input.slots.forEach((slot, index) => {
@@ -57,6 +66,7 @@ export const addReservationAddOns = (id: number, input: ReservationAddOnsInput) 
     body.set("equipment[" + index + "][quantity]", String(item.quantity));
   });
   body.set("payment_channel", input.payment_channel);
+  if (input.payment_method_id !== undefined) body.set("payment_method_id", String(input.payment_method_id));
   if (input.payment_reference_number?.trim()) body.set("payment_reference_number", input.payment_reference_number.trim());
   if (input.payment_proof) body.set("payment_proof", input.payment_proof);
   return postAction(id, "add-ons", body);

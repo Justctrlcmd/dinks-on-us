@@ -222,9 +222,16 @@ Suggested module mapping:
 DASHBOARD
 RESERVATION
 HISTORY
-MANAGEMENT
+MANAGEMENT_COURT_PRICING
+MANAGEMENT_AVAILABILITY_CLOSURES
+MANAGEMENT_PAYMENT_METHODS
+MANAGEMENT_TEAM_ACCESS
+MANAGEMENT_RULES_POLICIES
+MANAGEMENT_EVENTS
+MANAGEMENT_GALLERY
+MANAGEMENT_FAQS
+MANAGEMENT_STORAGE_RETENTION
 REPORTS
-SETTINGS
 ```
 
 Manager automatically has access to all modules.
@@ -777,6 +784,11 @@ The customer receives an email only after Staff or Management verifies, rejects,
 
 Email failure must not roll back or otherwise change the committed reservation result. The reservation transaction and email delivery are separate responsibilities.
 
+After the reservation transaction commits, the backend may dispatch a push
+notification to active management devices that have subscribed for the
+`RESERVATION` module. Push delivery is a separate, retryable side effect and
+must not change the committed reservation result.
+
 ---
 
 # 31. Duplicate Submission Protection
@@ -800,6 +812,50 @@ Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 ```
 
 Repeated requests using the same key should not create multiple reservations.
+
+The backend persists the key with a unique database constraint. A replay returns
+the original reservation resource with a successful response and does not write
+another payment, slot lock, status history, or audit entry. Clients should reuse
+the same key for retries of one submission and generate a new key for a new
+reservation.
+
+---
+
+# 31.1 Pending Reservation Summary
+
+```http
+GET /api/v1/management/reservations/pending-summary
+```
+
+Requires `RESERVATION` module access. The response is a single aggregate read:
+
+```json
+{
+  "pending_count": 3,
+  "latest_online_submission_id": 42,
+  "latest_online_submission_at": "2026-08-30T15:20:00Z"
+}
+```
+
+The portal badge polls this lightweight endpoint at most every 30 seconds while
+the portal is open. It does not fetch reservation rows or payment proofs.
+
+---
+
+# 31.2 Management Push Subscriptions
+
+```http
+POST   /api/v1/management/push-subscriptions
+DELETE /api/v1/management/push-subscriptions
+```
+
+Both endpoints require an active account with `RESERVATION` module access. The
+POST body contains the browser Push API `endpoint`, `keys.p256dh`, `keys.auth`,
+and optional content-encoding/expiration fields. The endpoint is stored as a
+hash plus key material hidden from API resources; it is only used for
+server-side delivery and must be protected by database-at-rest controls. DELETE
+accepts the endpoint and removes it for the current account. Subscription
+registration is safe to repeat.
 
 ---
 
@@ -1152,13 +1208,16 @@ Conceptual payload:
       "quantity": 2
     }
   ],
-  "payment_channel": "CASH",
-  "payment_reference_number": null,
-  "payment_proof": "<optional image file>"
+  "payment_channel": "EWALLET_BANK",
+  "payment_method_id": 1,
+  "payment_reference_number": "GCASH-1001",
+  "payment_proof": "<required image file for non-cash>"
 }
 ```
 
-The request is multipart only when a receipt is attached. Supported `payment_channel` values are `CASH` and `EWALLET_BANK`. The transaction reference and receipt are optional.
+The request is multipart when a receipt is attached. Supported `payment_channel` values are `CASH` and `EWALLET_BANK`.
+
+For `CASH`, omit `payment_method_id`; the transaction reference and receipt are optional. For `EWALLET_BANK`, `payment_method_id` must identify an active method returned by `GET /api/v1/public/payment-methods`, and both `payment_reference_number` and `payment_proof` are required. The payment stores the selected method ID and a name snapshot so reports use the specific account (for example, GCash or BPI) rather than one generic non-cash category.
 
 ---
 
@@ -1347,13 +1406,14 @@ Payload example:
   "slots": [{ "court_id": 1, "date": "2026-08-25", "start_hour": 12 }],
   "additional_players": 1,
   "equipment": [{ "id": 1, "quantity": 1 }],
-  "payment_channel": "CASH",
+  "payment_channel": "EWALLET_BANK",
+  "payment_method_id": 1,
   "payment_reference_number": "ADDON-001",
-  "payment_proof": "(optional image upload)"
+  "payment_proof": "(required image upload for non-cash)"
 }
 ```
 
-The request is multipart when a receipt is uploaded. The backend prices every item, records one verified `ADD_ON` payment for the amount due (including any prior outstanding balance after the adjustment), and updates `amount_paid`. The transaction reference and receipt are optional.
+The request is multipart when a receipt is uploaded. The backend prices every item, records one verified `ADD_ON` payment for the amount due (including any prior outstanding balance after the adjustment), and updates `amount_paid`. Supported payment modes are `CASH` and `EWALLET_BANK`. Cash omits `payment_method_id` and may omit the transaction reference and receipt. Non-cash payments must use an active method returned by `GET /api/v1/public/payment-methods` and require both the transaction reference and receipt; the selected method ID and name snapshot are stored for reporting.
 
 ---
 
@@ -1675,6 +1735,96 @@ Manager should be able to:
 * Remove a method from future payment selection by deactivating it
 
 Historical payment records must remain meaningful after deactivation.
+
+---
+
+## 64.1 Storage & Data Retention
+
+Requires:
+
+```text
+MANAGEMENT_STORAGE_RETENTION
+```
+
+Cleanup is manually triggered. No endpoint, scheduler, queue, or storage policy
+may automatically purge proofs by age.
+
+### Preview
+
+```http
+GET /api/v1/management/payment-proof-retention/preview?from=2026-01-01&to=2026-01-31
+```
+
+`from` and `to` are required inclusive date-only filters against
+`reservations.booking_date`. The backend includes only `COMPLETED`, `CANCELLED`,
+`REJECTED`, and `NO_SHOW` reservations and all proof-bearing initial, add-on, and
+settlement payments attached to them. Preview totals include only managed proof
+files that still physically exist. Payments with a `NULL` path or an already
+missing/deleted file are omitted from all preview counts.
+
+The response exposes aggregate scope only:
+
+```json
+{
+  "from": "2026-01-01",
+  "to": "2026-01-31",
+  "reservations_affected": 18,
+  "proof_count": 24,
+  "reclaimable_bytes": 86402662,
+  "status_counts": {
+    "COMPLETED": 15,
+    "CANCELLED": 1,
+    "REJECTED": 1,
+    "NO_SHOW": 1
+  }
+}
+```
+
+The response must not include customer details, payment references, private
+paths, or individual payment records. Changing the selected dates invalidates
+the browser's previous preview.
+
+### Manual delete
+
+```http
+POST /api/v1/management/payment-proof-retention/delete
+```
+
+```json
+{
+  "from": "2026-01-01",
+  "to": "2026-01-31",
+  "confirm": true
+}
+```
+
+The backend validates the dates, requires accepted confirmation, and rebuilds
+the eligible query instead of trusting previewed counts. For each successful or
+confirmed-missing proof it sets `proof_path` to `NULL` and writes
+`proof_deleted_at` and `proof_deleted_by_user_id`. A storage deletion failure
+must leave that proof path unchanged for retry.
+
+The operation must never delete or modify reservation/payment business rows,
+amounts, methods, references, statuses, customer information, histories,
+adjustments, refunds, or reporting values. The response contains actual deleted,
+missing, failed, affected-reservation, and reclaimed-byte totals. Technical
+storage details are logged server-side and are not returned.
+
+### Activity
+
+```http
+GET /api/v1/management/payment-proof-retention/activity?page=1
+```
+
+Returns five newest-first summarized `PAYMENT_PROOFS_DELETED` audit entries per
+page. An entry is created only when at least one physical proof image was
+successfully deleted, so successful deletions appear in the refreshed activity
+log while missing-only or failed attempts do not. Each item contains only the
+booking-date range, images deleted, reservations affected, reclaimed bytes,
+non-zero missing/failed counts, result
+state when partial, actor display name, and creation time. It does not expose
+private paths, customer/payment data, IP addresses, user agents, or raw audit
+JSON.
 
 ---
 
@@ -2220,6 +2370,12 @@ file integrity
 
 Uploaded files should use generated storage names rather than trusting original filenames.
 
+New payment-proof uploads continue to accept JPG, JPEG, PNG, and WebP up to the
+existing 5 MB limit. The backend converts validated new proofs to a readable
+private WebP file and removes the temporary original. Existing stored proofs are
+not automatically converted, and users are not required to submit WebP
+themselves.
+
 ---
 
 # 89. Payment Receipt Security
@@ -2229,6 +2385,10 @@ Payment receipts contain potentially sensitive financial information.
 Receipt URLs should not necessarily be publicly accessible.
 
 Only authenticated authorized management users should normally be able to access them.
+
+Manual cleanup may make an older finalized proof unavailable. After successful
+cleanup, reservation/payment detail returns `proof_url: null` and protected proof
+routes return `404`; the underlying payment and reservation records remain.
 
 ---
 
@@ -2568,7 +2728,11 @@ GET /api/v1/management/dashboard/availability
 
 ```text
 GET  /api/v1/management/reservations
+GET  /api/v1/management/reservations/pending-summary
 GET  /api/v1/management/reservations/{reservation}
+
+POST   /api/v1/management/push-subscriptions
+DELETE /api/v1/management/push-subscriptions
 
 POST /api/v1/management/reservations/walk-in
 
@@ -2609,6 +2773,8 @@ Reservation Policies
 Events
 Gallery
 FAQs
+Storage & Data Retention
+  - Manual finalized payment-proof preview, deletion, and activity
 ```
 
 ---

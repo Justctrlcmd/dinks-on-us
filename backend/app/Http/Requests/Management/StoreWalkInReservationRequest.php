@@ -39,8 +39,19 @@ class StoreWalkInReservationRequest extends FormRequest
             'equipment.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
             'additional_players' => ['required', 'integer', 'min:0', 'max:1000'],
             'payment_channel' => ['required', Rule::in(['CASH', 'EWALLET_BANK'])],
-            'payment_reference_number' => ['nullable', 'string', 'max:180'],
-            'payment_proof' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'payment_method_id' => [
+                Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
+                Rule::prohibitedIf(fn (): bool => $this->input('payment_channel') === 'CASH'),
+                'nullable', 'integer', 'exists:payment_methods,id',
+            ],
+            'payment_reference_number' => [
+                Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
+                'nullable', 'string', 'max:180',
+            ],
+            'payment_proof' => [
+                Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
+                'nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120',
+            ],
         ];
     }
 
@@ -69,6 +80,10 @@ class StoreWalkInReservationRequest extends FormRequest
         return [
             'payment_proof.mimes' => 'The receipt must be a JPG, PNG, or WebP image.',
             'payment_proof.max' => 'The receipt must not be larger than 5 MB.',
+            'payment_proof.required' => 'Select a receipt image for this payment method.',
+            'payment_method_id.required' => 'Choose an active e-wallet or bank payment method.',
+            'payment_method_id.prohibited' => 'A configured payment method cannot be used for cash.',
+            'payment_reference_number.required' => 'Enter the transaction reference for this payment method.',
             'customer_contact_number.size' => 'The contact number must contain exactly 11 digits.',
             'customer_contact_number.regex' => 'The contact number must contain only digits and start with 09.',
         ];

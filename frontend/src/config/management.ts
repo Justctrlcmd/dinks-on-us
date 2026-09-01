@@ -73,6 +73,14 @@ export const managementAreas = [
     icon: icons.faq,
     capabilities: ["Create, edit, or delete Q&A cards", "Drag cards to change their public order", "Control public visibility"],
   },
+  {
+    slug: "storage-retention",
+    module: "MANAGEMENT_STORAGE_RETENTION",
+    title: "Storage & Data Retention",
+    description: "Manually preview and remove finalized payment-proof images without deleting reservation or payment records.",
+    icon: icons.storage,
+    capabilities: ["Preview proof images by reservation booking-date range", "Delete only finalized payment-proof files", "Review summarized cleanup activity"],
+  },
 ] as const;
 
 export type ManagementArea = (typeof managementAreas)[number];

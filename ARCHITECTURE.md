@@ -6,6 +6,12 @@ Laravel is authoritative for authentication, authorization, validation, persiste
 
 The request path is: form → Zod → mutation hook → service → `publicFetch`/`authFetch` → `/api/v1` → Sanctum → FormRequest → controller → model → API Resource → `ApiResponse` envelope.
 
+Public reservation submission accepts an `Idempotency-Key`. The key is stored
+with a database uniqueness constraint so a browser retry returns the original
+reservation instead of creating another slot lock or payment. Management
+reservation badges use a dedicated aggregate summary endpoint rather than
+polling the paginated reservation collection.
+
 ## Backend
 
 Routes are versioned under `/api/v1`. Controllers are focused and use `app/Traits/ApiResponse.php`; resources shape entities. Input requests normalize only intentional fields and persist `validated()`/`safe()` data. Names and emails may be normalized; passwords, tokens, identifiers, JSON, signatures, code, and rich text must not be globally transformed.
@@ -38,6 +44,11 @@ API mutation result messages are presented by the shared TanStack Query mutation
 
 `authFetch` dispatches `auth:unauthorized` and normalizes 401, 403, 404, 409, 422, 429, 500, network failures, and 204 responses. Do not duplicate query data in a client store. Zustand is intentionally absent.
 
+The root `PwaProvider` registers the push-only service worker and invalidates
+reservation queries when a push arrives. The service worker never caches
+private API responses. Device subscriptions are persisted through authenticated
+management endpoints, and push delivery is a post-commit side effect.
+
 ## Validation and generated schemas
 
 Laravel FormRequests remain authoritative. Compatible password-free schemas may be generated into `frontend/src/validation/generated`; generated files are overwritten and never hand-edited. Custom schemas live in `validation/custom`. The current generator trims generic strings, so password-bearing requests deliberately use handwritten schemas. Run the schema drift check after FormRequest changes.
@@ -55,5 +66,17 @@ Laravel classes use PascalCase, methods camelCase, tables plural snake_case, col
 The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized. The account menu owns Profile, an in-place light/dark mode control, and Logout. As management modules are introduced, both navigation visibility and backend authorization must use the authenticated account's assigned role and module access.
 
 Future modules create only needed pieces. Simple CRUD does not justify repositories, actions, or service layers automatically. Use transactions for multi-write invariants, eager load serialized relations, add indexes from query patterns, enforce important uniqueness in validation and the database, and choose delete behavior intentionally.
+
+Payment-proof file lifecycle operations use focused backend services because
+storage mechanics and cleanup orchestration have different responsibilities. A
+proof-storage service owns optimization, generated paths, private storage,
+existence, size, and deletion mechanics. A retention service owns eligible
+queries, chunking, lifecycle metadata, result summaries, and audit orchestration.
+Manual cleanup must revalidate eligible finalized reservations server-side,
+remove only private proof files, clear only proof lifecycle fields, and write a
+summarized audit entry. Controllers remain transport-only. Filesystem deletion
+failures must retain the corresponding database path for a later retry; they
+must not delete or roll back reservation or payment business records. No
+scheduler or automatic retention process is part of this workflow.
 
 Prohibited patterns include raw exception messages, localStorage authentication, arbitrary HTML rendering, scattered `toLocaleString`, scattered fetch calls, duplicated server caches, giant configurable controls, premature business roles, and hard-coded deployment assumptions.
