@@ -4,7 +4,7 @@ $usesLocalOrigins = in_array(env('APP_ENV', 'production'), ['local', 'testing'],
 
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     'allowed_origins' => array_values(array_unique(array_filter([
         env('FRONTEND_URL', 'http://localhost:3000'),
         ...($usesLocalOrigins ? ['http://127.0.0.1:3000'] : []),
@@ -12,8 +12,15 @@ return [
     'allowed_origins_patterns' => $usesLocalOrigins
         ? ['#^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$#']
         : [],
-    'allowed_headers' => ['*'],
+    'allowed_headers' => [
+        'Accept',
+        'Content-Type',
+        'Idempotency-Key',
+        'Origin',
+        'X-Requested-With',
+        'X-XSRF-TOKEN',
+    ],
     'exposed_headers' => [],
-    'max_age' => 0,
+    'max_age' => 600,
     'supports_credentials' => true,
 ];

@@ -10,17 +10,19 @@ use App\Http\Requests\Management\UpdateGalleryOrderRequest;
 use App\Http\Resources\GalleryImageResource;
 use App\Models\GalleryImage;
 use App\Models\GalleryTab;
+use App\Services\OptimizedImageStorageService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 use Throwable;
 
 class GalleryImageController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private readonly OptimizedImageStorageService $images) {}
 
     public function index(ListGalleryImagesRequest $request): JsonResponse
     {
@@ -37,10 +39,7 @@ class GalleryImageController extends Controller
 
     public function store(StoreGalleryImageRequest $request): JsonResponse
     {
-        $imagePath = $request->file('image')->store('gallery', 'public');
-        if (! is_string($imagePath)) {
-            throw new RuntimeException('The gallery image could not be stored.');
-        }
+        $imagePath = $this->images->store($request->file('image'), 'public', 'gallery');
 
         try {
             $image = DB::transaction(function () use ($request, $imagePath): GalleryImage {
@@ -73,11 +72,8 @@ class GalleryImageController extends Controller
     public function update(UpdateGalleryImageRequest $request, GalleryImage $galleryImage): JsonResponse
     {
         $newImagePath = $request->hasFile('image')
-            ? $request->file('image')->store('gallery', 'public')
+            ? $this->images->store($request->file('image'), 'public', 'gallery')
             : null;
-        if ($newImagePath === false) {
-            throw new RuntimeException('The gallery image could not be stored.');
-        }
 
         $oldImagePath = $galleryImage->image_path;
         $sourceTabId = $galleryImage->gallery_tab_id;

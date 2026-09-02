@@ -26,6 +26,15 @@ API responses always contain `success`, `message`, `code`, `data`, `errors`, and
 
 Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains, CORS credentials, and the `web` guard. The frontend and API must share a top-level domain in production. Public registration and password recovery are disabled; authenticated management accounts are provisioned by the system and belong to one role. The system Manager role is seeded for local development and is the highest operational role defined by the business rules.
 
+Security controls are layered rather than controller-specific. Named rate
+limiters cover public, authenticated, login, submission, upload, report,
+private-file, and destructive traffic. Password rules are centralized at an
+8-character minimum and Argon2id is the hashing default. Privileged identity and
+access changes require current-password confirmation, invalidate affected
+database sessions, and emit safe audit records. MFA is intentionally outside the
+current project scope. The detailed boundary is documented in
+`docs/security/SECURITY_BASELINE.md` and `docs/security/THREAT_MODEL.md`.
+
 ## Frontend
 
 `src/app` contains route files, layouts, loading/error boundaries, and metadata. Complete pages live in `src/views`. Complete forms live in `src/forms/<domain>`; reusable accessible controls live in `src/components/common/forms`. Use `SelectWithLabel` for labeled select fields and filters; it composes the low-level select primitive in `components/ui`. shadcn primitives remain under `components/ui`.
@@ -46,8 +55,14 @@ API mutation result messages are presented by the shared TanStack Query mutation
 
 The root `PwaProvider` registers the push-only service worker and invalidates
 reservation queries when a push arrives. The service worker never caches
-private API responses. Device subscriptions are persisted through authenticated
+private API responses and notification clicks are constrained to the app origin.
+Device subscriptions are persisted through authenticated
 management endpoints, and push delivery is a post-commit side effect.
+
+The frontend proxy creates a per-request CSP nonce and sends the same policy to
+Next.js rendering and the browser. Security headers are also configured for all
+frontend routes. Keep external resource origins narrow when a deployment adds a
+provider; do not weaken the policy globally for one component.
 
 ## Validation and generated schemas
 
@@ -78,5 +93,10 @@ summarized audit entry. Controllers remain transport-only. Filesystem deletion
 failures must retain the corresponding database path for a later retry; they
 must not delete or roll back reservation or payment business records. No
 scheduler or automatic retention process is part of this workflow.
+
+All accepted image uploads use the shared optimized-image service. Validation
+checks decoded content, MIME, extension, bytes, and dimensions; storage then
+decodes and re-encodes a bounded WebP under a generated UUID path. Original
+filenames and image bytes are never served as trusted content.
 
 Prohibited patterns include raw exception messages, localStorage authentication, arbitrary HTML rendering, scattered `toLocaleString`, scattered fetch calls, duplicated server caches, giant configurable controls, premature business roles, and hard-coded deployment assumptions.

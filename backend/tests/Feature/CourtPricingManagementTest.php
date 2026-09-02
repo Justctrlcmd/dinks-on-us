@@ -59,26 +59,65 @@ class CourtPricingManagementTest extends TestCase
         $this->assertDatabaseEmpty('court_configurations');
     }
 
-    public function test_court_numbers_increment_and_are_not_reused_after_removal(): void
+    public function test_the_lowest_inactive_court_is_reactivated_before_a_new_number_is_assigned(): void
     {
         $user = User::factory()->create();
+        $courts = [];
 
-        $first = $this->actingAs($user)->postJson('/api/v1/management/courts')
-            ->assertCreated()
-            ->assertJsonPath('data.name', 'Court 1')
-            ->json('data');
+        foreach (range(1, 6) as $courtNumber) {
+            $courts[$courtNumber] = $this->actingAs($user)
+                ->postJson('/api/v1/management/courts')
+                ->assertCreated()
+                ->assertJsonPath('data.name', "Court {$courtNumber}")
+                ->json('data');
+        }
 
-        $this->actingAs($user)->deleteJson("/api/v1/management/courts/{$first['id']}")
+        $this->actingAs($user)->deleteJson("/api/v1/management/courts/{$courts[3]['id']}")
             ->assertOk();
-
-        $this->actingAs($user)->postJson('/api/v1/management/courts')
-            ->assertCreated()
-            ->assertJsonPath('data.name', 'Court 2');
+        $this->actingAs($user)->deleteJson("/api/v1/management/courts/{$courts[5]['id']}")
+            ->assertOk();
 
         $this->actingAs($user)->getJson('/api/v1/management/courts')
             ->assertOk()
-            ->assertJsonCount(1, 'data.courts')
-            ->assertJsonPath('data.next_court_number', 3);
+            ->assertJsonCount(4, 'data.courts')
+            ->assertJsonPath('data.next_court_number', 3)
+            ->assertJsonPath('data.next_court_is_reactivation', true);
+
+        $this->actingAs($user)->postJson('/api/v1/management/courts')
+            ->assertOk()
+            ->assertJsonPath('message', 'Court reactivated.')
+            ->assertJsonPath('data.id', $courts[3]['id'])
+            ->assertJsonPath('data.name', 'Court 3');
+
+        $this->assertDatabaseCount('courts', 6);
+        $this->assertDatabaseHas('courts', [
+            'id' => $courts[3]['id'],
+            'court_number' => 3,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->getJson('/api/v1/management/courts')
+            ->assertOk()
+            ->assertJsonCount(5, 'data.courts')
+            ->assertJsonPath('data.next_court_number', 5)
+            ->assertJsonPath('data.next_court_is_reactivation', true);
+
+        $this->actingAs($user)->postJson('/api/v1/management/courts')
+            ->assertOk()
+            ->assertJsonPath('data.id', $courts[5]['id'])
+            ->assertJsonPath('data.name', 'Court 5');
+
+        $this->actingAs($user)->getJson('/api/v1/management/courts')
+            ->assertOk()
+            ->assertJsonCount(6, 'data.courts')
+            ->assertJsonPath('data.next_court_number', 7)
+            ->assertJsonPath('data.next_court_is_reactivation', false);
+
+        $this->actingAs($user)->postJson('/api/v1/management/courts')
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'Court 7');
+
+        $this->assertDatabaseCount('courts', 7);
     }
 
     public function test_rental_equipment_can_be_created_updated_and_removed(): void

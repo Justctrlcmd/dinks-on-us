@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\Security\PasswordRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -28,7 +29,7 @@ class StoreStaffRequest extends FormRequest
             'name' => ['required', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'contact_number' => ['required', 'string', 'size:11', 'regex:/^09[0-9]{9}$/'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => PasswordRules::create(),
             'role_id' => [
                 'required',
                 'integer',

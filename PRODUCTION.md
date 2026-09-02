@@ -16,6 +16,19 @@ Before deploying, record the Laravel and Next.js platforms, exact Node/PHP/MySQL
 
 Production requires HTTPS. Align `APP_URL`, `FRONTEND_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_URL`, `API_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, and CORS. Use `SESSION_SECURE_COOKIE=true`. Same-site subdomains are recommended; unrelated top-level domains are incompatible with Sanctum’s first-party SPA model without redesign. Verify proxy trust, cookie domain, CSRF requests, and logout in the deployed topology.
 
+Set `TRUSTED_HOSTS` to the exact frontend/API hosts and set `TRUSTED_PROXIES`
+only to known proxy or load-balancer addresses. Enable
+`SECURITY_HSTS_ENABLED=true` on both services only after HTTPS and subdomain
+coverage are verified. Use the shared database session store so password,
+role, and deactivation events can revoke sessions across application instances.
+Run `php artisan security:check --production` against the final cached
+configuration as a deployment gate.
+
+The Argon2id transition initially uses `HASH_VERIFY=false` so existing bcrypt
+accounts can authenticate and be automatically rehashed. After confirming every
+stored user password begins with the Argon2id hash identifier, set
+`HASH_VERIFY=true`, clear configuration cache, and restart the backend.
+
 ## Data and changes
 
 Use MySQL backups with documented retention and restore drills. Run migrations as a controlled release step and back up before destructive changes. Never edit an already-deployed migration; add a new one. A production release needs health checks, centralized logs without secrets, error monitoring, uptime monitoring, and a rollback plan for application code and schema compatibility.
@@ -64,5 +77,8 @@ background notification sound.
 - Scheduler and WebSockets are unused.
 - Redis is not required.
 - Expected concurrency and rate-limit store behavior are unknown.
+- Application limits are defaults, not edge protection. Select a shared cache
+  for multi-instance rate limiting and add provider-level request/body limits,
+  connection limits, and abuse monitoring before public launch.
 
 Shared hosting must be checked for PHP, Composer, cron, shell, symlink, permissions, and document-root limitations. A VPS additionally needs web server, PHP-FPM, Node process management, TLS, firewall, backups, and worker supervision decisions. Do not add an infrastructure-dependent feature until these constraints are updated.

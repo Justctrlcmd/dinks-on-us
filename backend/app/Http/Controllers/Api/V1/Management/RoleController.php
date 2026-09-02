@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Api\V1\Management;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Management\DeleteRoleRequest;
 use App\Http\Requests\Management\StoreRoleRequest;
 use App\Http\Requests\Management\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\SecurityAuditService;
+use App\Services\SessionSecurityService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -47,7 +51,7 @@ class RoleController extends Controller
         ], 'Access profiles retrieved.');
     }
 
-    public function store(StoreRoleRequest $request): JsonResponse
+    public function store(StoreRoleRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $role = DB::transaction(function () use ($request): Role {
             $role = Role::query()->create([
@@ -64,6 +68,9 @@ class RoleController extends Controller
 
             return $role->load('modules')->loadCount('users');
         });
+        $audit->record(AuditLog::ACCESS_CREATED, $request, $request->user(), $role, [
+            'modules' => $role->modules->pluck('module')->values()->all(),
+        ]);
 
         return $this->respondSuccess(
             RoleResource::make($role)->resolve($request),
@@ -72,8 +79,12 @@ class RoleController extends Controller
         );
     }
 
-    public function update(UpdateRoleRequest $request, Role $role): JsonResponse
-    {
+    public function update(
+        UpdateRoleRequest $request,
+        Role $role,
+        SessionSecurityService $sessions,
+        SecurityAuditService $audit,
+    ): JsonResponse {
         if ($role->is_protected || $role->is_full_access) {
             return $this->respondFailure(
                 'The protected Manager Access cannot be changed.',
@@ -82,6 +93,7 @@ class RoleController extends Controller
             );
         }
 
+        $userIds = $role->users()->pluck('id');
         DB::transaction(function () use ($request, $role): void {
             $role->update(['name' => $request->validated('name')]);
             $role->modules()->delete();
@@ -89,6 +101,10 @@ class RoleController extends Controller
                 collect($request->validated('modules'))->map(fn (string $module): array => ['module' => $module])->all(),
             );
         });
+        $sessions->invalidateUsers($userIds);
+        $audit->record(AuditLog::ACCESS_UPDATED, $request, $request->user(), $role, [
+            'modules' => $request->validated('modules'),
+        ]);
 
         return $this->respondSuccess(
             RoleResource::make($role->fresh()->load('modules')->loadCount('users'))->resolve($request),
@@ -96,7 +112,7 @@ class RoleController extends Controller
         );
     }
 
-    public function destroy(Role $role): JsonResponse
+    public function destroy(DeleteRoleRequest $request, Role $role, SecurityAuditService $audit): JsonResponse
     {
         if ($role->is_protected || $role->is_full_access) {
             return $this->respondFailure(
@@ -114,7 +130,11 @@ class RoleController extends Controller
             );
         }
 
+        $roleId = $role->id;
         $role->delete();
+        $audit->record(AuditLog::ACCESS_DELETED, $request, $request->user(), Role::class, [
+            'role_id' => $roleId,
+        ]);
 
         return $this->respondSuccess(null, 'Access profile deleted.');
     }

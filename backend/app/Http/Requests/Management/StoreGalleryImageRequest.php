@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreGalleryImageRequest extends FormRequest
@@ -20,7 +21,7 @@ class StoreGalleryImageRequest extends FormRequest
         return [
             'gallery_tab_id' => ['required', 'integer', 'exists:gallery_tabs,id'],
             'alt_text' => ['required', 'string', 'max:500'],
-            'image' => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'image' => ImageUploadRules::required(),
         ];
     }
 

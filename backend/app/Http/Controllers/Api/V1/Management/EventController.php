@@ -7,17 +7,19 @@ use App\Http\Requests\Management\StoreEventRequest;
 use App\Http\Requests\Management\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
+use App\Services\OptimizedImageStorageService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use RuntimeException;
 use Throwable;
 
 class EventController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private readonly OptimizedImageStorageService $images) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -35,10 +37,7 @@ class EventController extends Controller
 
     public function store(StoreEventRequest $request): JsonResponse
     {
-        $imagePath = $request->file('image')->store('events', 'public');
-        if (! is_string($imagePath)) {
-            throw new RuntimeException('The event image could not be stored.');
-        }
+        $imagePath = $this->images->store($request->file('image'), 'public', 'events');
 
         try {
             $event = Event::query()->create([
@@ -72,11 +71,8 @@ class EventController extends Controller
     public function update(UpdateEventRequest $request, Event $event): JsonResponse
     {
         $newImagePath = $request->hasFile('image')
-            ? $request->file('image')->store('events', 'public')
+            ? $this->images->store($request->file('image'), 'public', 'events')
             : null;
-        if ($newImagePath === false) {
-            throw new RuntimeException('The event image could not be stored.');
-        }
         $oldImagePath = $event->image_path;
 
         try {

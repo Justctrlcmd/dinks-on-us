@@ -1,6 +1,7 @@
 import { authFetch } from "@/lib/api";
 import type {
   PaginatedPaymentProofCleanupActivity,
+  DeletePaymentProofCleanupInput,
   PaymentProofCleanupActivity,
   PaymentProofCleanupPreview,
   PaymentProofCleanupRange,
@@ -17,7 +18,7 @@ export async function getPaymentProofCleanupPreview(range: PaymentProofCleanupRa
   return response.data;
 }
 
-export const deletePaymentProofs = (input: PaymentProofCleanupRange) =>
+export const deletePaymentProofs = (input: DeletePaymentProofCleanupInput) =>
   authFetch<PaymentProofCleanupResult>("/api/v1/management/payment-proof-retention/delete", {
     method: "POST",
     csrf: true,

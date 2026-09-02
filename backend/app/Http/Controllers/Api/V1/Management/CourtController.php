@@ -16,12 +16,16 @@ class CourtController extends Controller
     public function index(): JsonResponse
     {
         $courts = Court::query()->active()->orderBy('court_number')->get();
-        $nextNumber = ((int) Court::query()->max('court_number')) + 1;
+        $inactiveNumber = Court::query()->where('is_active', false)->min('court_number');
+        $nextNumber = $inactiveNumber !== null
+            ? (int) $inactiveNumber
+            : ((int) Court::query()->max('court_number')) + 1;
 
         return $this->respondSuccess(
             [
                 'courts' => CourtResource::collection($courts)->resolve(),
                 'next_court_number' => $nextNumber,
+                'next_court_is_reactivation' => $inactiveNumber !== null,
             ],
             'Courts retrieved.',
         );
@@ -29,16 +33,35 @@ class CourtController extends Controller
 
     public function store(): JsonResponse
     {
-        $court = DB::transaction(function (): Court {
+        [$court, $reactivated] = DB::transaction(function (): array {
+            $inactiveCourt = Court::query()
+                ->where('is_active', false)
+                ->orderBy('court_number')
+                ->lockForUpdate()
+                ->first();
+
+            if ($inactiveCourt) {
+                $inactiveCourt->update(['is_active' => true]);
+
+                return [$inactiveCourt->refresh(), true];
+            }
+
             $lastCourt = Court::query()->orderByDesc('court_number')->lockForUpdate()->first();
 
-            return Court::query()->create([
-                'court_number' => ($lastCourt?->court_number ?? 0) + 1,
-                'is_active' => true,
-            ]);
+            return [
+                Court::query()->create([
+                    'court_number' => ($lastCourt?->court_number ?? 0) + 1,
+                    'is_active' => true,
+                ]),
+                false,
+            ];
         });
 
-        return $this->respondSuccess(CourtResource::make($court)->resolve(), 'Court created.', 201);
+        return $this->respondSuccess(
+            CourtResource::make($court)->resolve(),
+            $reactivated ? 'Court reactivated.' : 'Court created.',
+            $reactivated ? 200 : 201,
+        );
     }
 
     public function destroy(Court $court): JsonResponse

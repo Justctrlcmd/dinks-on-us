@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Website;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -38,7 +39,7 @@ class StoreReservationRequest extends FormRequest
             'additional_players' => ['required', 'integer', 'min:0', 'max:1000'],
             'payment_method_id' => ['required', 'integer', 'exists:payment_methods,id'],
             'payment_reference_number' => ['required', 'string', 'max:180'],
-            'payment_proof' => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'payment_proof' => ImageUploadRules::required(),
             'policy_acknowledged' => ['accepted'],
         ];
     }

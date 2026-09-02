@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ForgotPasswordRequestSchema } from "@/validation/generated/schemas";
 
 const email = z.string().trim().toLowerCase().pipe(z.email("Please enter a valid email address."));
-const password = z.string().min(8, "The password must contain at least 8 characters.");
+const password = z.string().min(8, "The password must contain at least 8 characters.").max(255, "The password must not exceed 255 characters.");
 
 export const loginSchema = z.object({
   email,

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Management;
 
+use App\Support\Security\PasswordRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ResetStaffPasswordRequest extends FormRequest
@@ -9,7 +10,8 @@ class ResetStaffPasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => PasswordRules::create(),
+            'current_password' => ['required', 'string', 'current_password:web'],
         ];
     }
 

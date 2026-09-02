@@ -37,17 +37,23 @@ use App\Http\Controllers\Api\V1\Website\ReservationController as PublicReservati
 use App\Http\Controllers\Api\V1\Website\ReservationOptionsController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1')->group(function (): void {
+Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
     Route::get('/health', HealthController::class)->name('health');
-    Route::get('/public/faqs', PublicFaqController::class)->name('public.faqs.index');
-    Route::get('/public/gallery', PublicGalleryController::class)->name('public.gallery.index');
-    Route::get('/public/events', [PublicEventController::class, 'index'])->name('public.events.index');
-    Route::get('/public/events/{slug}', [PublicEventController::class, 'show'])->name('public.events.show');
-    Route::get('/public/policies', PublicPolicyController::class)->name('public.policies.index');
-    Route::get('/public/payment-methods', PublicPaymentMethodController::class)->name('public.payment-methods.index');
-    Route::get('/public/closed-dates', [ReservationOptionsController::class, 'closedDates'])->name('public.closed-dates.index');
-    Route::get('/public/reservation-options', ReservationOptionsController::class)->name('public.reservation-options.show');
-    Route::post('/public/reservations', [PublicReservationController::class, 'store'])->middleware('throttle:10,1')->name('public.reservations.store');
+    Route::middleware('throttle:public-read')->group(function (): void {
+        Route::get('/public/faqs', PublicFaqController::class)->name('public.faqs.index');
+        Route::get('/public/gallery', PublicGalleryController::class)->name('public.gallery.index');
+        Route::get('/public/events', [PublicEventController::class, 'index'])->name('public.events.index');
+        Route::get('/public/events/{slug}', [PublicEventController::class, 'show'])->name('public.events.show');
+        Route::get('/public/policies', PublicPolicyController::class)->name('public.policies.index');
+        Route::get('/public/payment-methods', PublicPaymentMethodController::class)->name('public.payment-methods.index');
+    });
+    Route::middleware('throttle:reservation-options')->group(function (): void {
+        Route::get('/public/closed-dates', [ReservationOptionsController::class, 'closedDates'])->name('public.closed-dates.index');
+        Route::get('/public/reservation-options', ReservationOptionsController::class)->name('public.reservation-options.show');
+    });
+    Route::post('/public/reservations', [PublicReservationController::class, 'store'])
+        ->middleware(['throttle:reservation-submit', 'throttle:uploads'])
+        ->name('public.reservations.store');
 
     Route::middleware('guest')->group(function (): void {
         Route::post('/login', LoginController::class)->middleware('throttle:login')->name('login');
@@ -57,7 +63,7 @@ Route::prefix('v1')->group(function (): void {
         ->middleware(['signed', 'throttle:6,1'])
         ->name('verification.verify');
 
-    Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
+    Route::middleware(['auth:sanctum', 'active', 'throttle:authenticated'])->group(function (): void {
         Route::post('/logout', LogoutController::class)->name('logout');
         Route::get('/user', CurrentUserController::class)->name('user.show');
 
@@ -65,12 +71,13 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
         Route::put('/password', [PasswordController::class, 'update'])->name('password.change');
 
-        Route::prefix('management')->name('management.')->group(function (): void {
+        Route::prefix('management')->middleware('throttle:management')->name('management.')->group(function (): void {
             Route::middleware('module:DASHBOARD')->group(function (): void {
                 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
                 Route::get('/dashboard/reservations/{reservation}', [DashboardController::class, 'showReservation'])
                     ->name('dashboard.reservations.show');
                 Route::get('/dashboard-payments/{payment}/proof', DashboardPaymentProofController::class)
+                    ->middleware('throttle:proof-downloads')
                     ->name('dashboard-payments.proof');
             });
 
@@ -79,26 +86,26 @@ Route::prefix('v1')->group(function (): void {
                 Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy'])->middleware('throttle:20,1')->name('push-subscriptions.destroy');
                 Route::get('/reservations/pending-summary', [ManagementReservationController::class, 'pendingSummary'])->name('reservations.pending-summary');
                 Route::get('/reservations', [ManagementReservationController::class, 'index'])->name('reservations.index');
-                Route::post('/reservations/walk-in', [ManagementReservationController::class, 'storeWalkIn'])->name('reservations.walk-in.store');
+                Route::post('/reservations/walk-in', [ManagementReservationController::class, 'storeWalkIn'])->middleware('throttle:uploads')->name('reservations.walk-in.store');
                 Route::get('/reservations/{reservation}', [ManagementReservationController::class, 'show'])->name('reservations.show');
                 Route::post('/reservations/{reservation}/verify', [ManagementReservationController::class, 'verify'])->name('reservations.verify');
                 Route::post('/reservations/{reservation}/reject', [ManagementReservationController::class, 'reject'])->name('reservations.reject');
                 Route::post('/reservations/{reservation}/start', [ManagementReservationController::class, 'start'])->name('reservations.start');
                 Route::post('/reservations/{reservation}/reschedule', [ManagementReservationController::class, 'reschedule'])->name('reservations.reschedule');
-                Route::post('/reservations/{reservation}/add-ons', [ManagementReservationController::class, 'addOns'])->name('reservations.add-ons');
-                Route::post('/reservations/{reservation}/complete', [ManagementReservationController::class, 'complete'])->name('reservations.complete');
+                Route::post('/reservations/{reservation}/add-ons', [ManagementReservationController::class, 'addOns'])->middleware('throttle:uploads')->name('reservations.add-ons');
+                Route::post('/reservations/{reservation}/complete', [ManagementReservationController::class, 'complete'])->middleware('throttle:uploads')->name('reservations.complete');
                 Route::post('/reservations/{reservation}/no-show', [ManagementReservationController::class, 'noShow'])->name('reservations.no-show');
                 Route::post('/reservations/{reservation}/cancel', [ManagementReservationController::class, 'cancel'])->name('reservations.cancel');
-                Route::get('/reservation-payments/{payment}/proof', ReservationPaymentProofController::class)->name('reservation-payments.proof');
+                Route::get('/reservation-payments/{payment}/proof', ReservationPaymentProofController::class)->middleware('throttle:proof-downloads')->name('reservation-payments.proof');
             });
 
             Route::middleware('module:HISTORY')->group(function (): void {
                 Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
                 Route::get('/history/{reservation}', [HistoryController::class, 'show'])->name('history.show');
-                Route::get('/history-payments/{payment}/proof', HistoryPaymentProofController::class)->name('history-payments.proof');
+                Route::get('/history-payments/{payment}/proof', HistoryPaymentProofController::class)->middleware('throttle:proof-downloads')->name('history-payments.proof');
             });
 
-            Route::prefix('reports')->middleware('module:REPORTS')->name('reports.')->group(function (): void {
+            Route::prefix('reports')->middleware(['module:REPORTS', 'throttle:reports'])->name('reports.')->group(function (): void {
                 Route::get('/overview', [ReportController::class, 'overview'])->name('overview');
                 Route::get('/revenue', [ReportController::class, 'revenue'])->name('revenue');
                 Route::get('/reservations', [ReportController::class, 'reservations'])->name('reservations');
@@ -116,12 +123,15 @@ Route::prefix('v1')->group(function (): void {
             });
 
             Route::middleware('module:MANAGEMENT_PAYMENT_METHODS')->group(function (): void {
-                Route::apiResource('payment-methods', PaymentMethodController::class)->only(['index', 'store', 'update', 'destroy']);
+                Route::apiResource('payment-methods', PaymentMethodController::class)
+                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->middlewareFor(['store', 'update'], 'throttle:uploads')
+                    ->middlewareFor('destroy', 'throttle:destructive');
             });
 
             Route::prefix('payment-proof-retention')->middleware('module:MANAGEMENT_STORAGE_RETENTION')->name('payment-proof-retention.')->group(function (): void {
                 Route::get('/preview', [PaymentProofRetentionController::class, 'preview'])->name('preview');
-                Route::post('/delete', [PaymentProofRetentionController::class, 'delete'])->name('delete');
+                Route::post('/delete', [PaymentProofRetentionController::class, 'delete'])->middleware(['throttle:proof-cleanup', 'throttle:destructive'])->name('delete');
                 Route::get('/activity', [PaymentProofRetentionController::class, 'activity'])->name('activity');
             });
 
@@ -141,7 +151,10 @@ Route::prefix('v1')->group(function (): void {
             });
 
             Route::middleware('module:MANAGEMENT_EVENTS')->group(function (): void {
-                Route::apiResource('events', ManagementEventController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+                Route::apiResource('events', ManagementEventController::class)
+                    ->only(['index', 'store', 'show', 'update', 'destroy'])
+                    ->middlewareFor(['store', 'update'], 'throttle:uploads')
+                    ->middlewareFor('destroy', 'throttle:destructive');
             });
 
             Route::middleware('module:MANAGEMENT_GALLERY')->group(function (): void {
@@ -154,7 +167,9 @@ Route::prefix('v1')->group(function (): void {
                     ->name('gallery-images.display-order.update');
                 Route::apiResource('gallery', GalleryImageController::class)
                     ->parameters(['gallery' => 'galleryImage'])
-                    ->only(['index', 'store', 'update', 'destroy']);
+                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->middlewareFor(['store', 'update'], 'throttle:uploads')
+                    ->middlewareFor('destroy', 'throttle:destructive');
             });
 
             Route::middleware('module:MANAGEMENT_RULES_POLICIES')->group(function (): void {
@@ -170,11 +185,13 @@ Route::prefix('v1')->group(function (): void {
             });
 
             Route::middleware('module:MANAGEMENT_TEAM_ACCESS')->group(function (): void {
-                Route::apiResource('roles', RoleController::class)->only(['index', 'store', 'update', 'destroy']);
+                Route::apiResource('roles', RoleController::class)
+                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->middlewareFor(['store', 'update', 'destroy'], 'throttle:destructive');
                 Route::apiResource('staff', StaffController::class)->only(['index', 'store', 'update']);
-                Route::post('/staff/{staff}/activate', [StaffController::class, 'activate'])->name('staff.activate');
-                Route::post('/staff/{staff}/deactivate', [StaffController::class, 'deactivate'])->name('staff.deactivate');
-                Route::put('/staff/{staff}/password', [StaffController::class, 'resetPassword'])->name('staff.password.reset');
+                Route::post('/staff/{staff}/activate', [StaffController::class, 'activate'])->middleware('throttle:destructive')->name('staff.activate');
+                Route::post('/staff/{staff}/deactivate', [StaffController::class, 'deactivate'])->middleware('throttle:destructive')->name('staff.deactivate');
+                Route::put('/staff/{staff}/password', [StaffController::class, 'resetPassword'])->middleware('throttle:destructive')->name('staff.password.reset');
             });
         });
 

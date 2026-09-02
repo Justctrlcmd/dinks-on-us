@@ -51,6 +51,7 @@ export interface TeamPage {
 export interface AccessInput {
   name: string;
   modules: AccessModule[];
+  current_password: string;
 }
 
 export interface TeamInput {
@@ -68,4 +69,5 @@ export interface CreateTeamInput extends TeamInput {
 export interface ResetTeamPasswordInput {
   password: string;
   password_confirmation: string;
+  current_password: string;
 }

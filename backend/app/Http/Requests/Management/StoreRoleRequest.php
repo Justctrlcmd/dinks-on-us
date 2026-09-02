@@ -24,6 +24,7 @@ class StoreRoleRequest extends FormRequest
             'name' => ['required', 'string', 'max:100', Rule::unique('roles', 'name')],
             'modules' => ['required', 'array', 'min:1'],
             'modules.*' => ['required', 'string', 'distinct', Rule::in(array_keys(config('access.modules', [])))],
+            'current_password' => ['required', 'string', 'current_password:web'],
         ];
     }
 

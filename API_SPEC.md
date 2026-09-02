@@ -1685,7 +1685,7 @@ PATCH  /api/v1/management/rental-equipment/{rentalEquipment}
 DELETE /api/v1/management/rental-equipment/{rentalEquipment}
 ```
 
-Court names are generated from permanent sequential numbers. The shared configuration applies to all courts. Delete operations deactivate records so historical references remain meaningful.
+Court names are generated from permanent sequential numbers. `POST /courts` reactivates the lowest-numbered inactive court before creating a new sequential court record. The court list identifies the next number and whether the next action is a reactivation. The shared configuration applies to all courts. Delete operations deactivate records so historical references remain meaningful.
 
 ---
 

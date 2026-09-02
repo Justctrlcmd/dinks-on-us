@@ -20,4 +20,15 @@ class LocalCorsConfigurationTest extends TestCase
             ->assertHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:3001')
             ->assertHeader('Access-Control-Allow-Credentials', 'true');
     }
+
+    public function test_untrusted_origins_do_not_receive_cors_authorization(): void
+    {
+        $this->withHeaders([
+            'Origin' => 'https://evil.example',
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'Content-Type,X-XSRF-TOKEN',
+        ])->options('/api/v1/login')
+            ->assertHeaderMissing('Access-Control-Allow-Origin')
+            ->assertHeaderMissing('Access-Control-Allow-Credentials');
+    }
 }

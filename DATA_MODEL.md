@@ -322,7 +322,7 @@ INACTIVE
 
 * An inactive court should not produce publicly reservable slots.
 * Court records should not normally be deleted once they are referenced by reservation history.
-* Court numbers are assigned sequentially and are never reused after deactivation.
+* Adding a court reactivates the lowest-numbered inactive court record before assigning a new sequential court number. Reactivation preserves the court's identity and reservation history.
 * Operating hours, rates, and player rules come from the singleton `court_configurations` record rather than individual courts.
 
 ## Shared Court Configuration

@@ -20,6 +20,7 @@ class TeamAccessManagementTest extends TestCase
             ->postJson('/api/v1/management/roles', [
                 'name' => 'Front Desk',
                 'modules' => ['DASHBOARD', 'RESERVATION', 'MANAGEMENT_TEAM_ACCESS'],
+                'current_password' => 'password',
             ])
             ->assertCreated()
             ->assertJsonPath('data.name', 'Front Desk')
@@ -145,7 +146,7 @@ class TeamAccessManagementTest extends TestCase
         $manager->role->update(['is_protected' => true]);
 
         $this->actingAs($manager)
-            ->deleteJson("/api/v1/management/roles/{$manager->role_id}")
+            ->deleteJson("/api/v1/management/roles/{$manager->role_id}", ['current_password' => 'password'])
             ->assertConflict()
             ->assertJsonPath('code', 'PROTECTED_ACCESS');
 
@@ -153,7 +154,7 @@ class TeamAccessManagementTest extends TestCase
         User::factory()->create(['role_id' => $access->id]);
 
         $this->actingAs($manager)
-            ->deleteJson("/api/v1/management/roles/{$access->id}")
+            ->deleteJson("/api/v1/management/roles/{$access->id}", ['current_password' => 'password'])
             ->assertConflict()
             ->assertJsonPath('code', 'ACCESS_IN_USE');
     }
@@ -166,6 +167,7 @@ class TeamAccessManagementTest extends TestCase
             ->postJson('/api/v1/management/roles', [
                 'name' => 'Unknown Access',
                 'modules' => ['MANAGEMENT_UNKNOWN'],
+                'current_password' => 'password',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['modules.0']);

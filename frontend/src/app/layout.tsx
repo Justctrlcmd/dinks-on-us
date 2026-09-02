@@ -3,6 +3,9 @@ import "./globals.css";
 import { siteConfig } from "@/config/site";
 import { AppProviders } from "@/providers/app-providers";
 
+// CSP nonces are request-specific, so pages must render with the nonce supplied by proxy.ts.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: { default: siteConfig.name, template: `%s · ${siteConfig.name}` },
   description: siteConfig.description,

@@ -21,6 +21,7 @@ export async function getCourtPricingManagement(signal?: AbortSignal) {
     configuration: configuration.data,
     courts: courts.data.courts,
     nextCourtNumber: courts.data.next_court_number,
+    nextCourtIsReactivation: courts.data.next_court_is_reactivation,
     equipment: equipment.data,
   };
 }

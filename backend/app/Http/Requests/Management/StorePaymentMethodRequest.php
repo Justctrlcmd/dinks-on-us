@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StorePaymentMethodRequest extends FormRequest
@@ -24,7 +25,7 @@ class StorePaymentMethodRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:100'],
-            'qr_image' => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'qr_image' => ImageUploadRules::required(),
             'account_name' => ['required', 'string', 'max:150'],
             'account_number' => ['required', 'string', 'max:100'],
         ];

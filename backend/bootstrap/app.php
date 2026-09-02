@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\ReservationConflictException;
+use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\RequireModuleAccess;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -23,6 +24,24 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        $middleware->api(append: [AddSecurityHeaders::class]);
+
+        $trustedProxies = array_values(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode(',', (string) env('TRUSTED_PROXIES', '')),
+        )));
+        if ($trustedProxies !== []) {
+            $middleware->trustProxies(at: $trustedProxies);
+        }
+
+        $trustedHosts = array_values(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode(',', (string) env('TRUSTED_HOSTS', '')),
+        )));
+        if ($trustedHosts !== []) {
+            $middleware->trustHosts(at: $trustedHosts, subdomains: false);
+        }
+
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
             'module' => RequireModuleAccess::class,

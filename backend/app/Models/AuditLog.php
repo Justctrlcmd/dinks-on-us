@@ -39,6 +39,43 @@ class AuditLog extends Model
 
     public const PAYMENT_PROOFS_DELETED = 'PAYMENT_PROOFS_DELETED';
 
+    public const LOGIN_SUCCEEDED = 'LOGIN_SUCCEEDED';
+
+    public const LOGIN_FAILED = 'LOGIN_FAILED';
+
+    public const LOGOUT_COMPLETED = 'LOGOUT_COMPLETED';
+
+    public const PASSWORD_CHANGED = 'PASSWORD_CHANGED';
+
+    public const STAFF_CREATED = 'STAFF_CREATED';
+
+    public const STAFF_UPDATED = 'STAFF_UPDATED';
+
+    public const STAFF_ACTIVATED = 'STAFF_ACTIVATED';
+
+    public const STAFF_DEACTIVATED = 'STAFF_DEACTIVATED';
+
+    public const STAFF_PASSWORD_RESET = 'STAFF_PASSWORD_RESET';
+
+    public const ACCESS_CREATED = 'ACCESS_CREATED';
+
+    public const ACCESS_UPDATED = 'ACCESS_UPDATED';
+
+    public const ACCESS_DELETED = 'ACCESS_DELETED';
+
+    protected static function booted(): void
+    {
+        static::creating(function (AuditLog $log): void {
+            if (! app()->bound('request')) {
+                return;
+            }
+
+            $request = request();
+            $log->ip_address ??= $request->ip();
+            $log->user_agent ??= mb_substr((string) $request->userAgent(), 0, 255);
+        });
+    }
+
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {

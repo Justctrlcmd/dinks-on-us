@@ -26,10 +26,11 @@ export const updateAccess = ({ id, input }: { id: number; input: AccessInput }) 
     body: JSON.stringify(input),
   });
 
-export const deleteAccess = (id: number) =>
+export const deleteAccess = ({ id, current_password }: { id: number; current_password: string }) =>
   authFetch<null>(`/api/v1/management/roles/${id}`, {
     method: "DELETE",
     csrf: true,
+    body: JSON.stringify({ current_password }),
   });
 
 export const getTeam = (page: number, signal?: AbortSignal) =>

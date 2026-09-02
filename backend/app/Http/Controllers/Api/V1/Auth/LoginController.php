@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\AuditLog;
+use App\Services\SecurityAuditService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +15,7 @@ class LoginController extends Controller
 {
     use ApiResponse;
 
-    public function __invoke(LoginRequest $request): JsonResponse
+    public function __invoke(LoginRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $credentials = [
             ...$request->safe()->only(['email', 'password']),
@@ -21,6 +23,10 @@ class LoginController extends Controller
         ];
 
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
+            $audit->record(AuditLog::LOGIN_FAILED, $request, details: [
+                'credential_fingerprint' => $audit->credentialFingerprint((string) $request->validated('email')),
+            ]);
+
             return $this->respondFailure(
                 'The email or password is incorrect.',
                 'INVALID_CREDENTIALS',
@@ -33,6 +39,7 @@ class LoginController extends Controller
 
         $request->user()->update(['last_login_at' => now()]);
         $request->user()->load('role.modules');
+        $audit->record(AuditLog::LOGIN_SUCCEEDED, $request, $request->user(), $request->user());
 
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),

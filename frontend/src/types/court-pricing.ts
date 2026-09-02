@@ -30,6 +30,7 @@ export type Court = {
 export type CourtList = {
   courts: Court[];
   next_court_number: number;
+  next_court_is_reactivation: boolean;
 };
 
 export type RentalEquipment = {

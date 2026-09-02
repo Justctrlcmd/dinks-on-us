@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Management;
 
+use App\Support\Security\ImageUploadRules;
+
 class UpdateGalleryImageRequest extends StoreGalleryImageRequest
 {
     /** @return array<string, list<mixed>> */
@@ -9,7 +11,7 @@ class UpdateGalleryImageRequest extends StoreGalleryImageRequest
     {
         return [
             ...parent::rules(),
-            'image' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'image' => ImageUploadRules::optional(),
         ];
     }
 }

@@ -7,7 +7,10 @@ use App\Http\Requests\Management\ResetStaffPasswordRequest;
 use App\Http\Requests\Management\StoreStaffRequest;
 use App\Http\Requests\Management\UpdateStaffRequest;
 use App\Http\Resources\StaffResource;
+use App\Models\AuditLog;
 use App\Models\User;
+use App\Services\SecurityAuditService;
+use App\Services\SessionSecurityService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,13 +42,17 @@ class StaffController extends Controller
         );
     }
 
-    public function store(StoreStaffRequest $request): JsonResponse
+    public function store(StoreStaffRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $staff = User::query()->create([
             ...$request->safe()->except('password_confirmation'),
             'email_verified_at' => now(),
             'is_active' => true,
         ])->load('role');
+        $audit->record(AuditLog::STAFF_CREATED, $request, $request->user(), $staff, [
+            'role_id' => $staff->role_id,
+            'is_active' => $staff->is_active,
+        ]);
 
         return $this->respondSuccess(
             StaffResource::make($staff)->resolve($request),
@@ -54,13 +61,25 @@ class StaffController extends Controller
         );
     }
 
-    public function update(UpdateStaffRequest $request, User $staff): JsonResponse
-    {
+    public function update(
+        UpdateStaffRequest $request,
+        User $staff,
+        SessionSecurityService $sessions,
+        SecurityAuditService $audit,
+    ): JsonResponse {
         if ($failure = $this->protectedAccountFailure($staff)) {
             return $failure;
         }
 
+        $previousRoleId = $staff->role_id;
         $staff->update($request->validated());
+        if ($previousRoleId !== $staff->role_id) {
+            $sessions->invalidate($staff);
+        }
+        $audit->record(AuditLog::STAFF_UPDATED, $request, $request->user(), $staff, [
+            'role_changed' => $previousRoleId !== $staff->role_id,
+            'role_id' => $staff->role_id,
+        ]);
 
         return $this->respondSuccess(
             StaffResource::make($staff->fresh()->load('role'))->resolve($request),
@@ -68,8 +87,12 @@ class StaffController extends Controller
         );
     }
 
-    public function deactivate(Request $request, User $staff): JsonResponse
-    {
+    public function deactivate(
+        Request $request,
+        User $staff,
+        SessionSecurityService $sessions,
+        SecurityAuditService $audit,
+    ): JsonResponse {
         if ($failure = $this->protectedAccountFailure($staff)) {
             return $failure;
         }
@@ -82,10 +105,11 @@ class StaffController extends Controller
             );
         }
 
-        DB::transaction(function () use ($staff): void {
+        DB::transaction(function () use ($staff, $sessions): void {
             $staff->update(['is_active' => false]);
-            DB::table('sessions')->where('user_id', $staff->id)->delete();
+            $sessions->invalidate($staff);
         });
+        $audit->record(AuditLog::STAFF_DEACTIVATED, $request, $request->user(), $staff);
 
         return $this->respondSuccess(
             StaffResource::make($staff->fresh()->load('role'))->resolve($request),
@@ -93,13 +117,14 @@ class StaffController extends Controller
         );
     }
 
-    public function activate(Request $request, User $staff): JsonResponse
+    public function activate(Request $request, User $staff, SecurityAuditService $audit): JsonResponse
     {
         if ($failure = $this->protectedAccountFailure($staff)) {
             return $failure;
         }
 
         $staff->update(['is_active' => true]);
+        $audit->record(AuditLog::STAFF_ACTIVATED, $request, $request->user(), $staff);
 
         return $this->respondSuccess(
             StaffResource::make($staff->fresh()->load('role'))->resolve($request),
@@ -107,16 +132,21 @@ class StaffController extends Controller
         );
     }
 
-    public function resetPassword(ResetStaffPasswordRequest $request, User $staff): JsonResponse
-    {
+    public function resetPassword(
+        ResetStaffPasswordRequest $request,
+        User $staff,
+        SessionSecurityService $sessions,
+        SecurityAuditService $audit,
+    ): JsonResponse {
         if ($failure = $this->protectedAccountFailure($staff)) {
             return $failure;
         }
 
-        DB::transaction(function () use ($request, $staff): void {
+        DB::transaction(function () use ($request, $staff, $sessions): void {
             $staff->update(['password' => $request->validated('password')]);
-            DB::table('sessions')->where('user_id', $staff->id)->delete();
+            $sessions->invalidate($staff);
         });
+        $audit->record(AuditLog::STAFF_PASSWORD_RESET, $request, $request->user(), $staff);
 
         return $this->respondSuccess(null, 'Team member password reset.');
     }

@@ -10,6 +10,7 @@ class DeletePaymentProofCleanupRequest extends PaymentProofDateRangeRequest
         return [
             ...parent::rules(),
             'confirm' => ['accepted'],
+            'current_password' => ['required', 'string', 'current_password:web'],
         ];
     }
 }

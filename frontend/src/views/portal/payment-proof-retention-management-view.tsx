@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FiActivity, FiAlertTriangle, FiCheckCircle, FiDatabase, FiTrash2 } from "react-icons/fi";
 import { CalendarDatePicker } from "@/components/common/calendar-date-picker";
+import { CurrentPasswordConfirmationDialog } from "@/components/common/current-password-confirmation-dialog";
 import { ErrorState } from "@/components/common/error-state";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
@@ -91,6 +92,7 @@ export function PaymentProofRetentionManagementView() {
   const [previewRange, setPreviewRange] = useState<PaymentProofCleanupRange | null>(null);
   const [activityPage, setActivityPage] = useState(1);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [passwordConfirmationOpen, setPasswordConfirmationOpen] = useState(false);
   const previewQuery = usePaymentProofCleanupPreview(previewRange);
   const activityQuery = usePaymentProofCleanupActivity(activityPage);
   const deleteMutation = useDeletePaymentProofs();
@@ -114,16 +116,14 @@ export function PaymentProofRetentionManagementView() {
     setPreviewRange({ from, to });
   }
 
-  function deleteProofs() {
+  async function deleteProofs(currentPassword: string) {
     if (!previewRange) return;
 
-    deleteMutation.mutate(previewRange, {
-      onSuccess: () => {
-        setConfirmOpen(false);
-        setPreviewRange(null);
-        setActivityPage(1);
-      },
-    });
+    await deleteMutation.mutateAsync({ ...previewRange, current_password: currentPassword });
+    setPasswordConfirmationOpen(false);
+    setConfirmOpen(false);
+    setPreviewRange(null);
+    setActivityPage(1);
   }
 
   return (
@@ -160,7 +160,7 @@ export function PaymentProofRetentionManagementView() {
                 <PreviewSummary range={previewRange} preview={preview} />
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-primary/15 pt-3">
                   <p className="text-xs text-muted-foreground">Deletion is manual and cannot be undone from the portal.</p>
-                  <Button type="button" variant="destructive" disabled={!canDelete || deleteMutation.isPending} onClick={() => setConfirmOpen(true)}><FiTrash2 aria-hidden="true" />Delete payment proof images</Button>
+                  <Button type="button" variant="destructive" disabled={!canDelete || deleteMutation.isPending} onClick={() => { setPasswordConfirmationOpen(false); setConfirmOpen(true); }}><FiTrash2 aria-hidden="true" />Delete payment proof images</Button>
                 </div>
               </div>
             )
@@ -175,7 +175,7 @@ export function PaymentProofRetentionManagementView() {
         </CardContent>
       </Card>
 
-      <Dialog open={confirmOpen} onOpenChange={(open) => !deleteMutation.isPending && setConfirmOpen(open)}>
+      <Dialog open={confirmOpen && !passwordConfirmationOpen} onOpenChange={(open) => { if (!deleteMutation.isPending && !passwordConfirmationOpen) setConfirmOpen(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete payment proof images?</DialogTitle>
@@ -183,10 +183,20 @@ export function PaymentProofRetentionManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" disabled={deleteMutation.isPending} />}>Keep images</DialogClose>
-            <Button type="button" variant="destructive" disabled={deleteMutation.isPending} onClick={deleteProofs}>{deleteMutation.isPending ? "Deleting images…" : "Yes, delete images"}</Button>
+            <Button type="button" variant="destructive" disabled={deleteMutation.isPending} onClick={() => setPasswordConfirmationOpen(true)}>Continue</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <CurrentPasswordConfirmationDialog
+        open={confirmOpen && passwordConfirmationOpen}
+        onOpenChange={setPasswordConfirmationOpen}
+        title="Confirm permanent deletion"
+        description={`Enter your current password to delete ${preview?.proof_count ?? 0} payment proof image${preview?.proof_count === 1 ? "" : "s"}.`}
+        confirmLabel="Delete images"
+        destructive
+        pending={deleteMutation.isPending}
+        onConfirm={deleteProofs}
+      />
     </div>
   );
 }

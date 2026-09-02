@@ -73,6 +73,7 @@ class PaymentProofRetentionManagementTest extends TestCase
             'from' => '2026-08-01',
             'to' => '2026-08-01',
             'confirm' => true,
+            'current_password' => 'password',
         ]);
 
         $response->assertOk()
@@ -109,7 +110,7 @@ class PaymentProofRetentionManagementTest extends TestCase
         ]);
 
         $this->actingAs($this->manager)->postJson('/api/v1/management/payment-proof-retention/delete', [
-            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true,
+            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true, 'current_password' => 'password',
         ])->assertOk()
             ->assertJsonPath('data.proofs_deleted', 0)
             ->assertJsonPath('data.missing_files', 1)
@@ -129,7 +130,7 @@ class PaymentProofRetentionManagementTest extends TestCase
         $this->createPayment($reservation, 'reservation-payment-proofs/receipt.webp', 'INITIAL', 40);
 
         $this->actingAs($this->manager)->postJson('/api/v1/management/payment-proof-retention/delete', [
-            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true,
+            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true, 'current_password' => 'password',
         ])->assertOk();
 
         $this->actingAs($this->manager)->getJson('/api/v1/management/payment-proof-retention/activity')
@@ -177,7 +178,7 @@ class PaymentProofRetentionManagementTest extends TestCase
         Storage::disk('local')->put('other-file.webp', 'must remain');
 
         $this->actingAs($this->manager)->postJson('/api/v1/management/payment-proof-retention/delete', [
-            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true,
+            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true, 'current_password' => 'password',
         ])->assertOk()
             ->assertJsonPath('data.proofs_deleted', 0)
             ->assertJsonPath('data.failed_files', 1)

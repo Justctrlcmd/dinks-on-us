@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -30,6 +31,20 @@ class AuthenticationTest extends TestCase
         $this->getJson('/api/v1/user')
             ->assertOk()
             ->assertJsonPath('data.email', $user->email);
+    }
+
+    public function test_a_legacy_bcrypt_password_is_accepted_and_upgraded_to_argon2id(): void
+    {
+        $legacyHash = password_hash('password123', PASSWORD_BCRYPT, ['cost' => 4]);
+        $user = User::factory()->create();
+        DB::table('users')->where('id', $user->id)->update(['password' => $legacyHash]);
+
+        $this->withHeader('Origin', 'http://localhost:3000')->postJson('/api/v1/login', [
+            'email' => $user->email,
+            'password' => 'password123',
+        ])->assertOk();
+
+        $this->assertSame('argon2id', password_get_info($user->fresh()->password)['algoName']);
     }
 
     public function test_invalid_login_does_not_reveal_which_credential_failed(): void

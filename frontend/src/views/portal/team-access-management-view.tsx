@@ -14,6 +14,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import { ErrorState } from "@/components/common/error-state";
+import { CurrentPasswordConfirmationDialog } from "@/components/common/current-password-confirmation-dialog";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
 import { PortalMetricCard } from "@/components/portal/portal-metric-card";
@@ -160,6 +161,7 @@ export function TeamAccessManagementView() {
   const [accessFormOpen, setAccessFormOpen] = useState(false);
   const [editingAccess, setEditingAccess] = useState<AccessProfile | null>(null);
   const [deletingAccess, setDeletingAccess] = useState<AccessProfile | null>(null);
+  const [deletePasswordOpen, setDeletePasswordOpen] = useState(false);
   const [teamFormOpen, setTeamFormOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [resettingMember, setResettingMember] = useState<TeamMember | null>(null);
@@ -192,14 +194,16 @@ export function TeamAccessManagementView() {
     setTeamFormOpen(true);
   }
 
-  async function deleteSelectedAccess() {
+  async function deleteSelectedAccess(currentPassword: string) {
     if (!deletingAccess) return;
-    try {
-      await deleteAccessMutation.mutateAsync(deletingAccess.id);
-      setDeletingAccess(null);
-    } catch {
-      setDeletingAccess(null);
-    }
+    await deleteAccessMutation.mutateAsync({ id: deletingAccess.id, current_password: currentPassword });
+    setDeletePasswordOpen(false);
+    setDeletingAccess(null);
+  }
+
+  function openDeleteAccess(access: AccessProfile) {
+    setDeletePasswordOpen(false);
+    setDeletingAccess(access);
   }
 
   async function deactivateSelectedMember() {
@@ -319,7 +323,7 @@ export function TeamAccessManagementView() {
         </div>
         {accessQuery.isPending ? <LoadingState message="Loading Access profiles…" /> : accessQuery.isError ? <ErrorState title="We couldn't load the Access profiles." onRetry={() => void accessQuery.refetch()} /> : (
           <div className="grid items-start gap-3 lg:grid-cols-2">
-            {accessQuery.data.accesses.map((access) => <AccessCard key={access.id} access={access} modules={accessQuery.data.modules} onEdit={openEditAccess} onDelete={setDeletingAccess} />)}
+            {accessQuery.data.accesses.map((access) => <AccessCard key={access.id} access={access} modules={accessQuery.data.modules} onEdit={openEditAccess} onDelete={openDeleteAccess} />)}
           </div>
         )}
       </section>
@@ -328,12 +332,23 @@ export function TeamAccessManagementView() {
       {teamFormOpen && accessQuery.data ? <TeamFormDialog member={editingMember} accesses={assignableAccesses} open onOpenChange={setTeamFormOpen} /> : null}
       {resettingMember ? <ResetTeamPasswordDialog member={resettingMember} open onOpenChange={(open) => !open && setResettingMember(null)} /> : null}
 
-      <Dialog open={Boolean(deletingAccess)} onOpenChange={(open) => !open && !deleteAccessMutation.isPending && setDeletingAccess(null)}>
+      <Dialog open={Boolean(deletingAccess) && !deletePasswordOpen} onOpenChange={(open) => { if (!open && !deleteAccessMutation.isPending && !deletePasswordOpen) setDeletingAccess(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Delete {deletingAccess?.name} Access?</DialogTitle><DialogDescription>This permanently removes the unused Access profile. This action cannot be undone.</DialogDescription></DialogHeader>
-          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteAccessMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteAccessMutation.isPending} onClick={() => void deleteSelectedAccess()}>{deleteAccessMutation.isPending ? "Deleting…" : "Delete Access"}</Button></DialogFooter>
+          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteAccessMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteAccessMutation.isPending} onClick={() => setDeletePasswordOpen(true)}>Continue</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CurrentPasswordConfirmationDialog
+        open={Boolean(deletingAccess) && deletePasswordOpen}
+        onOpenChange={setDeletePasswordOpen}
+        title={`Confirm deletion of ${deletingAccess?.name ?? "Access"}`}
+        description="Enter your current password to permanently delete this unused Access profile."
+        confirmLabel="Delete Access"
+        destructive
+        pending={deleteAccessMutation.isPending}
+        onConfirm={deleteSelectedAccess}
+      />
 
       <Dialog open={Boolean(deactivatingMember)} onOpenChange={(open) => !open && !deactivateMutation.isPending && setDeactivatingMember(null)}>
         <DialogContent>

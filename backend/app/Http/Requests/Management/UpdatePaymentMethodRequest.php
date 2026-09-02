@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Management;
 
+use App\Support\Security\ImageUploadRules;
+
 class UpdatePaymentMethodRequest extends StorePaymentMethodRequest
 {
     /**
@@ -11,7 +13,7 @@ class UpdatePaymentMethodRequest extends StorePaymentMethodRequest
     {
         return [
             ...parent::rules(),
-            'qr_image' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'qr_image' => ImageUploadRules::optional(),
         ];
     }
 }

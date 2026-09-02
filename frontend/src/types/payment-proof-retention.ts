@@ -5,6 +5,10 @@ export type PaymentProofCleanupRange = {
   to: string;
 };
 
+export type DeletePaymentProofCleanupInput = PaymentProofCleanupRange & {
+  current_password: string;
+};
+
 export type PaymentProofCleanupPreview = PaymentProofCleanupRange & {
   reservations_affected: number;
   proof_count: number;

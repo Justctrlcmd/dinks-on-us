@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -50,7 +51,7 @@ class StoreWalkInReservationRequest extends FormRequest
             ],
             'payment_proof' => [
                 Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
-                'nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120',
+                ...ImageUploadRules::optional(),
             ],
         ];
     }

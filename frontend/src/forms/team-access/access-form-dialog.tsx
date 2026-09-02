@@ -1,8 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { FiLayers } from "react-icons/fi";
+import { CurrentPasswordConfirmationDialog } from "@/components/common/current-password-confirmation-dialog";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +36,8 @@ export function AccessFormDialog({ access, modules, open, onOpenChange }: {
 }) {
   const createMutation = useCreateAccess();
   const updateMutation = useUpdateAccess();
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [pendingValues, setPendingValues] = useState<AccessValues | null>(null);
   const form = useForm<AccessValues>({
     resolver: zodResolver(accessSchema),
     defaultValues: { name: access?.name ?? "", modules: access?.modules ?? [] },
@@ -61,18 +65,25 @@ export function AccessFormDialog({ access, modules, open, onOpenChange }: {
     form.setValue("modules", next, { shouldDirty: true, shouldValidate: true });
   }
 
-  const submit = form.handleSubmit(async (values) => {
-    const input = { name: values.name.trim(), modules: values.modules };
-    try {
-      if (access) await updateMutation.mutateAsync({ id: access.id, input });
-      else await createMutation.mutateAsync(input);
-      onOpenChange(false);
-    } catch {}
+  const submit = form.handleSubmit((values) => {
+    setPendingValues({ name: values.name.trim(), modules: values.modules });
+    setConfirmationOpen(true);
   });
 
+  async function confirm(currentPassword: string) {
+    if (!pendingValues) return;
+    const input = { ...pendingValues, current_password: currentPassword };
+    if (access) await updateMutation.mutateAsync({ id: access.id, input });
+    else await createMutation.mutateAsync(input);
+    setConfirmationOpen(false);
+    setPendingValues(null);
+    onOpenChange(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
+    <>
+      <Dialog open={open && !confirmationOpen} onOpenChange={(next) => !pending && onOpenChange(next)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{access ? "Edit Access" : "Add Access"}</DialogTitle>
           <DialogDescription>Create a reusable module-access profile that can be assigned to Team members.</DialogDescription>
@@ -112,13 +123,24 @@ export function AccessFormDialog({ access, modules, open, onOpenChange }: {
             </div>
             {form.formState.errors.modules ? <p id="access-modules-error" role="alert" className="text-xs leading-4 text-destructive">{form.formState.errors.modules.message}</p> : null}
           </fieldset>
+
         </form>
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={pending} />}>Cancel</DialogClose>
           <Button form="access-form" type="submit" disabled={pending}>{pending ? "Saving…" : access ? "Save changes" : "Add Access"}</Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+      <CurrentPasswordConfirmationDialog
+        open={open && confirmationOpen}
+        onOpenChange={(next) => { setConfirmationOpen(next); if (!next) setPendingValues(null); }}
+        title={`Confirm ${access ? "Access changes" : "new Access"}`}
+        description={`Enter your current password to ${access ? "save these module-access changes" : "create this Access profile"}.`}
+        confirmLabel={access ? "Save changes" : "Add Access"}
+        pending={pending}
+        onConfirm={confirm}
+      />
+    </>
   );
 }

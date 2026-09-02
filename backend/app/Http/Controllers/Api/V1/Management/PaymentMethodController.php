@@ -7,15 +7,17 @@ use App\Http\Requests\Management\StorePaymentMethodRequest;
 use App\Http\Requests\Management\UpdatePaymentMethodRequest;
 use App\Http\Resources\PaymentMethodResource;
 use App\Models\PaymentMethod;
+use App\Services\OptimizedImageStorageService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
 use Throwable;
 
 class PaymentMethodController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(private readonly OptimizedImageStorageService $images) {}
 
     public function index(): JsonResponse
     {
@@ -29,10 +31,7 @@ class PaymentMethodController extends Controller
 
     public function store(StorePaymentMethodRequest $request): JsonResponse
     {
-        $imagePath = $request->file('qr_image')->store('payment-methods', 'public');
-        if (! is_string($imagePath)) {
-            throw new RuntimeException('The QR image could not be stored.');
-        }
+        $imagePath = $this->images->store($request->file('qr_image'), 'public', 'payment-methods');
 
         try {
             $paymentMethod = PaymentMethod::query()->create([
@@ -56,11 +55,8 @@ class PaymentMethodController extends Controller
     public function update(UpdatePaymentMethodRequest $request, PaymentMethod $paymentMethod): JsonResponse
     {
         $newImagePath = $request->hasFile('qr_image')
-            ? $request->file('qr_image')->store('payment-methods', 'public')
+            ? $this->images->store($request->file('qr_image'), 'public', 'payment-methods')
             : null;
-        if ($newImagePath === false) {
-            throw new RuntimeException('The QR image could not be stored.');
-        }
         $oldImagePath = $paymentMethod->qr_image_path;
 
         try {

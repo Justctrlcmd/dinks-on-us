@@ -40,7 +40,13 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url ?? "/portal/reservations", self.location.origin).href;
+  let target = new URL("/portal/reservations", self.location.origin).href;
+  try {
+    const candidate = new URL(event.notification.data?.url ?? target, self.location.origin);
+    if (candidate.origin === self.location.origin) target = candidate.href;
+  } catch {
+    // Keep the safe same-origin fallback.
+  }
 
   event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

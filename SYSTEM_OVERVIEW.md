@@ -910,7 +910,7 @@ Management
 
 # 32. Courts & Pricing
 
-The Manager can create sequentially numbered courts and maintain one shared configuration for operating hours, weekday/weekend rates, players included per court, and the additional-player price. This workspace also manages rentable equipment, its reservation-wide unit price, and total quantity.
+The Manager can create sequentially numbered courts and maintain one shared configuration for operating hours, weekday/weekend rates, players included per court, and the additional-player price. Adding a court first reactivates the lowest-numbered inactive court, preserving its identity and history; a new sequential number is created only when no inactive court remains. This workspace also manages rentable equipment, its reservation-wide unit price, and total quantity.
 
 Rates remain configurable rather than hard-coded. Pending reservations do not hold equipment; available quantity is reduced only by overlapping verified reservations. An inactive court or rental item must not be offered to players.
 

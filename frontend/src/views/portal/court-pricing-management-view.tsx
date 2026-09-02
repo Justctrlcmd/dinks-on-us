@@ -112,7 +112,7 @@ export function CourtPricingManagementView() {
   if (query.isPending) return <LoadingState message="Loading courts and pricing…" />;
   if (query.isError) return <ErrorState title="We couldn't load courts and pricing." onRetry={() => void query.refetch()} />;
 
-  const { configuration, courts, nextCourtNumber, equipment } = query.data;
+  const { configuration, courts, nextCourtNumber, nextCourtIsReactivation, equipment } = query.data;
 
   return (
     <div className="grid gap-6">
@@ -123,7 +123,7 @@ export function CourtPricingManagementView() {
         <Card size="sm">
           <CardHeader>
             <CardTitle id="courts-title">Number of courts</CardTitle>
-            <CardDescription>Each new court receives the next permanent court number.</CardDescription>
+            <CardDescription>Adding a court restores the lowest inactive court before assigning a new number.</CardDescription>
             <CardAction>
               <Button size="sm" onClick={() => setAddCourtOpen(true)}><FiPlus aria-hidden="true" />Add court</Button>
             </CardAction>
@@ -188,11 +188,11 @@ export function CourtPricingManagementView() {
       {equipmentFormOpen ? <RentalEquipmentFormDialog equipment={editingEquipment} open onOpenChange={setEquipmentFormOpen} /> : null}
 
       <Dialog open={addCourtOpen} onOpenChange={(open) => !createCourtMutation.isPending && setAddCourtOpen(open)}>
-        <DialogContent><DialogHeader><DialogTitle>Add Court {nextCourtNumber}?</DialogTitle><DialogDescription>The new court will immediately use the shared hours, prices, and player rules.</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={createCourtMutation.isPending} />}>Cancel</DialogClose><Button disabled={createCourtMutation.isPending} onClick={() => void createCourt()}>{createCourtMutation.isPending ? "Adding…" : `Add Court ${nextCourtNumber}`}</Button></DialogFooter></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>{nextCourtIsReactivation ? "Reactivate" : "Add"} Court {nextCourtNumber}?</DialogTitle><DialogDescription>{nextCourtIsReactivation ? "This inactive court will become available again using the shared hours, prices, and player rules." : "The new court will immediately use the shared hours, prices, and player rules."}</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={createCourtMutation.isPending} />}>Cancel</DialogClose><Button disabled={createCourtMutation.isPending} onClick={() => void createCourt()}>{createCourtMutation.isPending ? (nextCourtIsReactivation ? "Reactivating…" : "Adding…") : `${nextCourtIsReactivation ? "Reactivate" : "Add"} Court ${nextCourtNumber}`}</Button></DialogFooter></DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(deletingCourt)} onOpenChange={(open) => !open && !deleteCourtMutation.isPending && setDeletingCourt(null)}>
-        <DialogContent><DialogHeader><DialogTitle>Delete {deletingCourt?.name}?</DialogTitle><DialogDescription>This removes the court from future reservations. Its number will not be reused, and historical references remain intact.</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteCourtMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteCourtMutation.isPending} onClick={() => void deleteCourt()}>{deleteCourtMutation.isPending ? "Deleting…" : "Delete court"}</Button></DialogFooter></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>Delete {deletingCourt?.name}?</DialogTitle><DialogDescription>This removes the court from future reservations. Add court can reactivate it later, and historical references remain intact.</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteCourtMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteCourtMutation.isPending} onClick={() => void deleteCourt()}>{deleteCourtMutation.isPending ? "Deleting…" : "Delete court"}</Button></DialogFooter></DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(deletingEquipment)} onOpenChange={(open) => !open && !deleteEquipmentMutation.isPending && setDeletingEquipment(null)}>
