@@ -179,7 +179,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
                 Route::patch('/policy-subheaders/{subheader}', [ManagementPolicyController::class, 'updateSubheader'])->name('policy-subheaders.update');
                 Route::delete('/policy-subheaders/{subheader}', [ManagementPolicyController::class, 'destroySubheader'])->name('policy-subheaders.destroy');
                 Route::post('/policy-sections/{section}/rules', [ManagementPolicyController::class, 'storeRule'])->name('policy-rules.store');
-                Route::patch('/policy-subheaders/{subheader}/rule-order', [ManagementPolicyController::class, 'updateRuleOrder'])->name('policy-subheaders.order.update');
+                Route::patch('/policy-subheaders/{subheader}/rule-order', [ManagementPolicyController::class, 'updateRuleOrder'])->name('policy-rules.order.update');
                 Route::patch('/policy-rules/{rule}', [ManagementPolicyController::class, 'updateRule'])->name('policy-rules.update');
                 Route::delete('/policy-rules/{rule}', [ManagementPolicyController::class, 'destroyRule'])->name('policy-rules.destroy');
             });
