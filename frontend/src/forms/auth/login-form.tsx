@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { PasswordInput } from "@/components/common/forms/password-input";
@@ -34,11 +33,6 @@ export function LoginForm() {
 
   return (
     <form onSubmit={submit} className="grid gap-4" noValidate>
-      {message && (
-        <Alert variant="destructive">
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      )}
       <InputWithLabel
         label="Email"
         type="email"
