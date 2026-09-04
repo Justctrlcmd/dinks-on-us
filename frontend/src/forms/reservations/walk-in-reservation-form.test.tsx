@@ -60,6 +60,8 @@ describe("WalkInReservationForm", () => {
     expect(await screen.findByRole("heading", { name: "Summary breakdown" })).toBeInTheDocument();
     expect(screen.getByText(/Court 1/)).toBeInTheDocument();
     expect(screen.getAllByText("₱500.00")).toHaveLength(2);
+    expect(screen.getByRole("textbox", { name: /Transaction reference/ })).toBeDisabled();
+    expect(screen.getByLabelText(/Receipt image/)).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Add one additional player" }));
     await user.click(screen.getByRole("button", { name: "Add one Paddle" }));
@@ -98,7 +100,9 @@ describe("WalkInReservationForm", () => {
 
     expect(screen.getByText("09123456789")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /Transaction reference/ })).toBeRequired();
+    expect(screen.getByRole("textbox", { name: /Transaction reference/ })).not.toBeDisabled();
     expect(screen.getByLabelText(/Receipt image/)).toBeRequired();
+    expect(screen.getByLabelText(/Receipt image/)).not.toBeDisabled();
   });
 
   it("keeps contact-number input to eleven digits", async () => {

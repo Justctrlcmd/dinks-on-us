@@ -203,7 +203,7 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
   const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
   const paymentSelection = paymentChannel === "CASH" ? "CASH" : paymentMethodId ? `METHOD:${paymentMethodId}` : null;
-  const nonCashPayment = paymentChannel === "EWALLET_BANK";
+  const nonCashPayment = paymentChannel === "EWALLET_BANK" && Boolean(paymentMethodId);
   useEffect(() => {
     if (open) {
       form.reset({ ranges: [{ courtId: "", slot: "" }], additional_players: 0, equipment: {}, payment_channel: null, payment_method_id: undefined, payment_reference_number: "", payment_proof: undefined });
@@ -268,6 +268,8 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
           if (value === "CASH") {
             form.setValue("payment_channel", "CASH", { shouldDirty: true, shouldValidate: true });
             form.setValue("payment_method_id", undefined, { shouldDirty: true, shouldValidate: true });
+            form.setValue("payment_reference_number", "", { shouldDirty: true, shouldValidate: true });
+            form.resetField("payment_proof", { defaultValue: undefined });
           } else {
             form.setValue("payment_channel", "EWALLET_BANK", { shouldDirty: true, shouldValidate: true });
             form.setValue("payment_method_id", Number(value.replace("METHOD:", "")), { shouldDirty: true, shouldValidate: true });
@@ -275,8 +277,8 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
         }} description={paymentMethodsQuery.isPending ? "Loading active e-wallet and bank methods…" : "Cash or an active payment account from the public checkout."} />
         {paymentMethodsQuery.isError ? <p role="alert" className="text-sm text-destructive">Active e-wallet and bank methods could not be loaded. Cash remains available.</p> : null}
         {selectedPaymentMethod ? <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-muted-foreground">Account name</dt><dd className="font-medium">{selectedPaymentMethod.account_name}</dd></div><div><dt className="text-muted-foreground">Account number</dt><dd className="font-medium">{selectedPaymentMethod.account_number}</dd></div></dl><PaymentMethodQrDialog method={selectedPaymentMethod} /></div> : null}
-        <Field label={nonCashPayment ? "Transaction reference" : "Transaction reference (optional)"} required={nonCashPayment} error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} required={nonCashPayment} {...form.register("payment_reference_number")} /></Field>
-        <Field label={nonCashPayment ? "Payment receipt" : "Payment receipt (optional)"} required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field>
+        <Field label={nonCashPayment ? "Transaction reference" : "Transaction reference (optional)"} required={nonCashPayment} error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_reference_number")} /></Field>
+        <Field label={nonCashPayment ? "Payment receipt" : "Payment receipt (optional)"} required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field>
       </section>
     </> : null}
     <DialogFooter><DialogClose render={<Button type="button" variant="outline">Cancel</Button>} /><Button type="submit" disabled={!hasInput || !paymentChannel || mutation.isPending}>{mutation.isPending ? "Adding…" : "Add and record payment"}</Button></DialogFooter>
@@ -307,7 +309,14 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
   });
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Complete {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes service and records the final amount as business data.</DialogDescription></DialogHeader>
     <div className="rounded-xl border p-4"><p className="text-sm text-muted-foreground">Final reservation total</p><p className="font-heading text-2xl font-extrabold">{currency.format(reservation?.amounts.final ?? 0)}</p>{reservation?.amounts.refundable_credit ? <p className="mt-2 text-sm font-semibold">Refundable credit: {currency.format(reservation.amounts.refundable_credit)}</p> : null}</div>
-    {requiresPayment ? <><SelectWithLabel id="reservation-payment-channel" label="How was the additional amount collected?" required value={paymentChannel} error={form.formState.errors.payment_channel?.message} options={[{ value: "CASH", label: "Cash" }, { value: "EWALLET", label: "E-wallet" }, { value: "BANK", label: "Bank" }]} placeholder="Select payment channel" onValueChange={(value) => form.setValue("payment_channel", value as CompleteReservationValues["payment_channel"], { shouldDirty: true, shouldValidate: true })} /><Field label="Transaction reference (optional)" error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} {...form.register("payment_reference_number")} /></Field><Field label="Payment proof (optional)" error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field></> : null}
+    {requiresPayment ? <><SelectWithLabel id="reservation-payment-channel" label="How was the additional amount collected?" required value={paymentChannel} error={form.formState.errors.payment_channel?.message} options={[{ value: "CASH", label: "Cash" }, { value: "EWALLET", label: "E-wallet" }, { value: "BANK", label: "Bank" }]} placeholder="Select payment channel" onValueChange={(value) => {
+      const nextChannel = value as CompleteReservationValues["payment_channel"];
+      form.setValue("payment_channel", nextChannel, { shouldDirty: true, shouldValidate: true });
+      if (nextChannel === "CASH") {
+        form.setValue("payment_reference_number", "", { shouldDirty: true, shouldValidate: true });
+        form.resetField("payment_proof", { defaultValue: undefined });
+      }
+    }} /><Field label="Transaction reference (optional)" error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} disabled={paymentChannel !== "EWALLET" && paymentChannel !== "BANK"} {...form.register("payment_reference_number")} /></Field><Field label="Payment proof (optional)" error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} disabled={paymentChannel !== "EWALLET" && paymentChannel !== "BANK"} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field></> : null}
     <DialogFooter><DialogClose render={<Button type="button" variant="outline">Not yet</Button>} /><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Completing…" : "Yes, complete reservation"}</Button></DialogFooter>
   </form></DialogContent></Dialog>;
 }
