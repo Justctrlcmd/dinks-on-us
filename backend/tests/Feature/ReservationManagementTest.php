@@ -201,7 +201,7 @@ class ReservationManagementTest extends TestCase
                 && ! str_contains($html, 'Original reservation subtotal')
                 && ! str_contains($html, 'Current total')
                 && str_contains($html, 'Follow us for more information')
-                && str_contains($html, 'facebook.com/profile.php?id=61593085117097')
+                && str_contains($html, 'facebook.com/dinksonus')
                 && ! str_contains($html, '<img')
                 && ! str_contains($html, '9:00 AM – 10:00 AM');
         });
@@ -371,6 +371,9 @@ class ReservationManagementTest extends TestCase
         $walkIn = $this->walkInPayload(16);
         $walkIn['slots'][0]['court_id'] = $secondCourt->id;
         $walkIn['equipment'] = [['id' => $equipment->id, 'quantity' => 1]];
+        $walkIn['payment_channel'] = 'EWALLET_BANK';
+        $walkIn['payment_method_id'] = $this->paymentMethod->id;
+        $walkIn['payment_reference_number'] = 'CONFLICT-RECEIPT-1';
         $walkIn['payment_proof'] = UploadedFile::fake()->image('conflicting-walk-in.jpg');
         $this->actingAs($this->manager)
             ->post('/api/v1/management/reservations/walk-in', $walkIn)

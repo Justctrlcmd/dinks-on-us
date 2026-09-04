@@ -409,6 +409,7 @@ TanStack Query version
 React Hook Form version
 Zod version
 React Icons version
+Sonner/shadcn toast installation and provider placement
 Testing libraries
 Linting tools
 ```
@@ -445,6 +446,7 @@ Next.js ↔ TypeScript
 Tailwind ↔ shadcn/ui
 React Hook Form ↔ Zod resolver
 TanStack Query ↔ React
+Sonner/shadcn toast ↔ React and Next.js App Router
 ESLint ↔ Next.js
 Optional Laravel-to-Zod generator ↔ Laravel/Zod
 ```
@@ -566,6 +568,7 @@ React Icons
 React Hook Form
 Zod
 TanStack Query
+shadcn/ui Sonner toast
 ```
 
 Avoid unnecessary dependencies.
@@ -906,6 +909,48 @@ Something went wrong while processing your request. Please try again.
 ```
 
 Never return raw exception messages to the browser in production.
+
+## Frontend error-presentation contract
+
+Use the error channel that matches the error source. Do not render every error
+inside the form.
+
+```text
+Zod client field validation
+→ inline beneath the affected field
+
+API mutation errors, including authentication, authorization, conflict,
+rate-limit, network, unexpected server, and Laravel 422 responses
+→ one safe global Sonner error toast
+
+Successful mutation feedback when useful
+→ one concise global Sonner success toast
+
+Initial page/query loading failure
+→ reusable ErrorState with retry or navigation action
+
+Fatal rendering failure
+→ route-level error boundary
+```
+
+Only Zod client-validation messages belong inline beneath form fields during
+normal form interaction. Keep the corresponding accessible field state through
+React Hook Form, `aria-invalid`, and `aria-describedby`.
+
+Do not map Laravel/API validation errors back into React Hook Form with
+`setError()` merely to display them inline. Preserve `ApiError.errors` in the
+normalized error object for programmatic use and diagnostics, but show the
+API's safe summary `message` in a Sonner toast. If no safe summary exists, use
+the standard safe fallback for that HTTP status.
+
+Do not show the same result in both a toast and an inline form banner. Do not
+render generic root-level form errors such as `Something went wrong` inside an
+authentication form.
+
+Security-sensitive flows must remain enumeration-safe. Registration, login,
+forgot-password, reset-password, and email-verification toasts must display
+only the safe message supplied by the API contract, never raw exceptions or
+provider details.
 
 ---
 
@@ -1281,6 +1326,10 @@ keyboard interaction
 consistent spacing
 ```
 
+The `errors` capability of reusable controls is for field-level client
+validation, normally Zod errors managed by React Hook Form. It is not a place
+for general API, authentication, network, or unexpected server failures.
+
 Do not create one giant configurable form-control component.
 
 Prefer composition.
@@ -1309,6 +1358,18 @@ ChangePasswordForm
 
 Future business forms must also live under `/forms/<domain>`.
 
+Complete forms must:
+
+```text
+show Zod field validation inline beneath its field
+submit through a TanStack Query mutation
+allow the shared mutation-feedback layer to show API results in Sonner
+avoid root-level API error banners or paragraphs inside the form
+avoid calling toast directly when the shared mutation layer already handles it
+keep submit controls disabled while the mutation is pending
+restore a usable form state after failure
+```
+
 ---
 
 # 26. COMMON UI FOUNDATION
@@ -1325,6 +1386,29 @@ components/common/
 ├── page-header.tsx
 ├── confirmation-dialog.tsx
 └── pagination.tsx
+```
+
+Also install and configure the shadcn/ui Sonner component:
+
+```text
+components/ui/sonner.tsx
+```
+
+Render exactly one global `<Toaster />` in the root application layout so
+authentication pages, public pages, and portal pages share the same toast
+system. Do not mount a separate toaster inside individual forms, dialogs, or
+routes.
+
+Toast behavior:
+
+```text
+position: bottom-right on desktop
+mobile: inset safely within the viewport
+variants: success, error, warning, information
+content: concise safe message
+dismissal: automatic, with manual dismissal available
+duplication: prevent repeated identical messages where practical
+accessibility: preserve Sonner live-region behavior and sufficient contrast
 ```
 
 ## LoadingState
@@ -1569,6 +1653,11 @@ form elements
 
 Reuse shadcn primitives where appropriate.
 
+Use the shadcn/ui Sonner component for transient user-action feedback. Mount
+one global toaster and use semantic success, error, warning, and informational
+variants. Keep Zod field-validation messages inline; do not replace accessible
+field errors with ephemeral toasts.
+
 ---
 
 # 31. REACT ICONS
@@ -1783,6 +1872,30 @@ config/query-keys.ts
 = centralized query keys
 ```
 
+Configure a shared TanStack Query mutation-feedback layer, preferably through
+the application QueryClient's `MutationCache`, so mutation results use one
+consistent Sonner implementation.
+
+The shared layer must:
+
+```text
+normalize unknown failures to ApiError
+toast safe mutation error messages once
+support concise success, warning, and informational messages
+allow mutation metadata to customize or suppress expected toast feedback
+avoid duplicate toasts when a specialized flow intentionally owns feedback
+avoid converting API errors into inline root-level form messages
+```
+
+Do not globally toast ordinary query failures on every refetch. Initial
+page/query failures belong in `ErrorState`; background-refetch notification
+must be intentional and deduplicated.
+
+Forms and services must not each render the same toast. Services only return
+data or throw normalized errors. The shared mutation layer owns default result
+feedback, while a mutation hook may opt out or customize it through typed
+metadata when a flow genuinely needs different behavior.
+
 Do not duplicate API state into Zustand.
 
 ---
@@ -1831,6 +1944,9 @@ Do not place:
 * component rendering
 
 inside services.
+
+Services must not import Sonner or call `toast.*`. Toast presentation belongs
+to the shared TanStack Query mutation-feedback layer.
 
 ---
 
@@ -2460,8 +2576,12 @@ Teach future agents:
 10. Put mutation behavior in /hooks/mutations.
 11. Use publicFetch/authFetch.
 12. Normalize Laravel 422 errors consistently.
-13. Do not call raw fetch from the form.
-14. Use safe end-user messages.
+13. Keep only Zod field-validation errors inline beneath their fields.
+14. Show API/authentication/network/server mutation failures through the shared Sonner toast layer.
+15. Do not map API errors into a root-level form banner or duplicate a toast inline.
+16. Do not call raw fetch or Sonner directly from the form when shared mutation feedback handles it.
+17. Use safe end-user messages.
+18. Test inline Zod errors and Sonner API-error behavior separately.
 ```
 
 ---
@@ -2603,6 +2723,7 @@ app/ vs views/
 forms/ vs reusable components
 services/
 TanStack Query conventions
+global mutation-feedback and Sonner conventions
 validation strategy
 Sanctum architecture
 API contract
@@ -2682,6 +2803,9 @@ border-radius conventions
 responsive rules
 portal/sidebar behavior
 form-control behavior
+inline Zod field-error behavior
+Sonner toast placement and semantic variants
+rules preventing duplicate inline/toast feedback
 loading/empty/error states
 confirmation-dialog principles
 React Icons usage
@@ -2785,7 +2909,11 @@ Test representative:
 ```text
 authentication form behavior
 reusable form field behavior
-validation errors
+Zod validation errors remain inline beneath the correct fields
+API/authentication mutation errors appear in Sonner and not in form banners
+Laravel 422 mutation errors use one safe toast and are not remapped inline
+successful mutation feedback appears once when configured
+toast suppression/customization metadata prevents duplicate notifications
 API error normalization
 portal authentication boundary
 loading/empty/error component behavior

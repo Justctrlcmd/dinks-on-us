@@ -4,10 +4,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationCheckout } from "@/components/public/reservation/reservation-checkout";
 import { RESERVATION_DRAFT_STORAGE_KEY } from "@/types/reservation";
 
-const { submitReservationMock, toastErrorMock } = vi.hoisted(() => ({ submitReservationMock: vi.fn(), toastErrorMock: vi.fn() }));
+const mocks = vi.hoisted(() => {
+  const defaultPaymentMethods = [
+    {
+      id: 1,
+      name: "GCash",
+      qr_image_url: "http://localhost:8000/storage/payment-methods/gcash.png",
+      account_name: "Dinks on Us",
+      account_number: "09123456789",
+    },
+    {
+      id: 2,
+      name: "BPI",
+      qr_image_url: "http://localhost:8000/storage/payment-methods/bpi.png",
+      account_name: "Dinks on Us PH",
+      account_number: "0011223344",
+    },
+  ];
+
+  return {
+    submitReservationMock: vi.fn(),
+    toastErrorMock: vi.fn(),
+    defaultPaymentMethods,
+    paymentMethods: [...defaultPaymentMethods],
+  };
+});
 
 vi.mock("@/components/common/toast-provider", () => ({
-  useToast: () => ({ success: vi.fn(), error: toastErrorMock, warning: vi.fn(), info: vi.fn() }),
+  useToast: () => ({ success: vi.fn(), error: mocks.toastErrorMock, warning: vi.fn(), info: vi.fn() }),
 }));
 
 vi.mock("@/hooks/queries/use-policies", () => ({
@@ -43,35 +67,21 @@ vi.mock("@/hooks/queries/use-policies", () => ({
 
 vi.mock("@/hooks/queries/use-payment-methods", () => ({
   usePublicPaymentMethods: () => ({
-    data: [
-      {
-        id: 1,
-        name: "GCash",
-        qr_image_url: "http://localhost:8000/storage/payment-methods/gcash.png",
-        account_name: "Dinks on Us",
-        account_number: "09123456789",
-      },
-      {
-        id: 2,
-        name: "BPI",
-        qr_image_url: "http://localhost:8000/storage/payment-methods/bpi.png",
-        account_name: "Dinks on Us PH",
-        account_number: "0011223344",
-      },
-    ],
+    data: mocks.paymentMethods,
     isPending: false,
     isError: false,
   }),
 }));
 
 vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
-  useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: submitReservationMock, isPending: false }),
+  useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: mocks.submitReservationMock, isPending: false }),
 }));
 
 beforeEach(() => {
-  toastErrorMock.mockReset();
-  submitReservationMock.mockReset();
-  submitReservationMock.mockResolvedValue({ data: { id: 1, reference_number: "RSV-100", status: "PENDING" } });
+  mocks.toastErrorMock.mockReset();
+  mocks.submitReservationMock.mockReset();
+  mocks.submitReservationMock.mockResolvedValue({ data: { id: 1, reference_number: "RSV-100", status: "PENDING" } });
+  mocks.paymentMethods.splice(0, mocks.paymentMethods.length, ...mocks.defaultPaymentMethods);
   window.sessionStorage.setItem(
     RESERVATION_DRAFT_STORAGE_KEY,
     JSON.stringify({
@@ -153,6 +163,17 @@ describe("ReservationCheckout", () => {
     expect(screen.getByRole("heading", { name: "No reservation selected yet" })).toBeInTheDocument();
   });
 
+  it("disables payment evidence when no payment method is available", () => {
+    mocks.paymentMethods.splice(0);
+    render(<ReservationCheckout />);
+
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).not.toBeRequired();
+    expect(document.getElementById("payment-receipt")).toBeDisabled();
+    expect(document.getElementById("payment-receipt")).not.toBeRequired();
+  });
+
   it("shows inline validation errors when required fields are missing", async () => {
     const user = userEvent.setup();
     render(<ReservationCheckout />);
@@ -165,7 +186,7 @@ describe("ReservationCheckout", () => {
     expect(screen.getByText("Enter your mobile number.")).toBeInTheDocument();
     expect(screen.getByText("Enter the transaction reference number.")).toBeInTheDocument();
     expect(screen.getByText("Select a payment proof image.")).toBeInTheDocument();
-    expect(toastErrorMock).toHaveBeenCalledWith("Please complete all required fields before submitting.");
+    expect(mocks.toastErrorMock).toHaveBeenCalledWith("Please complete all required fields before submitting.");
   });
 
   it("requires email confirmation before sending the reservation", async () => {
@@ -185,10 +206,10 @@ describe("ReservationCheckout", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Is this email address correct?" })).toBeInTheDocument();
     expect(screen.getByText("mark@example.com")).toBeInTheDocument();
-    expect(submitReservationMock).not.toHaveBeenCalled();
+    expect(mocks.submitReservationMock).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Yes, submit reservation" }));
 
-    expect(submitReservationMock).toHaveBeenCalledTimes(1);
+    expect(mocks.submitReservationMock).toHaveBeenCalledTimes(1);
   });
 });

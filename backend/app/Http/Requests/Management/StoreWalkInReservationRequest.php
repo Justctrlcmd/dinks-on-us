@@ -47,10 +47,12 @@ class StoreWalkInReservationRequest extends FormRequest
             ],
             'payment_reference_number' => [
                 Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
+                Rule::prohibitedIf(fn (): bool => $this->input('payment_channel') === 'CASH'),
                 'nullable', 'string', 'max:180',
             ],
             'payment_proof' => [
                 Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
+                Rule::prohibitedIf(fn (): bool => $this->input('payment_channel') === 'CASH'),
                 ...ImageUploadRules::optional(),
             ],
         ];
@@ -85,6 +87,8 @@ class StoreWalkInReservationRequest extends FormRequest
             'payment_method_id.required' => 'Choose an active e-wallet or bank payment method.',
             'payment_method_id.prohibited' => 'A configured payment method cannot be used for cash.',
             'payment_reference_number.required' => 'Enter the transaction reference for this payment method.',
+            'payment_reference_number.prohibited' => 'A transaction reference is only used for e-wallet or bank payments.',
+            'payment_proof.prohibited' => 'A payment receipt is only used for e-wallet or bank payments.',
             'customer_contact_number.size' => 'The contact number must contain exactly 11 digits.',
             'customer_contact_number.regex' => 'The contact number must contain only digits and start with 09.',
         ];

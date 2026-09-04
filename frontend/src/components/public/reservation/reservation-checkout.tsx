@@ -263,12 +263,20 @@ export function ReservationCheckout() {
     () => paymentMethods.find((method) => String(method.id) === paymentMethodId) ?? null,
     [paymentMethodId, paymentMethods],
   );
+  const paymentEvidenceEnabled = selectedPaymentMethod !== null;
 
   useEffect(() => {
     if (!paymentMethodId && paymentMethods[0]) {
       form.setValue("payment_method_id", String(paymentMethods[0].id));
     }
   }, [form, paymentMethodId, paymentMethods]);
+
+  useEffect(() => {
+    if (!paymentEvidenceEnabled) {
+      form.setValue("payment_reference_number", "", { shouldDirty: false, shouldValidate: false });
+      form.resetField("payment_proof", { defaultValue: undefined });
+    }
+  }, [form, paymentEvidenceEnabled]);
 
   async function submitReservation(values: ReservationCheckoutValues) {
     if (!selectedPaymentMethod || !draft) return;
@@ -449,7 +457,8 @@ export function ReservationCheckout() {
             <InputWithLabel
               id="reference-number"
               label="Transaction reference number"
-              required
+              required={paymentEvidenceEnabled}
+              disabled={!paymentEvidenceEnabled}
               inputMode="numeric"
               placeholder="Enter the complete reference number"
               className="h-10 px-4"
@@ -459,10 +468,10 @@ export function ReservationCheckout() {
             <FormFieldWrapper
               id="payment-receipt"
               label="Payment receipt image"
-              required
+              required={paymentEvidenceEnabled}
               error={form.formState.errors.payment_proof?.message}
             >
-              <label htmlFor="payment-receipt" className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-primary/50 bg-primary/5 p-5 text-center transition-colors hover:bg-primary/10 focus-within:ring-3 focus-within:ring-ring/50">
+              <label htmlFor="payment-receipt" aria-disabled={!paymentEvidenceEnabled} className={`flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed p-5 text-center transition-colors focus-within:ring-3 focus-within:ring-ring/50 ${paymentEvidenceEnabled ? "cursor-pointer border-primary/50 bg-primary/5 hover:bg-primary/10" : "cursor-not-allowed border-border bg-muted/40 opacity-60"}`}>
                 {paymentProof?.item(0) ? <FiImage className="size-7 text-primary" aria-hidden="true" /> : <FiUploadCloud className="size-7 text-primary" aria-hidden="true" />}
                 <span className="mt-3 break-all font-heading font-extrabold">{paymentProof?.item(0)?.name || "Choose a receipt image"}</span>
                 <span className="mt-1 text-xs leading-5 text-muted-foreground">JPG, PNG, or WEBP · clear and readable</span>
@@ -470,7 +479,8 @@ export function ReservationCheckout() {
                   id="payment-receipt"
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
-                  required
+                  required={paymentEvidenceEnabled}
+                  disabled={!paymentEvidenceEnabled}
                   className="sr-only"
                   aria-invalid={Boolean(form.formState.errors.payment_proof)}
                   aria-describedby={form.formState.errors.payment_proof ? "payment-receipt-error" : undefined}

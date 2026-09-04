@@ -65,7 +65,7 @@ export function WalkInReservationForm() {
   const paymentMethods = paymentMethodsQuery.data ?? [];
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
   const paymentSelection = paymentChannel === "CASH" ? "CASH" : paymentMethodId ? `METHOD:${paymentMethodId}` : null;
-  const nonCashPayment = paymentChannel === "EWALLET_BANK";
+  const nonCashPayment = paymentChannel === "EWALLET_BANK" && Boolean(paymentMethodId);
   const selectedSlots = useMemo(() => expandReservationRanges(date, ranges), [date, ranges]);
 
   useEffect(() => {
@@ -225,6 +225,8 @@ export function WalkInReservationForm() {
             if (value === "CASH") {
               form.setValue("payment_channel", "CASH", { shouldValidate: true, shouldDirty: true });
               form.setValue("payment_method_id", undefined, { shouldValidate: true, shouldDirty: true });
+              form.setValue("payment_reference_number", "", { shouldValidate: true, shouldDirty: true });
+              form.resetField("payment_proof", { defaultValue: undefined });
               return;
             }
             const id = Number(value.replace("METHOD:", ""));
@@ -236,11 +238,11 @@ export function WalkInReservationForm() {
         />
         {paymentMethodsQuery.isError ? <p role="alert" className="text-sm text-destructive">Active e-wallet and bank methods could not be loaded. Cash remains available.</p> : null}
         {selectedPaymentMethod ? <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-muted-foreground">Account name</dt><dd className="font-medium">{selectedPaymentMethod.account_name}</dd></div><div><dt className="text-muted-foreground">Account number</dt><dd className="font-medium">{selectedPaymentMethod.account_number}</dd></div></dl><PaymentMethodQrDialog method={selectedPaymentMethod} /></div> : null}
-        <InputWithLabel label={nonCashPayment ? "Transaction reference" : "Transaction reference (optional)"} required={nonCashPayment} {...form.register("payment_reference_number")} error={form.formState.errors.payment_reference_number?.message} />
+        <InputWithLabel label={nonCashPayment ? "Transaction reference" : "Transaction reference (optional)"} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_reference_number")} error={form.formState.errors.payment_reference_number?.message} />
         <FormFieldWrapper id="walk-in-payment-proof" label={nonCashPayment ? "Receipt image" : "Receipt image (optional)"} required={nonCashPayment} description="JPG, PNG, or WebP; maximum 5 MB." error={form.formState.errors.payment_proof?.message}>
           <div className="relative">
             <FiImage className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input id="walk-in-payment-proof" type="file" accept={WALK_IN_RECEIPT_ACCEPT} required={nonCashPayment} className="cursor-pointer pl-9 file:mr-3" aria-invalid={Boolean(form.formState.errors.payment_proof)} aria-describedby={["walk-in-payment-proof-description", form.formState.errors.payment_proof && "walk-in-payment-proof-error"].filter(Boolean).join(" ")} {...form.register("payment_proof")} />
+            <Input id="walk-in-payment-proof" type="file" accept={WALK_IN_RECEIPT_ACCEPT} required={nonCashPayment} disabled={!nonCashPayment} className="cursor-pointer pl-9 file:mr-3" aria-invalid={Boolean(form.formState.errors.payment_proof)} aria-describedby={["walk-in-payment-proof-description", form.formState.errors.payment_proof && "walk-in-payment-proof-error"].filter(Boolean).join(" ")} {...form.register("payment_proof")} />
           </div>
         </FormFieldWrapper>
       </Card>
