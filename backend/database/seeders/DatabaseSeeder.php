@@ -19,7 +19,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
+        if (app()->environment('production') && ! config('seeding.allow_production_seed')) {
+            return;
+        }
+
+        if (! app()->environment(['local', 'testing', 'production'])) {
             return;
         }
 
