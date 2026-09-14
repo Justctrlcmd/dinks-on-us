@@ -18,7 +18,7 @@ class ReservationMailDispatcher
         }
 
         try {
-            Mail::to($reservation->customer_email)->send(new ReservationStatusMail($reservation->loadMissing('currentSlots.court', 'equipmentItems', 'adjustments'), $event));
+            Mail::to($reservation->customer_email)->send(new ReservationStatusMail($reservation->loadMissing('currentSlots.court', 'equipmentItems', 'adjustments', 'payments'), $event));
         } catch (Throwable $exception) {
             Log::error('Reservation email delivery failed.', [
                 'reservation_id' => $reservation->id, 'event' => $event,

@@ -25,6 +25,8 @@ import { useReservationClosedDates } from "@/hooks/queries/use-court-pricing";
 import { todayInTimeZone } from "@/lib/date";
 import { formatDateOnly } from "@/lib/date";
 import { formatHour } from "@/lib/time";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
+import { cn } from "@/lib/utils";
 import {
   addTimeRange,
   canAddTimeRange,
@@ -197,8 +199,15 @@ export function AvailabilityClosureFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent
+        className={cn(
+          "sm:max-w-xl",
+          type === "entire_operation"
+            ? "max-h-none gap-3 overflow-visible p-3 sm:gap-4 sm:p-4"
+            : "max-h-[calc(100svh-2rem)] overflow-y-auto",
+        )}
+      >
+        <DialogHeader className={type === "entire_operation" ? "gap-1 sm:gap-2" : undefined}>
           <DialogTitle>
             {type === "entire_operation"
               ? "Add closed date"
@@ -230,7 +239,10 @@ export function AvailabilityClosureFormDialog({
         </DialogHeader>
         <form
           id="availability-closure-form"
-          className="grid gap-4 py-1"
+          className={cn(
+            "grid sm:gap-4 sm:py-1",
+            type === "entire_operation" ? "gap-3 py-0" : "gap-4 py-1",
+          )}
           onSubmit={submit}
           noValidate
         >
@@ -238,6 +250,7 @@ export function AvailabilityClosureFormDialog({
             id="closure-date"
             label="Closure date"
             required
+            className={type === "entire_operation" ? "gap-1.5 sm:gap-2" : undefined}
             error={form.formState.errors.date?.message}
           >
             <CalendarDatePicker
@@ -333,6 +346,7 @@ export function AvailabilityClosureFormDialog({
             id="closure-reason"
             label="Internal reason"
             required
+            className={type === "entire_operation" ? "gap-1.5 sm:gap-2" : undefined}
             error={form.formState.errors.reason?.message}
           >
             <Textarea
@@ -344,7 +358,7 @@ export function AvailabilityClosureFormDialog({
             />
           </FormFieldWrapper>
         </form>
-        <DialogFooter>
+        <DialogFooter className={type === "entire_operation" ? "-mx-3 -mb-3 p-3 sm:-mx-4 sm:-mb-4 sm:p-4" : undefined}>
           <DialogClose
             render={
               <Button type="button" variant="outline" disabled={pending} />
@@ -355,13 +369,9 @@ export function AvailabilityClosureFormDialog({
           <Button
             form="availability-closure-form"
             type="submit"
-            disabled={pending}
+            disabled={pending || isMutationRateLimited(entireOperationMutation, courtTimesMutation)}
           >
-            {pending
-              ? "Saving…"
-              : type === "entire_operation"
-                ? "Close operation"
-                : "Close court times"}
+            {mutationButtonLabel("Saving…", type === "entire_operation" ? "Close operation" : "Close court times", entireOperationMutation, courtTimesMutation)}
           </Button>
         </DialogFooter>
       </DialogContent>

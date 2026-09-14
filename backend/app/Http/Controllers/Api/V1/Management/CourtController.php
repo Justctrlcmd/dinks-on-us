@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\V1\Management;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CourtResource;
 use App\Models\Court;
+use App\Services\SecurityAuditService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CourtController extends Controller
@@ -31,7 +33,7 @@ class CourtController extends Controller
         );
     }
 
-    public function store(): JsonResponse
+    public function store(Request $request, SecurityAuditService $audit): JsonResponse
     {
         [$court, $reactivated] = DB::transaction(function (): array {
             $inactiveCourt = Court::query()
@@ -56,6 +58,7 @@ class CourtController extends Controller
                 false,
             ];
         });
+        $audit->record($reactivated ? 'COURT_REACTIVATED' : 'COURT_CREATED', $request, $request->user(), $court, module: 'MANAGEMENT_COURT_PRICING', targetLabel: "Court {$court->court_number}");
 
         return $this->respondSuccess(
             CourtResource::make($court)->resolve(),
@@ -64,9 +67,10 @@ class CourtController extends Controller
         );
     }
 
-    public function destroy(Court $court): JsonResponse
+    public function destroy(Request $request, Court $court, SecurityAuditService $audit): JsonResponse
     {
         $court->update(['is_active' => false]);
+        $audit->record('COURT_REMOVED', $request, $request->user(), $court, module: 'MANAGEMENT_COURT_PRICING', targetLabel: "Court {$court->court_number}");
 
         return $this->respondSuccess(null, 'Court removed.');
     }

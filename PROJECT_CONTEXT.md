@@ -10,6 +10,19 @@ This document does **not** redefine that architecture.
 
 Instead, it explains how the existing boilerplate should interpret and implement the Dinks on Us business requirements.
 
+The domain is implemented and in active feature development. The source code,
+database migrations, and registered routes are authoritative for implementation
+details; these documents record the current product behavior and invariants.
+
+Current operating decisions include:
+
+* Weekday pricing applies Monday through Thursday; weekend pricing applies Friday through Sunday.
+* Public checkout supports multiple court/time selections on one date and submits the displayed `quoted_amount` for server-side stale-price detection.
+* Pending, Verified, and Ongoing reservations occupy court and time-based equipment availability.
+* Manager-created team accounts cannot open Profile or change their own identity or password; the Manager controls those credentials through Team & Access.
+* Rescheduling is Manager-only, keeps the original base-slot count, preserves history, migrates existing court-time add-ons to the new date, and settles the resulting balance or credit immediately.
+* Court-time, additional-player, and rental-equipment add-ons are available for Verified and Ongoing reservations.
+
 ---
 
 # 2. Core Implementation Principle
@@ -122,7 +135,7 @@ It contains the authoritative operational rules for:
 * Pricing
 * Rate snapshots
 * Rescheduling
-* Extensions
+* Court-time add-ons
 * Add-ons
 * Final amounts
 * Revenue recognition
@@ -190,8 +203,7 @@ It describes:
 * Rejection
 * Walk-ins
 * Rescheduling
-* Extensions
-* Adjustments
+* Rescheduling and add-ons
 * Completion
 * No-show
 * Cancellation
@@ -205,11 +217,9 @@ It describes:
 
 The exact controller/service/file structure should still follow the existing boilerplate.
 
-The focused implementation sequence and current-to-target behavior for this
-capability are recorded in
-`docs/plans/payment-proof-retention.md`. That plan is subordinate to the domain
-documents above and must be marked implemented only after code and verification
-are complete.
+The completed implementation record for payment-proof retention is in
+`docs/plans/payment-proof-retention.md`. It remains subordinate to the current
+domain documents and source code.
 
 ---
 
@@ -507,7 +517,7 @@ Availability must consider:
 * Verified reservations
 * Walk-ins
 * Ongoing reservations
-* Extensions
+* Court-time add-ons
 * Closed dates
 * Blocked court/time slots
 
@@ -598,7 +608,9 @@ Night Rate
 
 These values are configurable and are not permanent hard-coded rates.
 
-The Manager must be able to configure applicable pricing rules, each court's player limit and operating hours, and rentable equipment with its pricing.
+The Manager configures one shared court rule set for all courts: operating hours,
+players included, additional-player price, Monday–Thursday weekday periods, and
+Friday–Sunday weekend periods. Rentable equipment has its own price and stock.
 
 ---
 
@@ -644,32 +656,28 @@ WALK_IN
 
 ---
 
-# 22. Extensions
+# 22. Court-Time Add-Ons
 
-Players cannot extend reservations themselves online.
+Players cannot add court time through the public website after submission.
 
-Only authorized Staff/Manager can perform an extension.
-
-The requested slot must still be available.
-
-Extension slots:
-
-* Become part of the existing reservation
-* Consume court availability
-* Use the applicable current rate
-* Contribute to final billing
+Authorized Staff or the Manager can add available court/time slots to a
+Verified or Ongoing reservation through the reservation add-ons action. Added
+court time must use the reservation's current booking date, consumes the shared
+availability immediately, uses the current configured rate as a snapshot, and
+contributes to final billing. There is no separate extension endpoint.
 
 ---
 
 # 23. Add-Ons and Final Amount
 
-Reservations may gain additional charges during play.
+Verified and Ongoing reservations may gain additional charges.
 
 Examples:
 
 * Additional player
-* Extension
-* Future add-ons
+* Court time on the current booking date
+* Additional players
+* Active rental equipment
 
 Therefore distinguish:
 
@@ -810,7 +818,6 @@ Responsible for:
 * Payment verification
 * Reservation operations
 * Walk-ins
-* Extensions
 * Add-ons
 * Completion
 * No-show
@@ -861,7 +868,7 @@ The following require atomic behavior:
 * Verification
 * Rejection
 * Rescheduling
-* Extension
+* Add-ons
 * Completion
 * Cancellation
 
@@ -900,7 +907,11 @@ Current customer email events:
 * Rejected
 * Rescheduled
 
-The reschedule email contains the newly active reservation schedule. Public online submission, cancellation, completion, and other reservation changes do not send customer emails. Walk-in creation is immediately verified and sends the verification email when enabled.
+The reschedule email contains the newly active reservation schedule and describes
+any refundable credit or additional payment as already settled during the
+reschedule. Public online submission, cancellation, completion, add-ons, and
+other reservation changes do not send customer emails. Walk-in creation is
+immediately verified and sends the verification email when enabled.
 
 ---
 
@@ -908,7 +919,7 @@ The reschedule email contains the newly active reservation schedule. Public onli
 
 Reports should derive from transactional data.
 
-Important future metrics include:
+Implemented report areas include:
 
 * Completed revenue
 * Reservation count
@@ -933,16 +944,13 @@ Pending:
 
 ### Cancellation
 
-* Deadline
-* Fees
-* Refund policy
-* Staff cancellation authority
+* Customer request deadline
+* Any fee or policy change beyond the implemented Manager-only force-majeure refund flow
 
 ### Rescheduling
 
-* Deadline
-* Limits
-* Fees
+* Customer request deadline
+* Any business fee beyond the settled price difference
 
 ### No-show
 
@@ -950,14 +958,12 @@ Pending:
 
 ### Add-ons
 
-* Exact supported add-ons
-* Additional-player pricing
+* Any future managed add-on products beyond court time, additional players, and rental equipment
 
 ### Pricing
 
 * Exact operating hours
 * Day/night boundary
-* Weekend pricing
 * Special pricing
 
 ### Payment Methods
@@ -1060,11 +1066,11 @@ Neither should unnecessarily overwrite the other.
 
 # 39. Current Project Understanding
 
-At this stage, the Dinks on Us domain is sufficiently defined to begin mapping features into the initialized boilerplate.
+The Dinks on Us domain and its primary workflows are implemented in the initialized application.
 
 The major remaining unknowns are policy details expected to be confirmed with the client later.
 
-The coding agent should now be able to understand:
+The documentation and working implementation define:
 
 * Who uses the system
 * What modules exist

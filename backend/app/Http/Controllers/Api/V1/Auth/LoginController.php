@@ -23,10 +23,6 @@ class LoginController extends Controller
         ];
 
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
-            $audit->record(AuditLog::LOGIN_FAILED, $request, details: [
-                'credential_fingerprint' => $audit->credentialFingerprint((string) $request->validated('email')),
-            ]);
-
             return $this->respondFailure(
                 'The email or password is incorrect.',
                 'INVALID_CREDENTIALS',
@@ -39,7 +35,7 @@ class LoginController extends Controller
 
         $request->user()->update(['last_login_at' => now()]);
         $request->user()->load('role.modules');
-        $audit->record(AuditLog::LOGIN_SUCCEEDED, $request, $request->user(), $request->user());
+        $audit->record(AuditLog::LOGIN_SUCCEEDED, $request, $request->user(), $request->user(), module: 'SECURITY', targetLabel: 'Account session');
 
         return $this->respondSuccess(
             UserResource::make($request->user())->resolve($request),

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Reservation;
+use App\Support\BusinessClock;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -17,7 +18,7 @@ class DashboardService
         $weekStart = CarbonImmutable::createFromFormat('Y-m-d', $requestedWeekStart)
             ->startOfWeek(CarbonInterface::MONDAY);
         $weekEnd = $weekStart->addDays(6);
-        $now = CarbonImmutable::now('Asia/Manila');
+        $now = BusinessClock::now();
         $today = $now->toDateString();
         $snapshots = [];
         $days = [];

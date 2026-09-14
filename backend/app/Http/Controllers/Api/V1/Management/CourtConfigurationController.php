@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Management\UpdateCourtConfigurationRequest;
 use App\Http\Resources\CourtConfigurationResource;
 use App\Models\CourtConfiguration;
+use App\Services\SecurityAuditService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,7 @@ class CourtConfigurationController extends Controller
         );
     }
 
-    public function update(UpdateCourtConfigurationRequest $request): JsonResponse
+    public function update(UpdateCourtConfigurationRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $configuration = DB::transaction(function () use ($request): CourtConfiguration {
             $configuration = CourtConfiguration::query()->lockForUpdate()->find(1) ?? new CourtConfiguration;
@@ -53,6 +54,7 @@ class CourtConfigurationController extends Controller
 
             return $configuration->load('ratePeriods');
         });
+        $audit->record('COURT_CONFIGURATION_UPDATED', $request, $request->user(), $configuration, module: 'MANAGEMENT_COURT_PRICING', targetLabel: 'Court configuration');
 
         return $this->respondSuccess(
             CourtConfigurationResource::make($configuration)->resolve($request),

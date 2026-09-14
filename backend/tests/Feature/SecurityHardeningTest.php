@@ -45,7 +45,9 @@ class SecurityHardeningTest extends TestCase
         $this->postJson('/api/v1/login', [
             'email' => $email,
             'password' => 'wrong-password',
-        ])->assertTooManyRequests();
+        ])->assertTooManyRequests()
+            ->assertJsonPath('code', 'TOO_MANY_REQUESTS')
+            ->assertHeader('Retry-After');
     }
 
     public function test_passwords_require_eight_characters_and_are_hashed_with_argon2id(): void

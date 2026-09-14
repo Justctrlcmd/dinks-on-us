@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\BusinessClock;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -19,7 +20,7 @@ class StoreAvailabilityBlockRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'date' => ['required', 'date_format:Y-m-d', BusinessClock::todayOrLaterRule()],
             'court_id' => ['required', 'integer', 'exists:courts,id'],
             'periods' => ['required', 'array', 'min:1', 'max:24'],
             'periods.*.start_hour' => ['required', 'integer', 'between:0,23'],

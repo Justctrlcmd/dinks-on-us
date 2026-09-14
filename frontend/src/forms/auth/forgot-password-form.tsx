@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { useForgotPassword } from "@/hooks/mutations/use-auth-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { forgotPasswordSchema, type ForgotPasswordValues } from "@/validation/custom/auth-schemas";
 
 export function ForgotPasswordForm() {
@@ -15,7 +16,7 @@ export function ForgotPasswordForm() {
   const submit = form.handleSubmit(async ({ email }) => { try { await mutation.mutateAsync(email); setSent(true); } catch {} });
   return <form onSubmit={submit} className="grid gap-4" noValidate>
     <InputWithLabel label="Email" type="email" autoComplete="email" required {...form.register("email")} error={form.formState.errors.email?.message} />
-    <Button disabled={mutation.isPending || sent} type="submit">{mutation.isPending ? "Sending..." : "Send reset link"}</Button>
+    <Button disabled={mutation.isPending || sent || isMutationRateLimited(mutation)} type="submit">{mutationButtonLabel("Sending…", "Send reset link", mutation)}</Button>
     <Link href="/login" className="text-center text-sm underline-offset-4 hover:underline">Back to sign in</Link>
   </form>;
 }

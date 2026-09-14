@@ -17,7 +17,7 @@ class LogoutController extends Controller
     public function __invoke(Request $request, SecurityAuditService $audit): JsonResponse
     {
         $user = $request->user();
-        $audit->record(AuditLog::LOGOUT_COMPLETED, $request, $user, $user);
+        $audit->record(AuditLog::LOGOUT_COMPLETED, $request, $user, $user, module: 'SECURITY', targetLabel: 'Account session');
 
         Auth::guard('web')->logout();
         $request->session()->invalidate();

@@ -12,6 +12,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { PaymentMethodFormDialog } from "@/forms/payment-method/payment-method-form-dialog";
 import { useDeletePaymentMethod } from "@/hooks/mutations/use-payment-method-mutations";
 import { usePaymentMethods } from "@/hooks/queries/use-payment-methods";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PaymentMethod } from "@/types/payment-method";
 
 export function PaymentMethodManagementView() {
@@ -124,8 +125,8 @@ export function PaymentMethodManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={deleteMutation.isPending} />}>Cancel</DialogClose>
-            <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => void confirmDelete()}>
-              {deleteMutation.isPending ? "Deleting…" : "Delete payment method"}
+            <Button variant="destructive" disabled={deleteMutation.isPending || isMutationRateLimited(deleteMutation)} onClick={() => void confirmDelete()}>
+              {mutationButtonLabel("Deleting…", "Delete payment method", deleteMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>

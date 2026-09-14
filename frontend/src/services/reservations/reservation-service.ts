@@ -1,6 +1,6 @@
 import { authFetch, publicFetch } from "@/lib/api";
 import type { ApiResponse } from "@/types/api";
-import type { ManagementReservation, PendingReservationSummary, ReservationAddOnsInput, ReservationFilters, ReservationListData, SlotInput, WalkInReservationInput } from "@/types/reservation";
+import type { ManagementReservation, PendingReservationSummary, ReservationAddOnsInput, ReservationFilters, ReservationListData, RescheduleReservationInput, WalkInReservationInput } from "@/types/reservation";
 
 export const submitReservation = ({ input, idempotencyKey }: { input: FormData; idempotencyKey: string }) =>
   publicFetch<ManagementReservation>("/api/v1/public/reservations", {
@@ -29,7 +29,7 @@ export const createWalkInReservation = (input: WalkInReservationInput) => {
   body.set("customer_email", input.customer_email);
   body.set("customer_contact_number", input.customer_contact_number);
   body.set("additional_players", String(input.additional_players));
-  body.set("payment_channel", input.payment_channel);
+  if (input.payment_channel) body.set("payment_channel", input.payment_channel);
   if (input.payment_method_id !== undefined) body.set("payment_method_id", String(input.payment_method_id));
   if (input.payment_reference_number?.trim()) body.set("payment_reference_number", input.payment_reference_number.trim());
   if (input.payment_proof) body.set("payment_proof", input.payment_proof);
@@ -52,7 +52,29 @@ export const verifyReservation = (id: number) => postAction(id, "verify");
 export const startReservation = (id: number) => postAction(id, "start");
 export const noShowReservation = (id: number) => postAction(id, "no-show");
 export const rejectReservation = (id: number, input: { concern: string; reason: string }) => postAction(id, "reject", JSON.stringify(input));
-export const rescheduleReservation = (id: number, slots: SlotInput[]) => postAction(id, "reschedule", JSON.stringify({ slots }));
+export const rescheduleReservation = (id: number, input: RescheduleReservationInput) => {
+  const body = new FormData();
+  input.slots.forEach((slot, index) => {
+    body.set(`slots[${index}][court_id]`, String(slot.court_id));
+    body.set(`slots[${index}][date]`, slot.date);
+    body.set(`slots[${index}][start_hour]`, String(slot.start_hour));
+  });
+  input.add_on_slots?.forEach((slot, index) => {
+    body.set(`add_on_slots[${index}][court_id]`, String(slot.court_id));
+    body.set(`add_on_slots[${index}][date]`, slot.date);
+    body.set(`add_on_slots[${index}][start_hour]`, String(slot.start_hour));
+  });
+  if (input.additional_players !== undefined) body.set("additional_players", String(input.additional_players));
+  input.equipment?.forEach((item, index) => {
+    body.set(`equipment[${index}][id]`, String(item.id));
+    body.set(`equipment[${index}][quantity]`, String(item.quantity));
+  });
+  if (input.payment_channel) body.set("payment_channel", input.payment_channel);
+  if (input.payment_method_id !== undefined) body.set("payment_method_id", String(input.payment_method_id));
+  if (input.payment_reference_number?.trim()) body.set("payment_reference_number", input.payment_reference_number.trim());
+  if (input.payment_proof) body.set("payment_proof", input.payment_proof);
+  return postAction(id, "reschedule", body);
+};
 export const addReservationAddOns = (id: number, input: ReservationAddOnsInput) => {
   const body = new FormData();
   input.slots?.forEach((slot, index) => {
@@ -65,7 +87,7 @@ export const addReservationAddOns = (id: number, input: ReservationAddOnsInput) 
     body.set("equipment[" + index + "][id]", String(item.id));
     body.set("equipment[" + index + "][quantity]", String(item.quantity));
   });
-  body.set("payment_channel", input.payment_channel);
+  if (input.payment_channel) body.set("payment_channel", input.payment_channel);
   if (input.payment_method_id !== undefined) body.set("payment_method_id", String(input.payment_method_id));
   if (input.payment_reference_number?.trim()) body.set("payment_reference_number", input.payment_reference_number.trim());
   if (input.payment_proof) body.set("payment_proof", input.payment_proof);

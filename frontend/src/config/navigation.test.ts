@@ -19,7 +19,7 @@ const baseUser: User = {
     slug: "front-desk",
     is_full_access: false,
   },
-  modules: ["DASHBOARD", "RESERVATION", "HISTORY"],
+  modules: ["DASHBOARD", "RESERVATION", "HISTORY", "ACTION_LOGS"],
   email_verified_at: null,
   created_at: "2026-08-13T00:00:00Z",
   updated_at: "2026-08-13T00:00:00Z",
@@ -31,6 +31,7 @@ describe("portal navigation authorization", () => {
       "Dashboard",
       "Reservations",
       "History",
+      "Action Logs",
     ]);
   });
 
@@ -41,7 +42,7 @@ describe("portal navigation authorization", () => {
       modules: [],
     };
 
-    expect(getPortalNavigation(manager)).toHaveLength(5);
+    expect(getPortalNavigation(manager)).toHaveLength(6);
     expect(canAccessPortalModule(manager, "SETTINGS")).toBe(true);
   });
 
@@ -49,6 +50,7 @@ describe("portal navigation authorization", () => {
     expect(getRequiredPortalModule("/portal/management/court-pricing")).toBe("MANAGEMENT_COURT_PRICING");
     expect(getRequiredPortalModule("/portal/management/staff-accounts")).toBe("MANAGEMENT_TEAM_ACCESS");
     expect(getRequiredPortalModule("/portal/reservations/DOU-0012")).toBe("RESERVATION");
+    expect(getRequiredPortalModule("/portal/action-logs")).toBe("ACTION_LOGS");
     expect(getRequiredPortalModule("/portal/profile")).toBeNull();
     expect(getRequiredPortalModule("/portal/settings")).toBeNull();
   });

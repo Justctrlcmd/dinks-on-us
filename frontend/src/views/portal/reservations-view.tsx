@@ -56,6 +56,7 @@ import {
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useReservations } from "@/hooks/queries/use-reservations";
 import { formatDateOnly } from "@/lib/date";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type {
   ManagementReservation,
   ReservationFilters,
@@ -142,6 +143,10 @@ function ReservationActions({
               <FiPlay aria-hidden />
               Mark ongoing
             </DropdownMenuItem>
+            <DropdownMenuItem disabled={disabled} onClick={() => onDialog("addons", reservation)}>
+              <FiRefreshCw aria-hidden />
+              Add-ons
+            </DropdownMenuItem>
             {isManager ? (
               <>
                 <DropdownMenuItem
@@ -174,10 +179,6 @@ function ReservationActions({
         ) : null}
         {reservation.status === "ONGOING" ? (
           <>
-            <DropdownMenuItem disabled={disabled} onClick={() => onDialog("addons", reservation)}>
-              <FiRefreshCw aria-hidden />
-              Add-ons
-            </DropdownMenuItem>
             <DropdownMenuItem disabled={disabled} onClick={() => onDialog("complete", reservation)}>
               <FiCheckCircle aria-hidden />
               Complete
@@ -227,6 +228,15 @@ export function ReservationsView() {
         : confirmAction === "no-show"
           ? noShowMutation.isPending
           : false;
+  const confirmMutation =
+    confirmAction === "verify"
+      ? verifyMutation
+      : confirmAction === "start"
+        ? startMutation
+        : confirmAction === "no-show"
+          ? noShowMutation
+          : null;
+  const confirmRateLimited = confirmMutation ? isMutationRateLimited(confirmMutation) : false;
 
   function openDialog(kind: DialogKind, reservation: ManagementReservation) {
     if (actionPending) return;
@@ -560,16 +570,14 @@ export function ReservationsView() {
             <DialogClose render={<Button variant="outline" disabled={confirmPending}>Not yet</Button>} />
             <Button
               variant={confirmAction === "no-show" ? "destructive" : "default"}
-              disabled={confirmPending}
+              disabled={confirmPending || confirmRateLimited}
               onClick={confirm}
             >
-              {confirmPending
-                ? confirmAction === "verify"
-                  ? "Verifying…"
-                  : confirmAction === "start"
-                    ? "Marking ongoing…"
-                    : "Marking no-show…"
-                : confirmCopy[2]}
+              {confirmAction === "verify"
+                ? mutationButtonLabel("Verifying…", confirmCopy[2], verifyMutation)
+                : confirmAction === "start"
+                  ? mutationButtonLabel("Marking ongoing…", confirmCopy[2], startMutation)
+                  : mutationButtonLabel("Marking no-show…", confirmCopy[2], noShowMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>

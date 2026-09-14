@@ -9,6 +9,7 @@ import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { PasswordInput } from "@/components/common/forms/password-input";
 import { applyApiErrors } from "@/forms/apply-api-errors";
 import { useLogin } from "@/hooks/mutations/use-auth-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { loginSchema, type LoginValues } from "@/validation/custom/auth-schemas";
 
 export function LoginForm() {
@@ -52,12 +53,13 @@ export function LoginForm() {
         {...form.register("password")}
         error={form.formState.errors.password?.message}
       />
+      {message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null}
       <Button
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || isMutationRateLimited(mutation)}
         type="submit"
         className="mt-1 h-12 w-full rounded-xl bg-energy px-5 text-base font-bold text-energy-foreground hover:bg-energy/90"
       >
-        {mutation.isPending ? "Logging in..." : "Login"}
+        {mutationButtonLabel("Logging in…", "Login", mutation)}
       </Button>
     </form>
   );

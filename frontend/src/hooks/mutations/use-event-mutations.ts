@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
 import { eventKeys } from "@/config/query-keys";
 import { archiveEvent, createEvent, updateEvent } from "@/services/event/event-service";
 
@@ -11,15 +12,15 @@ function useRefreshEvents() {
 
 export function useCreateEvent() {
   const refresh = useRefreshEvents();
-  return useMutation({ mutationFn: createEvent, onSuccess: refresh });
+  return useRateLimitedMutation("event-create", { mutationFn: createEvent, onSuccess: refresh });
 }
 
 export function useUpdateEvent() {
   const refresh = useRefreshEvents();
-  return useMutation({ mutationFn: updateEvent, onSuccess: refresh });
+  return useRateLimitedMutation("event-update", { mutationFn: updateEvent, onSuccess: refresh });
 }
 
 export function useArchiveEvent() {
   const refresh = useRefreshEvents();
-  return useMutation({ mutationFn: archiveEvent, onSuccess: refresh });
+  return useRateLimitedMutation("event-archive", { mutationFn: archiveEvent, onSuccess: refresh });
 }

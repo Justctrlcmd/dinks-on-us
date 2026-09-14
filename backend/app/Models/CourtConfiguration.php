@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,6 +16,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class CourtConfiguration extends Model
 {
+    public static function dayTypeForDate(CarbonInterface $date): string
+    {
+        return $date->dayOfWeekIso >= 5 ? 'weekend' : 'weekday';
+    }
+
     /**
      * @return HasMany<CourtRatePeriod, $this>
      */

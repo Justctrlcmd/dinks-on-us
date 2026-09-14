@@ -50,6 +50,7 @@
                             $equipmentTotal = (float) $equipmentItems->sum(fn ($equipment) => (float) $equipment->unit_amount * (int) $equipment->quantity);
                             $outstanding = max(0, (float) $reservation->final_amount - (float) $reservation->amount_paid);
                             $refundableCredit = max(0, (float) $reservation->refundable_credit);
+                            $reschedulePayment = $reservation->payments->where('kind', 'RESCHEDULE')->sortByDesc('id')->first();
                             @endphp
                             <h2 style="font-size:17px;margin-top:24px">Your reservation</h2>
                             @foreach ($reservation->currentSlots as $slot)
@@ -126,7 +127,18 @@
                                     <td style="padding:6px 0"><strong>Amount paid</strong></td>
                                     <td align="right" style="padding:6px 0"><strong>₱{{ number_format((float) $reservation->amount_paid, 2) }}</strong></td>
                                 </tr>
-                                @if ($outstanding > 0)
+                                @if ($event === 'rescheduled' && $reschedulePayment)
+                                <tr>
+                                    <td style="padding:6px 0"><strong>Additional payment</strong></td>
+                                    <td align="right" style="padding:6px 0"><strong>₱{{ number_format((float) $reschedulePayment->amount, 2) }}</strong></td>
+                                </tr>
+                                @endif
+                                @if ($event === 'rescheduled')
+                                <tr>
+                                    <td style="padding:6px 0;color:#1e6f78"><strong>Payment status</strong></td>
+                                    <td align="right" style="padding:6px 0;color:#1e6f78"><strong>Settled</strong></td>
+                                </tr>
+                                @elseif ($outstanding > 0)
                                 <tr>
                                     <td style="padding:6px 0;color:#a33a3a"><strong>Balance due</strong></td>
                                     <td align="right" style="padding:6px 0;color:#a33a3a"><strong>₱{{ number_format($outstanding, 2) }}</strong></td>

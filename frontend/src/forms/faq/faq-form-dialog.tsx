@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useCreateFaq, useUpdateFaq } from "@/hooks/mutations/use-faq-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { Faq } from "@/types/faq";
 import { faqSchema, type FaqValues } from "@/validation/custom/faq-schema";
 
@@ -78,8 +79,8 @@ export function FaqFormDialog({
           <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>
             Cancel
           </DialogClose>
-          <Button form="faq-form" type="submit" disabled={isPending}>
-            {isPending ? (faq ? "Saving…" : "Creating…") : faq ? "Save changes" : "Create FAQ"}
+          <Button form="faq-form" type="submit" disabled={isPending || isMutationRateLimited(createMutation, updateMutation)}>
+            {mutationButtonLabel(faq ? "Saving…" : "Creating…", faq ? "Save changes" : "Create FAQ", createMutation, updateMutation)}
           </Button>
         </DialogFooter>
       </DialogContent>

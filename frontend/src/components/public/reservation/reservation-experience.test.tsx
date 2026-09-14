@@ -31,8 +31,8 @@ const { closedDatesMock, policySectionsMock, pushMock, reservationOptionsMock } 
     unavailable_slots: [] as { court_id: number; start_hour: number }[],
     reserved_slots: [] as { court_id: number; start_hour: number }[],
     past_slots: [] as { court_id: number; start_hour: number }[],
-    equipment: [{ id: 1, name: "Paddle", price: 100, total_quantity: 12, available_quantity: 12, created_at: "2026-08-25T00:00:00.000Z", updated_at: "2026-08-25T00:00:00.000Z" }],
-    equipment_confirmation: "Equipment availability is confirmed when your reservation is verified.",
+    equipment: [{ id: 1, name: "Paddle", price: 100, total_quantity: 12, is_active: true, available_quantity: 12, slot_availability: [7, 8].map((hour) => ({ date: "2026-08-25", start_hour: hour, end_hour: hour + 1, available_quantity: hour === 7 ? 12 : 2 })), created_at: "2026-08-25T00:00:00.000Z", updated_at: "2026-08-25T00:00:00.000Z" }],
+    equipment_confirmation: "Equipment is held when your reservation is successfully submitted, including while awaiting verification.",
   },
 }));
 
@@ -68,6 +68,7 @@ afterEach(() => {
   reservationOptionsMock.reserved_slots.length = 0;
   reservationOptionsMock.past_slots.length = 0;
   closedDatesMock.length = 0;
+  reservationOptionsMock.equipment[0].slot_availability[0].available_quantity = 12;
 });
 
 describe("ReservationExperience", () => {
@@ -140,6 +141,36 @@ describe("ReservationExperience", () => {
     expect(screen.getByRole("dialog").scrollTop).toBe(0);
   });
 
+  it("disables equipment when the selected schedule has no stock", async () => {
+    reservationOptionsMock.equipment[0].slot_availability[0].available_quantity = 0;
+    const user = userEvent.setup();
+    render(<ReservationExperience />);
+    await user.click(screen.getAllByRole("button", { name: /Select Court 1, 7:00 AM/ })[0]);
+    await user.click(screen.getByRole("button", { name: /Rent equipment/ }));
+    await user.click(screen.getByRole("button", { name: "Okay, I understand" }));
+    expect(screen.getByText("Unavailable for selected schedule")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add one Paddle" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove one Paddle" })).toBeDisabled();
+  });
+
+  it("caps equipment at the minimum for the selected hours and saves the corrected quantity", async () => {
+    const user = userEvent.setup();
+    render(<ReservationExperience />);
+    await user.click(screen.getAllByRole("button", { name: /Select Court 1, 7:00 AM/ })[0]);
+    await user.click(screen.getByRole("button", { name: /Rent equipment/ }));
+    await user.click(screen.getByRole("button", { name: "Okay, I understand" }));
+    const increase = screen.getByRole("button", { name: "Add one Paddle" });
+    for (let i = 0; i < 4; i++) await user.click(increase);
+    await user.click(screen.getAllByRole("button", { name: /Select Court 1, 8:00 AM/ })[0]);
+    expect(screen.getByText("2 available for your selected schedule")).toBeInTheDocument();
+    expect(increase).toBeDisabled();
+    await user.click(screen.getAllByRole("button", { name: /Remove Court 1, 8:00 AM/ })[0]);
+    expect(increase).not.toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Continue to reservation" }));
+    const draft = JSON.parse(window.sessionStorage.getItem("dinks-on-us:reservation-draft")!);
+    expect(draft.equipment[0].quantity).toBe(2);
+  });
+
   it("shows the equipment time reminder before revealing equipment options", async () => {
     const user = userEvent.setup();
     render(<ReservationExperience />);
@@ -147,7 +178,7 @@ describe("ReservationExperience", () => {
     await user.click(screen.getByRole("button", { name: /Rent equipment/ }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Equipment is confirmed during verification" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Equipment is held when you submit" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add one Paddle" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Okay, I understand" }));

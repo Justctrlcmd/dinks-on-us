@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Account;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Account\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
+use App\Services\SecurityAuditService;
 use App\Traits\ApiResponse;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +25,7 @@ class ProfileController extends Controller
         );
     }
 
-    public function update(UpdateProfileRequest $request): JsonResponse
+    public function update(UpdateProfileRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $user = $request->user();
         $emailChanged = $user->email !== $request->validated('email');
@@ -40,6 +41,8 @@ class ProfileController extends Controller
         if ($emailChanged) {
             event(new Registered($user));
         }
+
+        $audit->record('PROFILE_UPDATED', $request, $user, $user, module: 'ACCOUNT', targetLabel: 'Account profile');
 
         $user->load('role.modules');
 

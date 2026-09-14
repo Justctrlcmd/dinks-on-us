@@ -7,6 +7,7 @@ export class NormalizedApiError extends Error implements ApiError {
   status: number;
   code: string | null;
   errors?: Record<string, string[]>;
+  retryAfterSeconds?: number;
 
   constructor(error: ApiError) {
     super(error.message);
@@ -14,6 +15,7 @@ export class NormalizedApiError extends Error implements ApiError {
     this.status = error.status;
     this.code = error.code;
     this.errors = error.errors;
+    this.retryAfterSeconds = error.retryAfterSeconds;
   }
 }
 
@@ -37,6 +39,12 @@ function networkError(cause: unknown): NormalizedApiError {
 function getApiUrl(path: string): string {
   if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured.");
   return `${apiUrl}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function retryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : undefined;
 }
 
 function cookie(name: string): string | undefined {
@@ -91,6 +99,7 @@ async function request<T>(path: string, options: ApiFetchOptions = {}): Promise<
       message: payload?.message ?? "Something went wrong while processing your request.",
       code: payload?.code ?? "REQUEST_FAILED",
       errors: payload?.errors ?? undefined,
+      retryAfterSeconds: response.status === 429 ? retryAfterSeconds(response.headers.get("Retry-After")) : undefined,
     });
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("auth:unauthorized"));

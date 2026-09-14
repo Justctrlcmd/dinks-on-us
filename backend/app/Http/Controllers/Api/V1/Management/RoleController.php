@@ -70,7 +70,7 @@ class RoleController extends Controller
         });
         $audit->record(AuditLog::ACCESS_CREATED, $request, $request->user(), $role, [
             'modules' => $role->modules->pluck('module')->values()->all(),
-        ]);
+        ], 'MANAGEMENT_TEAM_ACCESS', $role->name);
 
         return $this->respondSuccess(
             RoleResource::make($role)->resolve($request),
@@ -104,7 +104,7 @@ class RoleController extends Controller
         $sessions->invalidateUsers($userIds);
         $audit->record(AuditLog::ACCESS_UPDATED, $request, $request->user(), $role, [
             'modules' => $request->validated('modules'),
-        ]);
+        ], 'MANAGEMENT_TEAM_ACCESS', $role->name);
 
         return $this->respondSuccess(
             RoleResource::make($role->fresh()->load('modules')->loadCount('users'))->resolve($request),
@@ -134,7 +134,7 @@ class RoleController extends Controller
         $role->delete();
         $audit->record(AuditLog::ACCESS_DELETED, $request, $request->user(), Role::class, [
             'role_id' => $roleId,
-        ]);
+        ], 'MANAGEMENT_TEAM_ACCESS', $role->name);
 
         return $this->respondSuccess(null, 'Access profile deleted.');
     }

@@ -75,8 +75,8 @@ export function HistoryView() {
       </section>
 
       <Card size="sm" className="p-4">
-        <div role="search" aria-label="Filter reservation history" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_220px_220px]">
-          <label className="relative block sm:col-span-2 xl:col-span-1">
+        <div role="search" aria-label="Filter reservation history" className="grid grid-cols-2 gap-3 xl:grid-cols-[minmax(260px,1fr)_220px_220px]">
+          <label className="relative col-span-2 block xl:col-span-1">
             <FiSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <Input
               type="search"
@@ -90,6 +90,7 @@ export function HistoryView() {
           <SelectWithLabel
             id="history-status"
             ariaLabel="Filter history by final status"
+            className="min-w-0"
             value={filters.status || "ALL"}
             options={[{ value: "ALL", label: "All final statuses" }, ...statusFilters]}
             onValueChange={(value) => value && setFilters((current) => ({ ...current, page: 1, status: value === "ALL" ? "" : value as FinalReservationStatus }))}
@@ -97,6 +98,7 @@ export function HistoryView() {
           <SelectWithLabel
             id="history-source"
             ariaLabel="Filter history by reservation source"
+            className="min-w-0"
             value={filters.source || "ALL"}
             options={[{ value: "ALL", label: "All sources" }, ...sourceFilters]}
             onValueChange={(value) => value && setFilters((current) => ({ ...current, page: 1, source: value === "ALL" ? "" : value as ReservationSource }))}

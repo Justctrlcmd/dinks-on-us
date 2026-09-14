@@ -1,12 +1,13 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
 import { accountKeys, authKeys } from "@/config/query-keys";
 import { updatePassword, updateProfile } from "@/services/account/account-service";
 
 export function useUpdateProfile() {
   const client = useQueryClient();
-  return useMutation({
+  return useRateLimitedMutation("account-profile", {
     mutationFn: updateProfile,
     onSuccess: (response) => {
       client.setQueryData(authKeys.currentUser(), response.data);
@@ -14,4 +15,4 @@ export function useUpdateProfile() {
     },
   });
 }
-export function useUpdatePassword() { return useMutation({ mutationFn: updatePassword }); }
+export function useUpdatePassword() { return useRateLimitedMutation("account-password", { mutationFn: updatePassword }); }

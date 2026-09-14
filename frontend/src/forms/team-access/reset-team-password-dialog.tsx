@@ -8,6 +8,7 @@ import { PasswordInput } from "@/components/common/forms/password-input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useResetTeamMemberPassword } from "@/hooks/mutations/use-team-access-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { TeamMember } from "@/types/team-access";
 import { resetTeamPasswordSchema, type ResetPasswordValues } from "@/validation/custom/team-access-schema";
 
@@ -47,7 +48,7 @@ export function ResetTeamPasswordDialog({ member, open, onOpenChange }: { member
         </form>
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={mutation.isPending} />}>Cancel</DialogClose>
-          <Button form="reset-team-password-form" type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Resetting…" : "Reset password"}</Button>
+          <Button form="reset-team-password-form" type="submit" disabled={mutation.isPending || isMutationRateLimited(mutation)}>{mutationButtonLabel("Resetting…", "Reset password", mutation)}</Button>
         </DialogFooter>
         </DialogContent>
       </Dialog>

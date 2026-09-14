@@ -1,5 +1,9 @@
 # Dinks on Us — Reports & Analytics Master Implementation Prompt
 
+> Historical implementation brief. The Reports module is implemented. Use
+> `REPORTS_ANALYTICS_FORMULAS.md`, `ARCHITECTURE.md`, registered routes, and
+> `ReportService` as the current sources of truth.
+
 ## Objective
 
 Implement the **Reports & Analytics** module for Dinks on Us using the existing Laravel + Next.js architecture, business rules, data model, API conventions, and project design system.

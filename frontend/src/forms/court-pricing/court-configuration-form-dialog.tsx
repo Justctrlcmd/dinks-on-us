@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useUpdateCourtConfiguration } from "@/hooks/mutations/use-court-pricing-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { formatHour } from "@/lib/time";
 import { addTimeRange, canAddTimeRange, changeTimeRangeEnd, removeLastTimeRange } from "@/lib/time-ranges";
 import type { CourtConfiguration } from "@/types/court-pricing";
@@ -212,8 +213,8 @@ export function CourtConfigurationFormDialog({
             />
           </div>
 
-          <RateEditor form={form} field="weekday_rates" title="Weekday Price Rate (Monday to Friday)" description="Create consecutive price periods for every open hour." />
-          <RateEditor form={form} field="weekend_rates" title="Weekend Price Rate (Saturday and Sunday)" description="Weekend periods follow the same one-hour boundary rules." />
+          <RateEditor form={form} field="weekday_rates" title="Weekday Price Rate (Monday to Thursday)" description="Create consecutive price periods for every open hour." />
+          <RateEditor form={form} field="weekend_rates" title="Weekend Price Rate (Friday to Sunday)" description="Weekend periods follow the same one-hour boundary rules." />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <InputWithLabel
@@ -241,8 +242,8 @@ export function CourtConfigurationFormDialog({
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={mutation.isPending} />}>Cancel</DialogClose>
-          <Button form="court-configuration-form" type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save configuration"}
+          <Button form="court-configuration-form" type="submit" disabled={mutation.isPending || isMutationRateLimited(mutation)}>
+            {mutationButtonLabel("Saving…", "Save configuration", mutation)}
           </Button>
         </DialogFooter>
       </DialogContent>

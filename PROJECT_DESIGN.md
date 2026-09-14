@@ -2,7 +2,7 @@
 
 ## 1. Purpose and scope
 
-This document establishes the Phase C visual direction for **Dinks on Us**, a
+This document records the implemented visual direction for **Dinks on Us**, a
 pickleball court-reservation and operations platform in Bulacan, Philippines.
 It extends the reusable rules in `DESIGN_SYSTEM.md`; it does not replace the
 application architecture, component library, accessibility requirements, or
@@ -108,7 +108,7 @@ Status must always include a written label; these colours are supporting cues.
 
 ## 4. Typography
 
-Use the supplied type pairing through `next/font` when implementation begins.
+Use the supplied type pairing through `next/font`.
 
 | Role | Family | Weight guidance |
 | --- | --- | --- |
@@ -179,7 +179,26 @@ succeeds.
 Payment instructions, QR code, receipt upload, reference number, and the
 pending-verification outcome should be presented as a calm, numbered flow.
 The confirmation state must state that selected slots are held while payment is
-being reviewed, without overpromising verification timing.
+being reviewed, without overpromising verification timing. On mobile, keep the
+confirmation card centered, remind customers to check their spam folder, and
+show the shared floating Messenger action without covering the card controls.
+
+Time selection supports multiple available hours in one interaction. In staff
+schedule forms, the picker remains open after each choice and keeps unavailable
+option text focused on the time range without appending `Closed` or `Reserved`.
+Unavailable choices remain disabled and accessible. The public availability grid
+may keep explicit written states. The reservation summary and total update from
+the latest server-provided prices.
+
+Reschedule and add-on panels disclose optional court-time add-ons behind a
+compact question row. Expanding it reveals the full court, slot, player,
+equipment, credit, and payment flow. The primary action remains disabled until
+the required replacement schedule and any required settlement fields are
+complete.
+
+Public booking policy dialogs keep Reservation, Court rules, Reschedule, and
+Cancellation in one four-column tab row at mobile widths. Compact type and
+spacing may be used so labels fit without wrapping.
 
 ## 7. Staff experience direction
 
@@ -289,6 +308,8 @@ The public reservation flow is mobile-first. On small screens, stack controls,
 retain the reservation summary and total in view, avoid horizontal slot tables, and
 use the established off-canvas navigation. Desktop staff navigation may collapse
 to an icon rail with tooltips; it must never become a permanent mobile rail.
+On the Availability & Closures screen, place Schedule Overview before the active
+closures card on mobile while retaining the two-column desktop order.
 
 ## 9. Implementation guardrails
 
@@ -303,12 +324,10 @@ to an icon rail with tooltips; it must never become a permanent mobile rail.
 5. Validate light and dark modes, contrast, keyboard focus, mobile layouts, and
    loading/error/empty states as each screen is implemented.
 
-## 10. Initial delivery sequence
+## 10. Current implementation state
 
-1. Apply fonts and semantic colour tokens.
-2. Add the approved logo asset and brand treatment to public/auth/staff shells.
-3. Redesign the public landing page around court discovery and reservation.
-4. Build the reservation experience using the business rules as its source of
-   truth.
-5. Evolve the staff portal screen by screen as its operational modules are
-   implemented.
+The fonts, semantic palette, public shell, reservation experience, management
+shell, responsive navigation, dialogs, tables, toasts, and module workspaces are
+implemented. New interface work should extend these established patterns and
+verify light mode, dark mode, keyboard operation, responsive layouts, and all
+loading, empty, error, disabled, and success states.

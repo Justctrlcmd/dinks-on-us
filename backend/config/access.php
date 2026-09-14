@@ -62,6 +62,11 @@ return [
             'description' => 'Manually remove finalized payment-proof images without deleting business records.',
             'group' => 'MANAGEMENT',
         ],
+        'ACTION_LOGS' => [
+            'name' => 'Action Logs',
+            'description' => 'Review completed operational and account-security actions.',
+            'group' => null,
+        ],
         'REPORTS' => [
             'name' => 'Reports',
             'description' => 'View reports, exports, and business analytics.',

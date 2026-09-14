@@ -14,6 +14,7 @@ import { EventFormDialog } from "@/forms/event/event-form-dialog";
 import { useArchiveEvent } from "@/hooks/mutations/use-event-mutations";
 import { useManagementEvents } from "@/hooks/queries/use-events";
 import { formatDateOnly } from "@/lib/date";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { EventRecord } from "@/types/event";
 
 export function EventManagementView() {
@@ -120,8 +121,8 @@ export function EventManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={archiveMutation.isPending} />}>Cancel</DialogClose>
-            <Button variant="destructive" disabled={archiveMutation.isPending} onClick={() => void confirmArchive()}>
-              {archiveMutation.isPending ? "Deleting…" : "Delete event"}
+            <Button variant="destructive" disabled={archiveMutation.isPending || isMutationRateLimited(archiveMutation)} onClick={() => void confirmArchive()}>
+              {mutationButtonLabel("Deleting…", "Delete event", archiveMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>

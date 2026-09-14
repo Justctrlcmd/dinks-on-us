@@ -233,6 +233,12 @@ All selected slots belong to **one reservation** and are paid together.
 
 Internally, each court/time slot should still be tracked independently for availability purposes.
 
+Staff schedule forms use a time-slot multi-select that remains open for multiple
+choices. It shows each option as a time range without appending `Closed` or
+`Reserved`; unavailable choices remain disabled and accessible. The public
+availability grid may display explicit written states because it is a separate
+presentation.
+
 ---
 
 # 6. Reservation Form
@@ -260,6 +266,10 @@ Current expected fields include:
 * Payment Receipt Image
 
 All required fields must be completed before submission.
+
+On successful mobile submission, the confirmation card stays centered, shows
+the reservation reference, reminds the customer to check the email spam folder,
+and retains the shared floating Messenger button.
 
 ---
 
@@ -304,6 +314,12 @@ Price: ₱600
 ```
 
 The system calculates the total reservation amount based on the rate applicable to each selected slot.
+
+Weekday pricing applies Monday through Thursday. Weekend pricing applies Friday
+through Sunday. The public reservation UI refreshes current options, displays
+the server-provided prices, and submits that displayed total as a quote. The
+backend recalculates the reservation and rejects a changed quote before creating
+any reservation, payment, slot, or equipment record.
 
 ---
 
@@ -463,7 +479,16 @@ Rescheduling should be treated primarily as an operational action with historica
 
 The new selected slots must be available before the reschedule can be completed.
 
-The replacement must contain the same number of one-hour slots. A higher rate creates an additional balance; a lower rate creates refundable credit.
+The replacement must contain the same number of base one-hour slots as the
+original booking. Existing court-time add-ons move to the new date at the same
+court and start hour, then are revalidated and repriced. Any conflict blocks the
+whole reschedule.
+
+The dialog may also add new court time, players, or equipment. Existing credit
+covers the recalculated amount due first. Any remaining balance is collected in
+the same flow by Cash or an active e-wallet/bank method; online payment requires
+a transaction number and proof. The Reschedule action remains disabled while
+required schedule or payment fields are incomplete. Only past dates are disabled.
 
 ---
 
@@ -485,13 +510,18 @@ The exact late-arrival or no-show policy is still subject to client confirmation
 
 A verified reservation may be cancelled.
 
-For the current assumed process:
+For the current process:
 
 * The customer contacts Dinks on Us through Facebook / Messenger.
 * The business handles the cancellation request outside the customer website.
 * The **Manager** performs the cancellation inside the management system.
 
 Cancelled reservations become finalized records and are moved to History.
+
+Cancellation is Manager-only and is recorded as an approved force-majeure
+action. The Manager chooses a full refund or a custom amount no greater than the
+amount collected. The system records the refund as due and does not transfer
+funds automatically.
 
 The following policies are still subject to client confirmation:
 
@@ -535,7 +565,12 @@ A rejection email also includes the concern and staff-provided reason. A verific
 
 ## Reschedule Email
 
-After a successful reschedule, the customer receives an email containing the reservation reference, updated active court/date/time prices, additional players, rental items, and amount paid. The previous schedule remains in internal history and is not shown as the customer's active reservation schedule.
+After a successful reschedule, the customer receives an email containing the
+reservation reference, updated active court/date/time prices, additional
+players, rental items, and amount paid. Any additional payment is described as
+collected and any credit as refundable because settlement occurs before the
+reschedule is submitted. The previous schedule remains in internal history and
+is not shown as the customer's active reservation schedule.
 
 Submission, cancellation, and completion do not send customer emails.
 
@@ -789,7 +824,7 @@ The module allows authorized users to:
 * Reject reservation submissions
 * Manage ongoing reservations
 * Perform allowed rescheduling
-* Perform extensions
+* Add court time, players, or rental equipment
 * Mark reservations as completed
 * Mark reservations as no-show
 
@@ -797,13 +832,13 @@ Cancellation is currently assumed to be Manager-only.
 
 ---
 
-# 28. Reservation Extension
+# 28. Court-Time Add-On
 
-Only Staff or the Manager can extend an ongoing reservation.
+Staff or the Manager can add court time to a Verified or Ongoing reservation.
+Players cannot add time after submission through the public website. The system
+uses the reservation add-ons action; it has no separate extension endpoint.
 
-Players cannot extend reservations directly through the public website.
-
-Before an extension is added:
+Before court time is added:
 
 * The requested next slot must be available.
 * The selected court must still be available for that slot.
@@ -821,7 +856,7 @@ Next Slot
 AVAILABLE
 
 Staff:
-Extend +1 Hour
+Add court time
 ```
 
 Once confirmed:
@@ -834,13 +869,13 @@ Once confirmed:
 
 # 29. Add-Ons and Final Reservation Amount
 
-A verified reservation may incur additional charges during actual play.
+A Verified or Ongoing reservation may receive additional charges.
 
 Possible examples include:
 
 * Additional players
-* Court extensions
-* Other business add-ons
+* Additional court time on the current booking date
+* Rental equipment
 
 The original submitted amount is therefore not always the final amount.
 
@@ -857,7 +892,7 @@ Original Court Fee
 Additional Player
 ₱100
 
-1-Hour Extension
+1-Hour Court Add-On
 ₱600
 
 ------------------
@@ -906,13 +941,25 @@ Management
 └── Storage & Data Retention
 ```
 
+Action Logs is an independent portal module displayed directly below History.
+It is assignable to selected Team Access profiles and is not a Management
+workspace.
+
 ---
 
 # 32. Courts & Pricing
 
-The Manager can create sequentially numbered courts and maintain one shared configuration for operating hours, weekday/weekend rates, players included per court, and the additional-player price. Adding a court first reactivates the lowest-numbered inactive court, preserving its identity and history; a new sequential number is created only when no inactive court remains. This workspace also manages rentable equipment, its reservation-wide unit price, and total quantity.
+The Manager can create sequentially numbered courts and maintain one shared
+configuration for operating hours, Monday–Thursday weekday rates, Friday–Sunday
+weekend rates, players included per court, and the additional-player price.
+Adding a court first reactivates the lowest-numbered inactive court, preserving
+its identity and history; a new sequential number is created only when no
+inactive court remains. This workspace also manages rentable equipment, its
+reservation-wide unit price, and total quantity.
 
-Rates remain configurable rather than hard-coded. Pending reservations do not hold equipment; available quantity is reduced only by overlapping verified reservations. An inactive court or rental item must not be offered to players.
+Rates remain configurable rather than hard-coded. Pending, Verified, and Ongoing
+reservations hold equipment during their actual overlapping one-hour slots. An
+inactive court or rental item must not be offered to players.
 
 ---
 
@@ -992,11 +1039,12 @@ The primary revenue source for analytics should be:
 Verified reservation amounts should not automatically be treated as final revenue because the reservation may later contain:
 
 * Additional players
-* Extensions
+* Court-time add-ons
 * Additional charges
 * Other adjustments
 
-Possible reports and KPIs may eventually include:
+The implemented Reports module includes overview, revenue, reservation, court
+utilization, popular-time, payment, and operations views. Its metrics include:
 
 * Completed reservations
 * Total revenue
@@ -1013,13 +1061,17 @@ Possible reports and KPIs may eventually include:
 * Reservation trends
 * Walk-in vs online reservations
 
-Exact reporting requirements can be refined later.
+The formulas and date bases are documented in `REPORTS_ANALYTICS_FORMULAS.md`.
 
 ---
 
 # 41. Profile and Appearance
 
-The Profile screen allows the Manager to manage personal account information and credentials. The account menu provides an in-place Light Mode or Dark Mode action; it changes the interface immediately and does not open a separate page.
+The Profile screen allows only the full-access Manager to manage personal account
+information and credentials. Team accounts have no Profile entry and cannot
+read or change their own profile or password through the API; their Manager
+maintains identity and credentials through Team & Access. The account menu
+provides an in-place Light Mode or Dark Mode action.
 
 ---
 
@@ -1078,6 +1130,10 @@ PENDING
 VERIFIED        REJECTED
   │               │
   │               └── Slots Released
+  ├── Reschedule (Manager) ──► VERIFIED
+  ├── Add-On ────────────────► VERIFIED
+  ├── Cancel ────────────────► CANCELLED ──► History
+  ├── No-Show ───────────────► NO-SHOW ────► History
   │
   ▼
 Upcoming Reservation
@@ -1085,19 +1141,9 @@ Upcoming Reservation
   ▼
 Ongoing
   │
-  ├── Add-On
-  ├── Extension
-  ├── Reschedule
+  ├── Add-On ────────────────► ONGOING
   │
-  ▼
-Final Outcome
-  │
-  ├── COMPLETED
-  ├── CANCELLED
-  └── NO-SHOW
-  │
-  ▼
-History
+  └── Complete ──────────────► COMPLETED ──► History
 ```
 
 ---
@@ -1153,7 +1199,7 @@ Availability must consider:
 * Closed dates
 * Blocked courts
 * Blocked time slots
-* Extensions
+* Court-time add-ons
 
 A court/time slot is only publicly selectable when no active record is currently occupying or blocking that slot.
 
@@ -1196,19 +1242,10 @@ The following business policies are not yet finalized and should be confirmed du
 
 ## Cancellation Policy
 
-Confirm:
-
-* How customers request cancellation
-* Cancellation deadline
-* Refund eligibility
-* Refund amount
-* Cancellation fees
-* Whether selected Staff roles may eventually cancel reservations
-
-Current temporary assumption:
-
-* Customer requests cancellation through Facebook / Messenger
-* Manager performs the cancellation in the management system
+The implemented flow accepts requests outside the public website, uses
+Manager-only force-majeure cancellation, and records either a full or custom
+refund due. Confirm only the customer request deadline and any future fee,
+eligibility, or Staff-authority change.
 
 ---
 
@@ -1216,10 +1253,8 @@ Current temporary assumption:
 
 Confirm:
 
-* Who can request rescheduling
 * How close to the reservation schedule it can be requested
-* Whether there is a rescheduling limit
-* Any applicable fees
+* Any business fee beyond the settled price difference
 
 ---
 
@@ -1234,11 +1269,9 @@ Confirm:
 
 ## Add-Ons
 
-Confirm:
-
-* Supported add-ons
-* Additional-player pricing
-* Other charges available during play
+The implemented add-ons are court time, additional players, and active rental
+equipment. Confirm only whether a future managed product catalog or another
+operational charge is required.
 
 ---
 
@@ -1249,7 +1282,6 @@ Confirm:
 * Exact opening and closing hours
 * Exact Day Rate time range
 * Exact Night Rate time range
-* Weekend rates if different
 * Special-day pricing if applicable
 
 Current temporary values:

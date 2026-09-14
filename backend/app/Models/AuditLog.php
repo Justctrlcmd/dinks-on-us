@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['actor_id', 'action', 'target_type', 'target_id', 'before', 'after', 'ip_address', 'user_agent'])]
+#[Fillable(['actor_id', 'actor_name', 'action', 'module', 'target_type', 'target_id', 'target_label', 'before', 'after', 'ip_address', 'user_agent'])]
 class AuditLog extends Model
 {
     public const DATE_CLOSED = 'DATE_CLOSED';
@@ -55,6 +55,8 @@ class AuditLog extends Model
 
     public const STAFF_DEACTIVATED = 'STAFF_DEACTIVATED';
 
+    public const STAFF_DELETED = 'STAFF_DELETED';
+
     public const STAFF_PASSWORD_RESET = 'STAFF_PASSWORD_RESET';
 
     public const ACCESS_CREATED = 'ACCESS_CREATED';
@@ -79,7 +81,7 @@ class AuditLog extends Model
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'actor_id');
+        return $this->belongsTo(User::class, 'actor_id')->withTrashed();
     }
 
     /** @return array<string, string> */

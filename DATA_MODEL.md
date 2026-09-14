@@ -9,7 +9,7 @@ It translates the requirements in:
 * `SYSTEM_OVERVIEW.md`
 * `BUSINESS_RULES.md`
 
-into structured entities and relationships that can later be implemented in the database.
+into the entities and relationships implemented in the database.
 
 This document focuses on:
 
@@ -23,7 +23,16 @@ This document focuses on:
 * Historical preservation
 * Reporting support
 
-This is not yet the final Laravel migration specification.
+This document explains the model and its invariants. The Laravel migrations in
+`backend/database/migrations` are authoritative for exact columns, indexes,
+foreign keys, and deployment order.
+
+The current reservation schema includes `reservations`, `reservation_slots`,
+`reservation_slot_locks`, `reservation_payments`,
+`reservation_equipment_items`, `reservation_adjustments`,
+`reservation_status_histories`, `reservation_schedule_histories`, and
+`reservation_refunds`. Availability is protected by unique active slot-lock
+rows and transactional equipment checks.
 
 ---
 
@@ -73,9 +82,7 @@ MANAGER / STAFF
 │
 ├── Policy Sections
 │
-├── Policy Bullets
-│
-├── Website Settings
+├── Policy Subheaders and Rules
 │
 └── Audit Logs
 ```
@@ -150,19 +157,24 @@ Court
 
 Represents authenticated Manager and Staff accounts.
 
-Players do not have user accounts.
+Players do not have user accounts. Only the full-access Manager can use
+self-service Profile and password updates. Team-account identity and credentials
+are managed through Team & Access.
 
-### Suggested Fields
+### Implemented Fields
 
 ```text
 id
 role_id
-first_name
-last_name
+name
 email
+contact_number
+email_verified_at
 password
-status
+is_active
 last_login_at
+deleted_at
+remember_token
 created_at
 updated_at
 ```
@@ -174,6 +186,7 @@ Possible values:
 ```text
 ACTIVE
 INACTIVE
+SOFT_DELETED
 ```
 
 ### Rules
@@ -181,6 +194,10 @@ INACTIVE
 * Every Staff account must have exactly one role.
 * Manager has access to all modules.
 * Staff access is determined by their assigned role.
+* Soft-deleted Staff accounts are excluded from authentication, Team Access
+  listings, role counts, and active operations.
+* Soft deletion never removes historical reservations, audit logs, or their
+  account references; audit actor relations include soft-deleted users.
 * Players must not be stored in this table unless the project requirements later introduce customer accounts.
 
 ## Push Subscriptions
@@ -425,7 +442,7 @@ Created manually by Staff or Manager.
 
 # 10. Reservation Status
 
-Suggested values:
+Implemented values:
 
 ```text
 PENDING
@@ -506,22 +523,20 @@ Each record represents one reserved:
 Court + Date + One-Hour Time Slot
 ```
 
-### Suggested Fields
+### Implemented Fields
 
 ```text
 id
 reservation_id
 court_id
 
-reservation_date
-start_time
-end_time
-
-rate_id
-rate_name_snapshot
-rate_amount_snapshot
-
-slot_type
+date
+start_hour
+end_hour
+unit_amount
+kind
+is_current
+added_by_user_id
 
 created_at
 updated_at
@@ -531,14 +546,17 @@ updated_at
 
 # 14. Reservation Slot Type
 
-A slot may originate from:
+A current or historical slot has one of these implemented kinds:
 
 ```text
 ORIGINAL
-EXTENSION
+RESCHEDULED
+ADD_ON
 ```
 
-This helps distinguish slots selected during the initial reservation from those added later during play.
+This distinguishes initial base slots, replacement base slots, and court-time
+add-ons. `is_current` preserves old schedule rows while limiting active
+occupancy to the current schedule.
 
 ---
 
@@ -546,20 +564,16 @@ This helps distinguish slots selected during the initial reservation from those 
 
 Each reservation slot should retain the price applied when that slot was acquired.
 
-Suggested fields:
+Implemented field:
 
 ```text
-rate_id
-rate_name_snapshot
-rate_amount_snapshot
+unit_amount
 ```
 
 Example:
 
 ```text
-rate_id: 3
-rate_name_snapshot: Day Rate
-rate_amount_snapshot: 500.00
+unit_amount: 500.00
 ```
 
 If the Manager later changes the Day Rate to ₱550:
@@ -577,27 +591,27 @@ The system must prevent active reservation conflicts for:
 
 ```text
 court_id
-reservation_date
-start_time
+date
+start_hour
 ```
 
-However, because finalized reservations must remain in history, a simple permanent unique constraint across all historical rows may not always be enough by itself.
-
-The implementation must ensure that only one **active occupancy** can claim the same court/date/time slot.
-
-This should be protected transactionally at the backend/database level.
+Historical slot rows remain in `reservation_slots`, while current occupancy is
+represented by `reservation_slot_locks`. A database unique constraint on
+`court_id + date + start_hour` in the lock table ensures that only one active
+occupancy can claim a slot. Reservation services acquire and release these locks
+inside their business transactions.
 
 ---
 
-# 17. Rates
+# 17. Court Rate Periods
 
 ## Entity
 
-`rates`
+`court_rate_periods`
 
 Stores configurable court pricing.
 
-### Suggested Fields
+### Implemented Fields
 
 ```text
 id
@@ -656,7 +670,6 @@ Stores equipment that players may rent with a court reservation.
 ```text
 id
 name
-description
 price
 total_quantity
 is_active
@@ -666,13 +679,21 @@ updated_at
 
 Inactive equipment must not be offered to players. Equipment price is charged once per selected unit for the whole reservation. If equipment rentals are included in a reservation, the reservation must retain the item name, price, and quantity snapshot used at checkout.
 
-Pending reservations do not reduce equipment availability. Only verified reservations consume inventory during their overlapping selected hours. Availability is derived rather than stored as a permanently decreasing counter.
+Pending, Verified, and Ongoing reservations consume equipment inventory during
+their actual overlapping one-hour slots. Quantity applies once per occupied hour
+even when several courts are booked simultaneously, and non-consecutive gaps do
+not consume stock. Original and add-on quantities are summed. Availability is
+derived rather than stored as a permanently decreasing counter and is rechecked
+transactionally for submission, walk-in creation, verification, rescheduling,
+and add-ons.
 
 ---
 
 # 19. Rate Conflict Rule
 
-The Manager should not be allowed to create ambiguous or incomplete shared rate periods. Weekday and weekend periods must each cover every operating hour without gaps or overlaps.
+The Manager cannot create ambiguous or incomplete shared rate periods. Weekday
+periods apply Monday through Thursday and weekend periods apply Friday through
+Sunday; each set must cover every operating hour without gaps or overlaps.
 
 Example of problematic configuration:
 
@@ -721,9 +742,7 @@ name
 account_name
 account_number
 qr_image_path
-instructions
 is_active
-display_order
 created_at
 updated_at
 ```
@@ -850,7 +869,9 @@ Examples:
 * Other add-on
 * Manual adjustment
 
-Court extensions themselves should normally create additional `reservation_slots`.
+Court-time add-ons create `ADD_ON` reservation slots and a linked
+`COURT_ADD_ON` adjustment. Other implemented adjustments include additional
+players, equipment, reschedule balances, and reschedule credits.
 
 ### Suggested Fields
 
@@ -884,7 +905,9 @@ ADD_ON
 MANUAL
 ```
 
-Extension pricing should primarily come from the additional extension slot rather than duplicating it as a generic adjustment.
+Court-time pricing comes from the added slot snapshot. Its `COURT_ADD_ON`
+adjustment carries the linked slot identifier in metadata so totals and reports
+can preserve the business meaning.
 
 ---
 
@@ -917,7 +940,7 @@ final_amount
 Final amount after:
 
 * Original slots
-* Extension slots
+* Court-time add-on slots
 * Add-ons
 * Other valid adjustments
 
@@ -955,7 +978,7 @@ Example:
 
 ```text
 Original slots       ₱1,000
-Extension              ₱600
+Court-time add-on      ₱600
 Additional player      ₱100
 ----------------------------
 Final amount          ₱1,700
@@ -1035,9 +1058,8 @@ The history table records how it reached that status.
 
 Stores schedule changes caused by rescheduling.
 
-Because one reservation may contain several slots, rescheduling should preserve the previous and new slot structure.
-
-A schedule history record may represent a reschedule operation.
+Because one reservation may contain several slots, each reschedule preserves
+the complete previous and new slot structures as JSON snapshots.
 
 ### Suggested Fields
 
@@ -1047,41 +1069,35 @@ reservation_id
 
 performed_by_user_id
 
-reason
-notes
+old_booking_date
+new_booking_date
+old_slots
+new_slots
+old_slot_amount
+new_slot_amount
+difference_amount
 
 created_at
 ```
 
-The detailed slots involved may be stored separately.
+The current schema stores the detailed old and new slot snapshots on the history
+row; there is no separate schedule-history-items table.
 
 ---
 
-# 32. Reservation Schedule History Items
+# 32. Reservation Schedule Snapshot Items
 
-## Entity
-
-`reservation_schedule_history_items`
-
-Stores individual slot movements associated with a reschedule operation.
-
-### Suggested Fields
+Each element inside `old_slots` or `new_slots` stores the identifying schedule
+and captured amount needed to explain the move.
 
 ```text
-id
-reservation_schedule_history_id
-
-old_court_id
-old_date
-old_start_time
-old_end_time
-
-new_court_id
-new_date
-new_start_time
-new_end_time
-
-created_at
+court_id
+court_name
+date
+start_hour
+end_hour
+unit_amount
+kind
 ```
 
 This preserves changes such as:
@@ -1113,9 +1129,12 @@ BEGIN TRANSACTION
 
 1. Validate all target slots
 2. Secure target slots
-3. Replace active reservation slot assignments
-4. Preserve old schedule history
-5. Release previous occupancy
+3. Require the replacement base-slot count to equal the original base-slot count
+4. Move existing `ADD_ON` slots to the new date at the same court/hour
+5. Revalidate and reprice all replacement, migrated, and newly added slots
+6. Preserve old schedule rows and the schedule history snapshot
+7. Release previous occupancy only as the new locks are committed
+8. Recalculate balances, apply existing credit, and record any required payment
 
 COMMIT
 ```
@@ -1239,6 +1258,7 @@ Current active states:
 ```text
 PENDING
 VERIFIED
+ONGOING
 ```
 
 Final reservation states should no longer occupy future slot availability:
@@ -1350,31 +1370,46 @@ updated_at
 
 ## Entities
 
-`policy_sections` stores the three fixed cards and `policy_bullets` stores the ordered content in each card.
+`policy_sections` stores four fixed public policy sections.
+`policy_subheaders` groups content inside a section and `policy_rules` stores the
+ordered rules under each subheader.
 
 ### Policy Section Fields
 
 ```text
 id
-key (RESERVATION, RESCHEDULE, CANCEL)
-title
-display_order
-is_active
-```
-
-### Policy Bullet Fields
-
-```text
-id
-policy_section_id
-content
-display_order
-is_active
+slug
+name
+sort_order
 created_at
 updated_at
 ```
 
-The three sections are seeded as Reservation, Reschedule, and Cancel. Individual bullets can be edited, deleted, and reordered without changing frontend code.
+### Policy Subheader Fields
+
+```text
+id
+policy_section_id
+title
+sort_order
+created_at
+updated_at
+```
+
+### Policy Rule Fields
+
+```text
+id
+policy_subheader_id
+content
+sort_order
+created_at
+updated_at
+```
+
+The fixed slugs are `court-rules`, `reservation-rules`, `reschedule-policy`,
+and `cancellation-policy`. Management may add, edit, delete, and reorder
+subheaders and rules while the section identities remain fixed.
 
 ---
 
@@ -1402,54 +1437,12 @@ The saved `display_order` is the public display order. Each record supports crea
 
 ---
 
-# 43. Website Settings
+# 43. General Website Settings
 
-## Entity
-
-`website_settings`
-
-Stores dynamic general business information.
-
-Potential information includes:
-
-* About Us
-* Operating hours
-* Contact information
-* Facebook link
-* Social media links
-* Address
-* Location map configuration
-* Hero content
-* Other simple business configuration
-
-Rather than creating a new table for every small configuration value, this can be implemented using a controlled key/value configuration model.
-
-### Suggested Fields
-
-```text
-id
-key
-value
-type
-updated_by_user_id
-created_at
-updated_at
-```
-
-Example:
-
-```text
-key: facebook_url
-type: string
-
-key: about_us
-type: text
-
-key: operating_hours
-type: json
-```
-
-Only approved system-defined keys should be accepted.
+A generic `website_settings` store is not implemented. Public business copy,
+contact links, and location information remain application content. Dynamic
+public data currently comes from FAQs, events, gallery records, policy content,
+payment methods, courts, pricing, closures, and reservation availability.
 
 ---
 
@@ -1466,10 +1459,13 @@ Stores important Manager and Staff actions.
 ```text
 id
 actor_id
+actor_name
 
 action
+module
 target_type
 target_id
+target_label
 
 before
 after
@@ -1491,7 +1487,7 @@ RESERVATION_CANCELLED
 RESERVATION_COMPLETED
 RESERVATION_NO_SHOW
 RESERVATION_RESCHEDULED
-RESERVATION_EXTENDED
+RESERVATION_ADD_ON_ADDED
 
 ROLE_CREATED
 ROLE_UPDATED
@@ -1512,6 +1508,11 @@ PAYMENT_PROOFS_DELETED
 Its API resource exposes only the booking-date range, image and reservation
 counts, reclaimed storage, meaningful partial-result counts, actor, and time.
 Private paths and customer/payment details are not activity-list data.
+
+`actor_name` and `target_label` are historical display snapshots. They keep the
+Action Logs list understandable after a Team account is renamed or soft-deleted,
+or after a managed item has been deleted. `module` supports the assignable
+independent Action Logs portal module and its area filter.
 
 ---
 
@@ -1567,17 +1568,20 @@ rental_equipment
 
 reservations
 reservation_slots
+reservation_slot_locks
 reservation_payments
+reservation_equipment_items
 reservation_adjustments
 reservation_status_histories
 reservation_schedule_histories
-reservation_schedule_history_items
+reservation_refunds
 
-rates
+court_configurations
+court_rate_periods
 payment_methods
 
-closed_dates
-availability_blocks
+availability_closures
+availability_closure_periods
 ```
 
 Content/configuration entities:
@@ -1587,15 +1591,16 @@ events
 gallery_tabs
 gallery_images
 policy_sections
-policy_bullets
+policy_subheaders
+policy_rules
 faqs
-website_settings
 ```
 
 Operational support:
 
 ```text
 audit_logs
+push_subscriptions
 ```
 
 ---
@@ -1611,23 +1616,23 @@ roles
 
 reservations
   ├──< reservation_slots
+  ├──< reservation_slot_locks (through slots)
+  ├──< reservation_equipment_items
   ├──< reservation_adjustments
   ├──< reservation_status_histories
   ├──< reservation_schedule_histories
-  └── reservation_payments
-
-reservation_schedule_histories
-  └──< reservation_schedule_history_items
+  ├──< reservation_payments
+  └──< reservation_refunds
 
 courts
   ├──< reservation_slots
-  └──< availability_blocks
+  └──< availability_closures
 
 gallery_tabs
   └──< gallery_images
 
-rates
-  └──< reservation_slots
+court_configurations
+  └──< court_rate_periods
 
 payment_methods
   └──< reservation_payments
@@ -1694,7 +1699,7 @@ CLOSED_DATES
 
 # 49. Important Database Indexes
 
-The eventual schema should strongly consider indexes for:
+The implemented schema uses indexes for:
 
 ## Reservations
 
@@ -1713,8 +1718,8 @@ Composite indexes around:
 
 ```text
 court_id
-reservation_date
-start_time
+date
+start_hour
 ```
 
 and:
@@ -1731,13 +1736,13 @@ reference_number
 payment_method_id
 ```
 
-## Availability Blocks
+## Availability Closures
 
 ```text
 court_id
 date
-start_time
-end_time
+type
+is_active
 ```
 
 ## Closed Dates
@@ -1773,10 +1778,12 @@ At minimum:
 ```text
 users.email
 reservations.reference_number
-website_settings.key
+reservations.idempotency_key
+reservation_slot_locks(court_id, date, start_hour)
+roles.name
 ```
 
-Role names may also be unique depending on intended Manager behavior.
+Role names are unique.
 
 ---
 
@@ -2076,7 +2083,7 @@ Before completion:
 
 ```text
 1. Confirm final reservation slots
-2. Confirm extension charges
+2. Confirm add-on charges
 3. Confirm additional adjustments
 4. Calculate final_amount
 5. Set status = COMPLETED
@@ -2141,7 +2148,7 @@ using completed reservations where appropriate.
 Aggregate:
 
 ```text
-reservation_slots.start_time
+reservation_slots.start_hour
 ```
 
 ## No-Show Rate
@@ -2204,24 +2211,32 @@ The following must remain true:
 21. A finalized payment proof may be manually removed without deleting its payment or reservation.
 
 22. A failed proof-file deletion must retain its active path for retry.
+
+23. Weekday rate periods apply Monday through Thursday; weekend periods apply Friday through Sunday.
+
+24. Team accounts cannot use the Manager-only Profile or password endpoints.
+
+25. Existing court-time add-ons migrate to the new date during rescheduling and retain history.
 ```
 
 ---
 
-# 63. Pending Data Model Decisions
+# 63. Remaining Data Model Decisions
 
 The following remain dependent on future client confirmation.
 
 ## Cancellation Refunds
 
-If refunds are tracked inside the system later, additional entities may be required:
+The current schema records refund obligations in:
 
 ```text
-refunds
-refund_transactions
+reservation_refunds
 ```
 
-No refund entity is required in the current confirmed scope.
+Reschedule credit remaining at completion and approved cancellation refunds are
+stored with an amount, type, status, reason, actor, and timestamps. The system
+records the refund as due; it does not transfer money. A separate payout ledger
+would be required only if the business later tracks actual refund transfers.
 
 ---
 
@@ -2233,14 +2248,16 @@ Confirmed walk-in payments use `CASH` or `EWALLET_BANK`. They are stored as veri
 
 ## Add-On Catalog
 
-If add-ons become formally managed products, introduce:
+If add-ons expand beyond the implemented court-time, additional-player, and
+rental-equipment inputs into a managed product catalog, introduce:
 
 ```text
 add_ons
 reservation_add_ons
 ```
 
-For the current scope, generic `reservation_adjustments` are sufficient.
+For the current scope, `reservation_adjustments`, `reservation_slots`, and
+`reservation_equipment_items` are sufficient.
 
 ---
 
@@ -2257,9 +2274,9 @@ The current model should not assume these requirements until confirmed.
 
 ---
 
-# 64. Recommended Implementation Order
+# 64. Implemented Migration Order
 
-The database can later be implemented approximately in this dependency order:
+The implemented migrations establish the domain in this dependency order:
 
 ```text
 1. roles
@@ -2268,7 +2285,7 @@ The database can later be implemented approximately in this dependency order:
 
 4. courts
 
-5. rates
+5. court_configurations and court_rate_periods
 6. rental_equipment
 7. payment_methods
 
@@ -2279,20 +2296,15 @@ The database can later be implemented approximately in this dependency order:
 
 12. reservation_status_histories
 13. reservation_schedule_histories
-14. reservation_schedule_history_items
+14. reservation_refunds
 
-15. closed_dates
-16. availability_blocks
-
-17. events
-18. gallery_tabs
-19. gallery_images
-20. policy_sections
-21. policy_bullets
-22. faqs
-23. website_settings
-
-24. audit_logs
+15. availability_closures and availability_closure_periods
+16. events
+17. gallery_tabs and gallery_images
+18. policy_sections, policy_subheaders, and policy_rules
+19. faqs
+20. audit_logs
+21. push_subscriptions
 ```
 
 ---
@@ -2332,7 +2344,7 @@ The system still knows exactly which physical court/time combinations are occupi
 
 # 66. Document Status
 
-This document defines the current conceptual data model for Dinks on Us.
+This document defines the current conceptual model implemented by Dinks on Us.
 
 It should guide:
 
@@ -2347,7 +2359,8 @@ It should guide:
 * Reporting
 * Audit behavior
 
-The final database schema may optimize implementation details, but it should preserve the relationships and business invariants defined here.
+The migrations and models define exact implementation details and must preserve
+the relationships and business invariants defined here.
 
 Any future client decision that changes reservation behavior should first be reflected in:
 

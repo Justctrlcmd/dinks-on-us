@@ -14,6 +14,7 @@ export function CurrentPasswordConfirmationDialog({
   cancelLabel = "Back",
   destructive = false,
   pending,
+  disabled = false,
   onConfirm,
 }: {
   open: boolean;
@@ -24,6 +25,7 @@ export function CurrentPasswordConfirmationDialog({
   cancelLabel?: string;
   destructive?: boolean;
   pending: boolean;
+  disabled?: boolean;
   onConfirm: (currentPassword: string) => Promise<void>;
 }) {
   const [password, setPassword] = useState("");
@@ -36,7 +38,7 @@ export function CurrentPasswordConfirmationDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!password || pending) return;
+    if (!password || pending || disabled) return;
 
     try {
       await onConfirm(password);
@@ -67,7 +69,7 @@ export function CurrentPasswordConfirmationDialog({
         </form>
         <DialogFooter>
           <Button type="button" variant="outline" disabled={pending} onClick={() => changeOpen(false)}>{cancelLabel}</Button>
-          <Button form="current-password-confirmation-form" type="submit" variant={destructive ? "destructive" : "default"} disabled={pending || !password}>
+          <Button form="current-password-confirmation-form" type="submit" variant={destructive ? "destructive" : "default"} disabled={pending || disabled || !password}>
             {pending ? "Confirming…" : confirmLabel}
           </Button>
         </DialogFooter>

@@ -8,6 +8,7 @@ use App\Http\Requests\Management\UpdateGalleryOrderRequest;
 use App\Http\Requests\Management\UpdateGalleryTabRequest;
 use App\Http\Resources\GalleryTabResource;
 use App\Models\GalleryTab;
+use App\Services\SecurityAuditService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,7 +30,7 @@ class GalleryTabController extends Controller
         );
     }
 
-    public function store(StoreGalleryTabRequest $request): JsonResponse
+    public function store(StoreGalleryTabRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $tab = DB::transaction(function () use ($request): GalleryTab {
             $nextOrder = ((int) GalleryTab::query()->lockForUpdate()->max('display_order')) + 1;
@@ -41,6 +42,7 @@ class GalleryTabController extends Controller
         });
 
         $tab->loadCount('images');
+        $audit->record('GALLERY_CATEGORY_CREATED', $request, $request->user(), $tab, module: 'MANAGEMENT_GALLERY', targetLabel: $tab->name);
 
         return $this->respondSuccess(
             GalleryTabResource::make($tab)->resolve($request),
@@ -49,10 +51,11 @@ class GalleryTabController extends Controller
         );
     }
 
-    public function update(UpdateGalleryTabRequest $request, GalleryTab $galleryTab): JsonResponse
+    public function update(UpdateGalleryTabRequest $request, GalleryTab $galleryTab, SecurityAuditService $audit): JsonResponse
     {
         $galleryTab->update($request->validated());
         $galleryTab = $galleryTab->fresh()->loadCount('images');
+        $audit->record('GALLERY_CATEGORY_UPDATED', $request, $request->user(), $galleryTab, module: 'MANAGEMENT_GALLERY', targetLabel: $galleryTab->name);
 
         return $this->respondSuccess(
             GalleryTabResource::make($galleryTab)->resolve($request),
@@ -60,8 +63,9 @@ class GalleryTabController extends Controller
         );
     }
 
-    public function destroy(GalleryTab $galleryTab): JsonResponse
+    public function destroy(Request $request, GalleryTab $galleryTab, SecurityAuditService $audit): JsonResponse
     {
+        $label = $galleryTab->name;
         $paths = DB::transaction(function () use ($galleryTab): array {
             $paths = $galleryTab->images()->lockForUpdate()->pluck('image_path')->all();
             $galleryTab->delete();
@@ -73,11 +77,12 @@ class GalleryTabController extends Controller
         if ($paths !== []) {
             Storage::disk('public')->delete($paths);
         }
+        $audit->record('GALLERY_CATEGORY_DELETED', $request, $request->user(), $galleryTab, module: 'MANAGEMENT_GALLERY', targetLabel: $label);
 
         return $this->respondSuccess(null, 'Gallery category and its images deleted.');
     }
 
-    public function updateDisplayOrder(UpdateGalleryOrderRequest $request): JsonResponse
+    public function updateDisplayOrder(UpdateGalleryOrderRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $tabs = DB::transaction(function () use ($request) {
             $ids = array_map('intval', $request->validated('ids'));
@@ -99,6 +104,7 @@ class GalleryTabController extends Controller
 
             return GalleryTab::query()->withCount('images')->inDisplayOrder()->get();
         });
+        $audit->record('GALLERY_CATEGORY_ORDER_UPDATED', $request, $request->user(), GalleryTab::class, module: 'MANAGEMENT_GALLERY', targetLabel: 'Gallery category order');
 
         return $this->respondSuccess(
             GalleryTabResource::collection($tabs)->resolve($request),

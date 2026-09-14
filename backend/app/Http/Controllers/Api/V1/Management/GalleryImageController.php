@@ -10,6 +10,7 @@ use App\Http\Requests\Management\UpdateGalleryOrderRequest;
 use App\Http\Resources\GalleryImageResource;
 use App\Models\GalleryImage;
 use App\Models\GalleryTab;
+use App\Services\SecurityAuditService;
 use App\Services\OptimizedImageStorageService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -37,7 +38,7 @@ class GalleryImageController extends Controller
         );
     }
 
-    public function store(StoreGalleryImageRequest $request): JsonResponse
+    public function store(StoreGalleryImageRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $imagePath = $this->images->store($request->file('image'), 'public', 'gallery');
 
@@ -61,6 +62,7 @@ class GalleryImageController extends Controller
             Storage::disk('public')->delete($imagePath);
             throw $exception;
         }
+        $audit->record('GALLERY_IMAGE_CREATED', $request, $request->user(), $image, module: 'MANAGEMENT_GALLERY', targetLabel: $image->alt_text ?: 'Gallery image');
 
         return $this->respondSuccess(
             GalleryImageResource::make($image)->resolve($request),
@@ -69,7 +71,7 @@ class GalleryImageController extends Controller
         );
     }
 
-    public function update(UpdateGalleryImageRequest $request, GalleryImage $galleryImage): JsonResponse
+    public function update(UpdateGalleryImageRequest $request, GalleryImage $galleryImage, SecurityAuditService $audit): JsonResponse
     {
         $newImagePath = $request->hasFile('image')
             ? $this->images->store($request->file('image'), 'public', 'gallery')
@@ -111,6 +113,7 @@ class GalleryImageController extends Controller
         if ($newImagePath) {
             Storage::disk('public')->delete($oldImagePath);
         }
+        $audit->record('GALLERY_IMAGE_UPDATED', $request, $request->user(), $galleryImage, module: 'MANAGEMENT_GALLERY', targetLabel: $galleryImage->alt_text ?: 'Gallery image');
 
         return $this->respondSuccess(
             GalleryImageResource::make($galleryImage->fresh())->resolve($request),
@@ -118,10 +121,11 @@ class GalleryImageController extends Controller
         );
     }
 
-    public function destroy(GalleryImage $galleryImage): JsonResponse
+    public function destroy(Request $request, GalleryImage $galleryImage, SecurityAuditService $audit): JsonResponse
     {
         $imagePath = $galleryImage->image_path;
         $tabId = $galleryImage->gallery_tab_id;
+        $label = $galleryImage->alt_text ?: 'Gallery image';
 
         DB::transaction(function () use ($galleryImage, $tabId): void {
             $galleryImage->delete();
@@ -129,6 +133,7 @@ class GalleryImageController extends Controller
         });
 
         Storage::disk('public')->delete($imagePath);
+        $audit->record('GALLERY_IMAGE_DELETED', $request, $request->user(), $galleryImage, module: 'MANAGEMENT_GALLERY', targetLabel: $label);
 
         return $this->respondSuccess(null, 'Gallery image deleted.');
     }
@@ -136,6 +141,7 @@ class GalleryImageController extends Controller
     public function updateDisplayOrder(
         UpdateGalleryOrderRequest $request,
         GalleryTab $galleryTab,
+        SecurityAuditService $audit,
     ): JsonResponse {
         $images = DB::transaction(function () use ($request, $galleryTab) {
             $ids = array_map('intval', $request->validated('ids'));
@@ -160,6 +166,7 @@ class GalleryImageController extends Controller
 
             return $galleryTab->images()->inDisplayOrder()->get();
         });
+        $audit->record('GALLERY_IMAGE_ORDER_UPDATED', $request, $request->user(), $galleryTab, module: 'MANAGEMENT_GALLERY', targetLabel: "Images in {$galleryTab->name}");
 
         return $this->respondSuccess(
             GalleryImageResource::collection($images)->resolve($request),

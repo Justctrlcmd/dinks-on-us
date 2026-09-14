@@ -136,7 +136,7 @@ function TimeSlotCard({ slot, courtName, showCourtName = false, onView }: { slot
       <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-background/60" aria-hidden><Icon className="size-4" /></span>
       <span className="min-w-0 flex-1 text-left">
         {showCourtName ? <span className="mb-0.5 block text-[0.65rem] font-bold uppercase tracking-[.1em]">{courtName}</span> : null}
-        <span className="block font-heading text-sm font-bold text-foreground">{formatHourRange(slot.start_hour, slot.end_hour)}</span>
+        <span className="hidden font-heading text-sm font-bold text-foreground sm:block">{formatHourRange(slot.start_hour, slot.end_hour)}</span>
         <span className="mt-0.5 block text-xs font-semibold">{presentation.label}{slot.reservation_reference ? ` · ${slot.reservation_reference}` : ""}</span>
       </span>
       {viewable ? <FiEye className="size-4 shrink-0" aria-hidden /> : null}
@@ -236,7 +236,7 @@ export function PortalHomeView() {
 
           <Card aria-labelledby="dashboard-time-slots-title">
             <CardHeader className="border-b">
-              <CardTitle id="dashboard-time-slots-title" className="text-lg font-bold">Time slots for {longDate.format(parseDateOnly(data.selected_date.date))}</CardTitle>
+              <CardTitle id="dashboard-time-slots-title" className="truncate text-base font-bold leading-tight sm:text-lg sm:whitespace-normal">Time slots for {longDate.format(parseDateOnly(data.selected_date.date))}</CardTitle>
             </CardHeader>
             <CardContent>
               {data.selected_date.courts.length === 0 ? (

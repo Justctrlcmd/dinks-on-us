@@ -76,11 +76,11 @@ export function ReservationPolicyDialog({
         {showTriggerIcon ? <FiInfo aria-hidden="true" /> : null}{triggerLabel}
       </DialogTrigger>
       <DialogContent ref={dialogRef} className="min-w-0 max-h-[min(42rem,calc(100svh-2rem))] overflow-x-hidden overflow-y-auto p-6 sm:max-w-2xl sm:p-8">
-        <nav className="-mx-2 flex min-w-0 flex-wrap gap-x-1 gap-y-0.5 overflow-hidden border-b border-border px-2 pb-2" aria-label="Reservation policies">
+        <nav className="-mx-2 grid min-w-0 grid-cols-4 overflow-hidden border-b border-border px-2 pb-2" aria-label="Reservation policies">
           {policyNavigation.map((policy) => {
             const active = policy.slug === activeSlug;
             return (
-              <button key={policy.slug} type="button" onClick={() => setActiveSlug(policy.slug)} aria-label={`Review ${policy.title}`} aria-current={active ? "page" : undefined} className={cn("min-w-0 max-w-full border-b-2 border-transparent px-2 py-2 text-xs font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", active && "border-primary text-primary")}>
+              <button key={policy.slug} type="button" onClick={() => setActiveSlug(policy.slug)} aria-label={`Review ${policy.title}`} aria-current={active ? "page" : undefined} className={cn("min-w-0 whitespace-nowrap border-b-2 border-transparent px-0.5 py-2 text-[0.625rem] font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:px-2 sm:text-xs", active && "border-primary text-primary")}>
                 {policy.label}
               </button>
             );

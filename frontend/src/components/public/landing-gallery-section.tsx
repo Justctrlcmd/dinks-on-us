@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FiImage } from "react-icons/fi";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollRevealSection } from "@/components/public/scroll-reveal-section";
 import { mockPublicSite } from "@/config/mock-public-site";
 import { usePublicGallery } from "@/hooks/queries/use-gallery";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,7 @@ export function LandingGallerySection() {
   const images = selectedTab?.images ?? [];
 
   return (
-    <section id="gallery" className="border-y border-border bg-card py-20 sm:py-28">
+    <ScrollRevealSection id="gallery" className="border-y border-border bg-card py-20 sm:py-28">
       <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
         <div className="max-w-2xl">
           <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-foreground">
@@ -98,6 +99,6 @@ export function LandingGallerySection() {
           </>
         )}
       </div>
-    </section>
+    </ScrollRevealSection>
   );
 }

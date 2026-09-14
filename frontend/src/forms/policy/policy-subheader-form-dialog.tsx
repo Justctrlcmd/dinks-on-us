@@ -6,6 +6,7 @@ import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCreatePolicySubheader, useUpdatePolicySubheader } from "@/hooks/mutations/use-policy-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PolicySection, PolicySubheader } from "@/types/policy";
 import { policySubheaderSchema, type PolicySubheaderValues } from "@/validation/custom/policy-schema";
 
@@ -50,7 +51,7 @@ export function PolicySubheaderFormDialog({
         </form>
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>Cancel</DialogClose>
-          <Button form="policy-subheader-form" type="submit" disabled={isPending}>{isPending ? (subheader ? "Saving…" : "Adding…") : subheader ? "Save changes" : "Add sub-header"}</Button>
+          <Button form="policy-subheader-form" type="submit" disabled={isPending || isMutationRateLimited(createMutation, updateMutation)}>{mutationButtonLabel(subheader ? "Saving…" : "Adding…", subheader ? "Save changes" : "Add sub-header", createMutation, updateMutation)}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

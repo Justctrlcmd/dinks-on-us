@@ -47,6 +47,21 @@ function FailedActions() {
   );
 }
 
+function ValidationConflictAction() {
+  const mutation = useMutation({
+    mutationFn: async () => {
+      throw new NormalizedApiError({
+        status: 422,
+        message: "The provided information is invalid.",
+        code: "VALIDATION_FAILED",
+        errors: { date: ["Active reservations use Sep 14, 2026. Handle those reservations before closing the operation."] },
+      });
+    },
+  });
+
+  return <button type="button" onClick={() => mutation.mutate()}>Close conflicting date</button>;
+}
+
 describe("ToastProvider", () => {
   it("shows mutation results through styled Sonner variants", async () => {
     const user = userEvent.setup();
@@ -70,5 +85,15 @@ describe("ToastProvider", () => {
       .toHaveAttribute("data-y-position", "bottom");
     expect(successToast?.closest("[data-sonner-toaster]"))
       .toHaveAttribute("data-x-position", "right");
+  });
+
+  it("uses the field-specific API message for validation conflicts", async () => {
+    const user = userEvent.setup();
+    render(<ToastProvider><QueryProvider><ValidationConflictAction /></QueryProvider></ToastProvider>);
+
+    await user.click(screen.getByRole("button", { name: "Close conflicting date" }));
+
+    expect(await screen.findByText("Active reservations use Sep 14, 2026. Handle those reservations before closing the operation.")).toBeInTheDocument();
+    expect(screen.queryByText("The provided information is invalid.")).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Management;
 
+use App\Support\BusinessClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -29,9 +30,9 @@ class ReportFilterRequest extends FormRequest
                 return;
             }
 
-            $from = CarbonImmutable::createFromFormat('Y-m-d', (string) $this->input('from'), 'Asia/Manila')->startOfDay();
-            $to = CarbonImmutable::createFromFormat('Y-m-d', (string) $this->input('to'), 'Asia/Manila')->startOfDay();
-            $today = CarbonImmutable::now('Asia/Manila')->startOfDay();
+            $from = CarbonImmutable::createFromFormat('Y-m-d', (string) $this->input('from'), BusinessClock::timezone())->startOfDay();
+            $to = CarbonImmutable::createFromFormat('Y-m-d', (string) $this->input('to'), BusinessClock::timezone())->startOfDay();
+            $today = BusinessClock::now()->startOfDay();
 
             if ($from->greaterThan($to)) {
                 $validator->errors()->add('to', 'The end date must be on or after the start date.');

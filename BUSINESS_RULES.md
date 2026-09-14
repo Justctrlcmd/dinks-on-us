@@ -16,7 +16,9 @@ These rules should be treated as authoritative when implementing:
 * Reservation history
 * Reports and analytics
 
-If a future implementation conflicts with a rule in this document, the business rule should take priority unless the client explicitly changes the requirement.
+These rules describe the implemented system. If code and this document diverge,
+reconcile both against the latest confirmed client requirement rather than
+silently preserving the discrepancy.
 
 ---
 
@@ -128,7 +130,7 @@ Availability must consider:
 * Verified reservations
 * Walk-in reservations
 * Ongoing reservations
-* Reservation extensions
+* Court-time add-ons
 * Closed dates
 * Blocked courts
 * Blocked time slots
@@ -150,6 +152,12 @@ If even one selected slot has become unavailable:
 * No selected slot should be locked by the failed submission.
 
 The reservation should succeed only when all requested slots can be reserved together.
+
+The public client must refresh reservation options and submit its displayed total
+as `quoted_amount`. The backend recalculates court, player, and equipment charges
+inside the transaction. If the quote changed, the request fails with `409
+Conflict` before any reservation, payment, slot, equipment, history, or audit
+record is created.
 
 ---
 
@@ -440,13 +448,21 @@ A shared rate period defines:
 * Applicable start time
 * Applicable end time
 * Price
-* Weekday/weekend applicability
+* Monday–Thursday weekday or Friday–Sunday weekend applicability
 
 Rate periods must use whole-hour boundaries, cover every operating hour, and remain consecutive without gaps or overlaps.
 
+Reservation dates, elapsed-slot rules, closure dates, and report day boundaries
+use `BUSINESS_TIMEZONE`, which defaults to `Asia/Manila`. Today is valid for
+public, walk-in, reschedule, and closure inputs; only past dates are rejected.
+
 The configured player count is the number included per court. Each additional player is charged once for the whole reservation. Equipment is also charged once per selected unit for the whole reservation.
 
-Pending reservations do not hold equipment. Publicly displayed equipment availability is reduced only by verified reservations that overlap a selected reservation time. Equipment must be checked again transactionally when verification is implemented; insufficient stock prevents verification until the equipment request is adjusted.
+Pending, Verified, and Ongoing reservations hold rental equipment during each
+actual occupied one-hour interval. Public availability returns hourly stock and
+the minimum quantity available across the selected hours. Equipment is checked
+again inside every reservation, walk-in, verification, reschedule, and add-on
+transaction; insufficient stock rolls back the full operation.
 
 Current temporary example:
 
@@ -602,7 +618,18 @@ Only the Manager may reschedule a verified reservation. A reservation may be res
 
 The new target slots must all be available before the reschedule succeeds.
 
-The replacement schedule must contain exactly the same number of one-hour slots as the current schedule. A higher replacement price creates an additional balance. A lower replacement price creates refundable credit.
+The replacement schedule must contain exactly the same number of base one-hour
+slots as the reservation originally booked. Existing `ADD_ON` court slots move
+to the new booking date at their same court and start hour, are revalidated, and
+are repriced under the new date's configured rate. A conflict in any replacement
+or migrated add-on slot blocks the complete reschedule.
+
+A reschedule may also include new court-time, additional-player, and equipment
+add-ons. The backend recalculates the full reservation. Existing refundable
+credit covers the amount due first. Any remaining positive balance must be paid
+immediately by Cash or an active e-wallet/bank method; online payment requires a
+transaction number and proof. A lower total remains recorded as refundable
+credit.
 
 ---
 
@@ -636,29 +663,31 @@ A successfully rescheduled reservation returns to its operational verified state
 
 ---
 
-# 32. Reservation Extension Rule
+# 32. Court-Time Add-On Rule
 
-Players cannot extend reservations through the public website.
+Players cannot add court time through the public website after submission.
 
-Only authorized Staff or Manager may perform an extension.
+Authorized Staff or the Manager may add court time to a Verified or Ongoing
+reservation through the reservation add-ons action. There is no separate
+extension action or endpoint.
 
 ---
 
-# 33. Extension Availability Rule
+# 33. Court-Time Add-On Availability Rule
 
-Before an extension is applied:
+Before added court time is applied:
 
 * The requested additional slot must be available.
-* The extension must use valid one-hour slot intervals.
+* The added time must use the reservation's current booking date and a valid one-hour interval.
 * The new slot must pass the same availability validation as a normal reservation slot.
 
-Once confirmed, the extension slot becomes unavailable to others.
+Once confirmed, the added slot becomes unavailable to others.
 
 ---
 
-# 34. Extension Pricing Rule
+# 34. Court-Time Add-On Pricing Rule
 
-An extension uses the price applicable to the added slot at the time the extension is performed.
+Added court time uses the price applicable to the slot when the add-on is performed.
 
 The additional charge must be added to the reservation's final billing.
 
@@ -666,13 +695,13 @@ The additional charge must be added to the reservation's final billing.
 
 # 35. Add-On Rule
 
-Only an ongoing reservation may accumulate additional charges during actual play.
+Verified and Ongoing reservations may receive add-ons.
 
 Possible examples include:
 
 * Additional players
-* Reservation extensions
-* Other future business add-ons
+* Additional court time on the reservation's current booking date
+* Active rental equipment
 
 Add-ons should be tracked separately from the original reservation amount.
 
@@ -705,7 +734,7 @@ Original Reservation
 Additional Player
 ₱100
 
-Extension
+Additional Court Time
 ₱600
 
 Final Amount
@@ -718,11 +747,9 @@ Final Amount
 
 A reservation may be marked **Completed** after the actual court usage has concluded and final billing has been determined.
 
-Before completion:
-
-* Extensions should already be recorded.
-* Add-ons should already be recorded.
-* Final amount should be determined.
+Before completion, all add-ons must be recorded, the final amount must be
+determined, and any outstanding balance must be settled. Remaining refundable
+credit is recorded as a refund due when completion succeeds.
 
 Once completed, the reservation becomes a History record.
 
@@ -741,7 +768,6 @@ Reason:
 
 * It may later be cancelled.
 * It may become a no-show.
-* It may gain extensions.
 * It may gain add-ons.
 * Its final amount may differ from the original payment.
 
@@ -822,7 +848,11 @@ Current expected notification events:
 * Reservation rejected
 * Reservation rescheduled
 
-The reschedule email shows the newly active court, date, and time. Public online submission, cancellation, completion, and other reservation changes do not send customer emails. Walk-in creation is an immediate verified event and sends the verification email when enabled.
+The reschedule email shows the newly active court, date, time, and prices. It
+describes any refundable credit or additional payment as already settled during
+the reschedule. Public online submission, cancellation, completion, add-ons, and
+other reservation changes do not send customer emails. Walk-in creation is an
+immediate verified event and sends the verification email when enabled.
 
 ---
 
@@ -961,14 +991,25 @@ The Manager may:
 * Create Staff accounts
 * Assign one role to each Staff account
 * Update Staff roles
+* Edit Staff identity information
+* Activate or deactivate Staff accounts
+* Soft-delete Staff accounts while preserving historical records
+* Reset Staff passwords
+
+Soft-deleted Staff accounts are inactive, cannot sign in, and are excluded from
+Team Access listings. Their reservations, activity, and audit records must
+remain intact and continue to retain the account identity for historical
+display.
+
+Only the full-access Manager may access personal Profile and change their own
+password. Team accounts cannot access Profile or change their own credentials.
 
 ---
 
 # 53. Manager Cancellation Rule
 
-Under the current temporary requirement, cancellation inside the management system is Manager-only.
-
-This may change after client confirmation.
+Cancellation inside the management system is Manager-only. Any future change
+must update both the authorization policy and this rule.
 
 ---
 
@@ -1063,7 +1104,7 @@ This includes:
 * Rejection
 * Cancellation
 * Rescheduling
-* Extension
+* Add-ons
 * Closed dates
 * Specific slot blocks
 
@@ -1097,7 +1138,7 @@ The second submission must fail gracefully and inform the player that the slot i
 
 # 62. Auditability Rule
 
-Important management actions should preserve enough information to determine:
+Important management and account-security actions should preserve enough information to determine:
 
 * What changed
 * When it changed
@@ -1108,7 +1149,7 @@ Important actions include:
 * Verification
 * Rejection
 * Rescheduling
-* Extension
+* Add-ons
 * Completion
 * No-show
 * Cancellation
@@ -1116,6 +1157,15 @@ Important actions include:
 * Staff account changes
 * Availability blocks
 * Date closures
+* Content, pricing, payment-method, gallery, FAQ, and policy changes
+* Successful login, logout, and password changes
+
+The independent Action Logs portal module is assignable to selected Team Access profiles.
+It lists completed staff and management actions plus account-security events.
+Public customer reservation submissions and browser notification subscription
+changes remain outside this operational list. Raw request metadata and sensitive
+before/after payloads are retained only for authorized backend audit use and are
+not returned by the Action Logs list API.
 
 The exact audit implementation may be defined during architecture design.
 
@@ -1131,19 +1181,15 @@ They should remain configurable or isolated where practical so they can be updat
 
 Pending:
 
-* Deadline
-* Refund rules
-* Fees
-* Staff cancellation authority
+* Customer request deadline
+* Any fee or policy change beyond the implemented Manager-only force-majeure refund flow
 
 ## Rescheduling
 
 Pending:
 
-* Allowed request period
-* Limits
-* Fees
-* Customer eligibility
+* Customer request deadline
+* Any business fee beyond the settled schedule price difference
 
 ## No-Show
 
@@ -1154,11 +1200,9 @@ Pending:
 
 ## Add-Ons
 
-Pending:
-
-* Available add-ons
-* Additional-player fees
-* Other operational charges
+Current add-ons are court time, additional players, and active rental equipment.
+Only a future managed-product catalog or other operational charge remains
+unconfirmed.
 
 ## Rates
 
@@ -1166,7 +1210,6 @@ Pending:
 
 * Exact operating hours
 * Day/night boundaries
-* Weekend differences
 * Special-day rates
 
 ## Walk-In Payment
@@ -1207,7 +1250,7 @@ The following should always remain true:
 
 11. Payment receipt and reference number are required for an online reservation.
 
-12. Only available slots can be added through reservation, rescheduling, or extension.
+12. Only available slots can be added through reservation, rescheduling, or add-ons.
 
 13. Completed, Cancelled, Rejected, and No-show records are final History records.
 
@@ -1224,6 +1267,14 @@ The following should always remain true:
 19. Payment-proof cleanup is manually triggered and is limited to finalized reservations.
 
 20. Removing a payment-proof image must preserve its reservation, payment, and reporting records.
+
+21. Weekday pricing applies Monday through Thursday; weekend pricing applies Friday through Sunday.
+
+22. Pending, Verified, and Ongoing reservations consume time-based equipment stock.
+
+23. Team accounts cannot access Profile or change their own credentials.
+
+24. The backend rejects a public submission when its `quoted_amount` no longer matches the current calculated total.
 ```
 
 ---

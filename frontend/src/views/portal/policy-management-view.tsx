@@ -13,6 +13,7 @@ import { PolicyRuleFormDialog } from "@/forms/policy/policy-rule-form-dialog";
 import { PolicySubheaderFormDialog } from "@/forms/policy/policy-subheader-form-dialog";
 import { useDeletePolicyRule, useDeletePolicySubheader, useUpdatePolicyRuleOrder, useUpdatePolicySubheaderOrder } from "@/hooks/mutations/use-policy-mutations";
 import { useManagementPolicies } from "@/hooks/queries/use-policies";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { cn } from "@/lib/utils";
 import type { PolicyRule, PolicySection, PolicySubheader } from "@/types/policy";
 
@@ -45,6 +46,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
   const originalRuleOrder = useRef<number[]>([]);
 
   const persistSubheaderOrder = async (subheaders: PolicySubheader[]) => {
+    if (isMutationRateLimited(subheaderOrder)) return;
     setCurrent((value) => ({ ...value, subheaders }));
     try {
       await subheaderOrder.mutateAsync({ sectionId: current.id, ids: subheaders.map(({ id }) => id) });
@@ -54,6 +56,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
   };
 
   const persistRuleOrder = async (subheaderId: number, rules: PolicyRule[]) => {
+    if (isMutationRateLimited(ruleOrder)) return;
     setCurrent((value) => withRuleOrder(value, subheaderId, rules));
     try {
       await ruleOrder.mutateAsync({ subheaderId, ids: rules.map(({ id }) => id) });
@@ -75,6 +78,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
   };
 
   const isDeleting = deleteSubheader.isPending || deleteRule.isPending;
+  const deleteRateLimited = isMutationRateLimited(deleteSubheader, deleteRule);
   const ruleFormItem = ruleForm === "create" ? null : ruleForm;
   const subheaderFormItem = subheaderForm === "create" ? null : subheaderForm;
 
@@ -109,7 +113,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
             return (
               <div key={subheader.id} role="listitem" className="grid min-w-0 gap-2">
                 <Card
-                  draggable={!subheaderOrder.isPending}
+                  draggable={!subheaderOrder.isPending && !isMutationRateLimited(subheaderOrder)}
                   className={cn(
                     "cursor-grab gap-0 overflow-visible py-0 transition-[border-color,box-shadow,opacity] active:cursor-grabbing",
                     draggedSubheaderId === subheader.id && "opacity-60 ring-2 ring-primary/40",
@@ -152,11 +156,11 @@ function PolicyBoard({ section }: { section: PolicySection }) {
                             <FiEdit2 aria-hidden="true" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem disabled={subheaderIndex === 0 || subheaderOrder.isPending} onClick={() => void persistSubheaderOrder(moveItem(current.subheaders, subheader.id, current.subheaders[subheaderIndex - 1].id))}>
+                          <DropdownMenuItem disabled={subheaderIndex === 0 || subheaderOrder.isPending || isMutationRateLimited(subheaderOrder)} onClick={() => void persistSubheaderOrder(moveItem(current.subheaders, subheader.id, current.subheaders[subheaderIndex - 1].id))}>
                             <FiArrowUp aria-hidden="true" />
                             Move up
                           </DropdownMenuItem>
-                          <DropdownMenuItem disabled={subheaderIndex === current.subheaders.length - 1 || subheaderOrder.isPending} onClick={() => void persistSubheaderOrder(moveItem(current.subheaders, subheader.id, current.subheaders[subheaderIndex + 1].id))}>
+                          <DropdownMenuItem disabled={subheaderIndex === current.subheaders.length - 1 || subheaderOrder.isPending || isMutationRateLimited(subheaderOrder)} onClick={() => void persistSubheaderOrder(moveItem(current.subheaders, subheader.id, current.subheaders[subheaderIndex + 1].id))}>
                             <FiArrowDown aria-hidden="true" />
                             Move down
                           </DropdownMenuItem>
@@ -180,7 +184,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
                         key={rule.id}
                         data-policy-rule
                         role="listitem"
-                        draggable={!ruleOrder.isPending}
+                        draggable={!ruleOrder.isPending && !isMutationRateLimited(ruleOrder)}
                         className={cn(
                           "grid cursor-grab grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5 rounded-lg border bg-background px-3 py-2.5 transition-[border-color,box-shadow,opacity] active:cursor-grabbing",
                           draggedRule?.ruleId === rule.id && "opacity-60 ring-2 ring-primary/40",
@@ -224,11 +228,11 @@ function PolicyBoard({ section }: { section: PolicySection }) {
                                 <FiEdit2 aria-hidden="true" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem disabled={ruleIndex === 0 || ruleOrder.isPending} onClick={() => void persistRuleOrder(subheader.id, moveItem(rules, rule.id, rules[ruleIndex - 1].id))}>
+                              <DropdownMenuItem disabled={ruleIndex === 0 || ruleOrder.isPending || isMutationRateLimited(ruleOrder)} onClick={() => void persistRuleOrder(subheader.id, moveItem(rules, rule.id, rules[ruleIndex - 1].id))}>
                                 <FiArrowUp aria-hidden="true" />
                                 Move up
                               </DropdownMenuItem>
-                              <DropdownMenuItem disabled={ruleIndex === rules.length - 1 || ruleOrder.isPending} onClick={() => void persistRuleOrder(subheader.id, moveItem(rules, rule.id, rules[ruleIndex + 1].id))}>
+                              <DropdownMenuItem disabled={ruleIndex === rules.length - 1 || ruleOrder.isPending || isMutationRateLimited(ruleOrder)} onClick={() => void persistRuleOrder(subheader.id, moveItem(rules, rule.id, rules[ruleIndex + 1].id))}>
                                 <FiArrowDown aria-hidden="true" />
                                 Move down
                               </DropdownMenuItem>
@@ -252,7 +256,7 @@ function PolicyBoard({ section }: { section: PolicySection }) {
 
       {subheaderForm && <PolicySubheaderFormDialog section={current} subheader={subheaderFormItem} open onOpenChange={(open) => !open && setSubheaderForm(null)} />}
       {ruleForm && <PolicyRuleFormDialog section={current} rule={ruleFormItem} open onOpenChange={(open) => !open && setRuleForm(null)} />}
-      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && !isDeleting && setDeleting(null)}><DialogContent><DialogHeader><DialogTitle>{deleting?.kind === "subheader" ? "Delete this sub-header?" : "Delete this rule?"}</DialogTitle><DialogDescription>{deleting?.kind === "subheader" ? `Delete “${deleting.item.title}”? Empty sub-headers can be removed permanently.` : "This rule will be permanently removed from the public policy. This action cannot be undone."}</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={isDeleting} />}>Cancel</DialogClose><Button variant="destructive" disabled={isDeleting} onClick={() => void confirmDelete()}>{isDeleting ? "Deleting…" : deleting?.kind === "subheader" ? "Delete sub-header" : "Delete rule"}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && !isDeleting && setDeleting(null)}><DialogContent><DialogHeader><DialogTitle>{deleting?.kind === "subheader" ? "Delete this sub-header?" : "Delete this rule?"}</DialogTitle><DialogDescription>{deleting?.kind === "subheader" ? `Delete “${deleting.item.title}”? Empty sub-headers can be removed permanently.` : "This rule will be permanently removed from the public policy. This action cannot be undone."}</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={isDeleting} />}>Cancel</DialogClose><Button variant="destructive" disabled={isDeleting || deleteRateLimited} onClick={() => void confirmDelete()}>{mutationButtonLabel("Deleting…", deleting?.kind === "subheader" ? "Delete sub-header" : "Delete rule", deleteSubheader, deleteRule)}</Button></DialogFooter></DialogContent></Dialog>
     </section>
   );
 }

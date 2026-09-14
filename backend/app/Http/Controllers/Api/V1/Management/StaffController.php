@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Management;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Management\DeleteStaffRequest;
 use App\Http\Requests\Management\ResetStaffPasswordRequest;
 use App\Http\Requests\Management\StoreStaffRequest;
 use App\Http\Requests\Management\UpdateStaffRequest;
@@ -52,7 +53,7 @@ class StaffController extends Controller
         $audit->record(AuditLog::STAFF_CREATED, $request, $request->user(), $staff, [
             'role_id' => $staff->role_id,
             'is_active' => $staff->is_active,
-        ]);
+        ], 'MANAGEMENT_TEAM_ACCESS', $staff->name);
 
         return $this->respondSuccess(
             StaffResource::make($staff)->resolve($request),
@@ -71,6 +72,8 @@ class StaffController extends Controller
             return $failure;
         }
 
+        abort_if($request->user()->is($staff), 403);
+
         $previousRoleId = $staff->role_id;
         $staff->update($request->validated());
         if ($previousRoleId !== $staff->role_id) {
@@ -79,7 +82,7 @@ class StaffController extends Controller
         $audit->record(AuditLog::STAFF_UPDATED, $request, $request->user(), $staff, [
             'role_changed' => $previousRoleId !== $staff->role_id,
             'role_id' => $staff->role_id,
-        ]);
+        ], 'MANAGEMENT_TEAM_ACCESS', $staff->name);
 
         return $this->respondSuccess(
             StaffResource::make($staff->fresh()->load('role'))->resolve($request),
@@ -109,7 +112,7 @@ class StaffController extends Controller
             $staff->update(['is_active' => false]);
             $sessions->invalidate($staff);
         });
-        $audit->record(AuditLog::STAFF_DEACTIVATED, $request, $request->user(), $staff);
+        $audit->record(AuditLog::STAFF_DEACTIVATED, $request, $request->user(), $staff, module: 'MANAGEMENT_TEAM_ACCESS', targetLabel: $staff->name);
 
         return $this->respondSuccess(
             StaffResource::make($staff->fresh()->load('role'))->resolve($request),
@@ -124,12 +127,43 @@ class StaffController extends Controller
         }
 
         $staff->update(['is_active' => true]);
-        $audit->record(AuditLog::STAFF_ACTIVATED, $request, $request->user(), $staff);
+        $audit->record(AuditLog::STAFF_ACTIVATED, $request, $request->user(), $staff, module: 'MANAGEMENT_TEAM_ACCESS', targetLabel: $staff->name);
 
         return $this->respondSuccess(
             StaffResource::make($staff->fresh()->load('role'))->resolve($request),
             'Team member reactivated.',
         );
+    }
+
+    public function destroy(
+        DeleteStaffRequest $request,
+        User $staff,
+        SessionSecurityService $sessions,
+        SecurityAuditService $audit,
+    ): JsonResponse {
+        if ($failure = $this->protectedAccountFailure($staff)) {
+            return $failure;
+        }
+
+        if ($request->user()->is($staff)) {
+            return $this->respondFailure(
+                'You cannot delete your own account.',
+                'SELF_DELETION',
+                409,
+            );
+        }
+
+        DB::transaction(function () use ($staff, $sessions): void {
+            $staff->update(['is_active' => false]);
+            $sessions->invalidate($staff);
+            $staff->delete();
+        });
+        $audit->record(AuditLog::STAFF_DELETED, $request, $request->user(), $staff, [
+            'is_active' => false,
+            'soft_deleted' => true,
+        ], 'MANAGEMENT_TEAM_ACCESS', $staff->name);
+
+        return $this->respondSuccess(null, 'Team member deleted. Historical activity remains intact.');
     }
 
     public function resetPassword(
@@ -142,11 +176,13 @@ class StaffController extends Controller
             return $failure;
         }
 
+        abort_if($request->user()->is($staff), 403);
+
         DB::transaction(function () use ($request, $staff, $sessions): void {
             $staff->update(['password' => $request->validated('password')]);
             $sessions->invalidate($staff);
         });
-        $audit->record(AuditLog::STAFF_PASSWORD_RESET, $request, $request->user(), $staff);
+        $audit->record(AuditLog::STAFF_PASSWORD_RESET, $request, $request->user(), $staff, module: 'MANAGEMENT_TEAM_ACCESS', targetLabel: $staff->name);
 
         return $this->respondSuccess(null, 'Team member password reset.');
     }

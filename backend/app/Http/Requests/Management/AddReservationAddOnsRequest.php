@@ -18,9 +18,9 @@ class AddReservationAddOnsRequest extends FormRequest
             'slots.*.start_hour' => ['required', 'integer', 'between:0,23'],
             'additional_players' => ['sometimes', 'integer', 'min:0', 'max:1000'],
             'equipment' => ['sometimes', 'array', 'max:30'],
-            'equipment.*.id' => ['required', 'integer', 'exists:rental_equipment,id'],
-            'equipment.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
-            'payment_channel' => ['required', Rule::in(['CASH', 'EWALLET_BANK'])],
+            'equipment.*.id' => ['required', 'integer', 'distinct', 'exists:rental_equipment,id'],
+            'equipment.*.quantity' => ['required', 'integer', 'min:0', 'max:1000'],
+            'payment_channel' => ['nullable', Rule::in(['CASH', 'EWALLET_BANK'])],
             'payment_method_id' => [
                 Rule::requiredIf(fn (): bool => $this->input('payment_channel') === 'EWALLET_BANK'),
                 Rule::prohibitedIf(fn (): bool => $this->input('payment_channel') === 'CASH'),
@@ -47,7 +47,7 @@ class AddReservationAddOnsRequest extends FormRequest
             }
             $hasSlots = count($this->input('slots', [])) > 0;
             $hasPlayers = (int) $this->input('additional_players', 0) > 0;
-            $hasEquipment = count($this->input('equipment', [])) > 0;
+            $hasEquipment = collect($this->input('equipment', []))->sum('quantity') > 0;
             if (! $hasSlots && ! $hasPlayers && ! $hasEquipment) {
                 $validator->errors()->add('add_ons', 'Add at least one court time, player, or equipment item.');
             }

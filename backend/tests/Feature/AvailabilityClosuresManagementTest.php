@@ -86,6 +86,23 @@ class AvailabilityClosuresManagementTest extends TestCase
             ->assertJsonPath('data.0.details.reason', 'The tournament ended early; reopening for regular play.');
     }
 
+    public function test_business_date_validation_uses_manila_midnight_at_the_utc_boundary(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-01 00:30:00', 'Asia/Manila'));
+        $user = User::factory()->create();
+        $this->configureCourts($user);
+
+        $this->actingAs($user)->postJson('/api/v1/management/closed-dates', [
+            'date' => '2026-08-31',
+            'reason' => 'This is already yesterday in Manila.',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['date']);
+
+        $this->actingAs($user)->postJson('/api/v1/management/closed-dates', [
+            'date' => '2026-09-01',
+            'reason' => 'Today in Manila remains valid.',
+        ])->assertCreated();
+    }
+
     public function test_a_grouped_court_time_closure_blocks_only_its_selected_ranges(): void
     {
         $user = User::factory()->create();

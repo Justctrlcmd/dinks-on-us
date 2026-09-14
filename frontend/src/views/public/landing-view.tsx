@@ -12,6 +12,7 @@ import {
 } from "react-icons/fi";
 import { PublicSiteFrame } from "@/components/public/public-site-frame";
 import { LandingGallerySection } from "@/components/public/landing-gallery-section";
+import { ScrollRevealSection } from "@/components/public/scroll-reveal-section";
 import { Button } from "@/components/ui/button";
 import { mockPublicSite } from "@/config/mock-public-site";
 
@@ -121,7 +122,7 @@ export function LandingView() {
           </div>
         </section>
 
-        <section id="etiquette" className="bg-background py-20 sm:py-28">
+        <ScrollRevealSection id="etiquette" className="bg-background py-20 sm:py-28">
           <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
             <SectionHeading
               eyebrow={mockPublicSite.etiquette.eyebrow}
@@ -154,9 +155,9 @@ export function LandingView() {
                 })}
             </div>
           </div>
-        </section>
+        </ScrollRevealSection>
 
-        <section id="how-to-reserve" className="border-y border-border bg-card py-20 text-foreground dark:bg-card dark:text-card-foreground sm:py-28">
+        <ScrollRevealSection id="how-to-reserve" className="border-y border-border bg-card py-20 text-foreground dark:bg-card dark:text-card-foreground sm:py-28">
           <div className="mx-auto max-w-[96rem] px-6 sm:px-10 lg:px-30">
             <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
               <div className="max-w-2xl">
@@ -195,9 +196,9 @@ export function LandingView() {
               ))}
             </ol>
           </div>
-        </section>
+        </ScrollRevealSection>
 
-        <section id="about" className="bg-background py-20 sm:py-28">
+        <ScrollRevealSection id="about" className="bg-background py-20 sm:py-28">
           <div className="mx-auto grid max-w-[96rem] gap-10 px-6 sm:px-10 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:px-30">
             <div className="relative min-h-100 overflow-hidden rounded-2xl bg-muted sm:min-h-125">
               <Image
@@ -222,11 +223,11 @@ export function LandingView() {
               </div>
             </div>
           </div>
-        </section>
+        </ScrollRevealSection>
 
         <LandingGallerySection />
 
-        <section id="location" className="bg-background py-20 sm:py-28">
+        <ScrollRevealSection id="location" className="bg-background py-20 sm:py-28">
           <div className="mx-auto grid max-w-[96rem] gap-6 px-6 sm:px-10 lg:grid-cols-[.82fr_1.18fr] lg:items-stretch lg:px-30">
             <div className="rounded-2xl border border-border bg-card p-8 sm:p-10">
               <SectionHeading
@@ -253,7 +254,7 @@ export function LandingView() {
               </a>
             </div>
           </div>
-        </section>
+        </ScrollRevealSection>
       </main>
     </PublicSiteFrame>
   );

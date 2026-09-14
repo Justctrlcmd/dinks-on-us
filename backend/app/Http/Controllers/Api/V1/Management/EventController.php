@@ -7,6 +7,7 @@ use App\Http\Requests\Management\StoreEventRequest;
 use App\Http\Requests\Management\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
+use App\Services\SecurityAuditService;
 use App\Services\OptimizedImageStorageService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,7 @@ class EventController extends Controller
         );
     }
 
-    public function store(StoreEventRequest $request): JsonResponse
+    public function store(StoreEventRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $imagePath = $this->images->store($request->file('image'), 'public', 'events');
 
@@ -52,6 +53,7 @@ class EventController extends Controller
             Storage::disk('public')->delete($imagePath);
             throw $exception;
         }
+        $audit->record('EVENT_CREATED', $request, $request->user(), $event, module: 'MANAGEMENT_EVENTS', targetLabel: $event->header);
 
         return $this->respondSuccess(
             EventResource::make($event)->resolve($request),
@@ -68,7 +70,7 @@ class EventController extends Controller
         );
     }
 
-    public function update(UpdateEventRequest $request, Event $event): JsonResponse
+    public function update(UpdateEventRequest $request, Event $event, SecurityAuditService $audit): JsonResponse
     {
         $newImagePath = $request->hasFile('image')
             ? $this->images->store($request->file('image'), 'public', 'events')
@@ -90,6 +92,7 @@ class EventController extends Controller
         if ($newImagePath) {
             Storage::disk('public')->delete($oldImagePath);
         }
+        $audit->record('EVENT_UPDATED', $request, $request->user(), $event, module: 'MANAGEMENT_EVENTS', targetLabel: $event->header);
 
         return $this->respondSuccess(
             EventResource::make($event->fresh())->resolve($request),
@@ -97,9 +100,10 @@ class EventController extends Controller
         );
     }
 
-    public function destroy(Event $event): JsonResponse
+    public function destroy(Request $request, Event $event, SecurityAuditService $audit): JsonResponse
     {
         $event->update(['status' => Event::STATUS_ARCHIVED]);
+        $audit->record('EVENT_ARCHIVED', $request, $request->user(), $event, module: 'MANAGEMENT_EVENTS', targetLabel: $event->header);
 
         return $this->respondSuccess(null, 'Event archived.');
     }

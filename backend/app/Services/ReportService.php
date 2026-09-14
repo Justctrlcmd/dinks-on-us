@@ -11,6 +11,7 @@ use App\Models\ReservationEquipmentItem;
 use App\Models\ReservationPayment;
 use App\Models\ReservationScheduleHistory;
 use App\Models\ReservationSlot;
+use App\Support\BusinessClock;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,8 +19,6 @@ use Illuminate\Support\Collection;
 
 class ReportService
 {
-    private const TIME_ZONE = 'Asia/Manila';
-
     private const DAY_NAMES = [
         1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday',
         5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday',
@@ -464,9 +463,9 @@ class ReportService
             })
             ->get(['reservation_id', 'court_id', 'date', 'start_hour', 'end_hour', 'unit_amount']);
         $completedBySlot = $completedSlots->keyBy(fn (ReservationSlot $slot): string => $this->slotKey($slot->court_id, $slot->date->toDateString(), $slot->start_hour));
-        $now = CarbonImmutable::now(self::TIME_ZONE);
-        $date = CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], self::TIME_ZONE);
-        $to = CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], self::TIME_ZONE);
+        $now = BusinessClock::now();
+        $date = CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], BusinessClock::timezone());
+        $to = CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], BusinessClock::timezone());
 
         while ($date->lessThanOrEqualTo($to)) {
             $dateString = $date->toDateString();
@@ -564,8 +563,8 @@ class ReportService
         }
 
         if ($closure->reopened_at) {
-            $slotStart = CarbonImmutable::createFromFormat('Y-m-d H:i', sprintf('%s %02d:00', $date, $startHour), self::TIME_ZONE);
-            if ($closure->reopened_at->setTimezone(self::TIME_ZONE)->lessThanOrEqualTo($slotStart)) {
+            $slotStart = CarbonImmutable::createFromFormat('Y-m-d H:i', sprintf('%s %02d:00', $date, $startHour), BusinessClock::timezone());
+            if ($closure->reopened_at->setTimezone(BusinessClock::timezone())->lessThanOrEqualTo($slotStart)) {
                 return false;
             }
         }
@@ -636,8 +635,8 @@ class ReportService
     private function emptyBuckets(array $filters, string $groupBy): array
     {
         $buckets = [];
-        $date = CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], self::TIME_ZONE);
-        $to = CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], self::TIME_ZONE);
+        $date = CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], BusinessClock::timezone());
+        $to = CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], BusinessClock::timezone());
         while ($date->lessThanOrEqualTo($to)) {
             $buckets[$this->bucketKey($date, $groupBy)] = 0;
             $date = $date->addDay();
@@ -649,8 +648,8 @@ class ReportService
     private function bucketKey(mixed $value, string $groupBy): string
     {
         $date = $value instanceof CarbonInterface
-            ? CarbonImmutable::instance($value)->setTimezone(self::TIME_ZONE)
-            : CarbonImmutable::parse($value, 'UTC')->setTimezone(self::TIME_ZONE);
+            ? CarbonImmutable::instance($value)->setTimezone(BusinessClock::timezone())
+            : CarbonImmutable::parse($value, 'UTC')->setTimezone(BusinessClock::timezone());
 
         return match ($groupBy) {
             'month' => $date->startOfMonth()->toDateString(),
@@ -662,8 +661,8 @@ class ReportService
     /** @param array<string, mixed> $filters */
     private function automaticGrouping(array $filters): string
     {
-        $from = CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], self::TIME_ZONE);
-        $to = CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], self::TIME_ZONE);
+        $from = CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], BusinessClock::timezone());
+        $to = CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], BusinessClock::timezone());
         $days = $from->diffInDays($to) + 1;
 
         return match (true) {
@@ -691,7 +690,7 @@ class ReportService
         $courtsQuery = Court::query()->orderBy('court_number')->whereIn('id', $courtIds);
 
         return [
-            'range' => ['from' => $filters['from'], 'to' => $filters['to'], 'time_zone' => self::TIME_ZONE],
+            'range' => ['from' => $filters['from'], 'to' => $filters['to'], 'time_zone' => BusinessClock::timezone()],
             'filters' => ['court_id' => $filters['court_id'], 'source' => $filters['source']],
             'courts' => $courtsQuery->get(['id', 'court_number', 'is_active'])->map(fn (Court $court): array => [
                 'id' => $court->id,
@@ -722,8 +721,8 @@ class ReportService
     private function timestampBounds(array $filters): array
     {
         return [
-            CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], self::TIME_ZONE)->startOfDay()->utc(),
-            CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], self::TIME_ZONE)->endOfDay()->utc(),
+            CarbonImmutable::createFromFormat('Y-m-d', $filters['from'], BusinessClock::timezone())->startOfDay()->utc(),
+            CarbonImmutable::createFromFormat('Y-m-d', $filters['to'], BusinessClock::timezone())->endOfDay()->utc(),
         ];
     }
 

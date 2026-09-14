@@ -18,6 +18,7 @@ import { applyApiErrors } from "@/forms/apply-api-errors";
 import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { useToast } from "@/components/common/toast-provider";
+import { PublicMessageButton } from "@/components/public/public-site-frame";
 import { ReservationPolicyBanner, ReservationPolicyDialog } from "@/components/public/reservation/reservation-policy-banner";
 import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -26,8 +27,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
+import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { useSubmitReservation } from "@/hooks/mutations/use-reservation-mutations";
 import { formatHourRange } from "@/lib/time";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PublicPaymentMethod } from "@/types/payment-method";
 import { RESERVATION_DRAFT_STORAGE_KEY, type ManagementReservation, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
 import { reservationCheckoutSchema, type ReservationCheckoutValues } from "@/validation/custom/reservation-checkout-schema";
@@ -64,6 +67,12 @@ function parseDateOnly(value: string) {
 
 function formatTimeRange(slot: ReservationSlot) {
   return formatHourRange(slot.startHour, slot.endHour);
+}
+
+function reservationTotal(draft: ReservationDraft) {
+  return draft.selectedSlots.reduce((total, slot) => total + slot.price, 0)
+    + draft.equipment.reduce((total, item) => total + item.price * item.quantity, 0)
+    + draft.additionalPlayers * draft.additionalPlayerUnitPrice;
 }
 
 function isReservationDraft(value: unknown): value is ReservationDraft {
@@ -186,7 +195,6 @@ function ReservationSummary({ draft }: { draft: ReservationDraft }) {
 
       <dl className="mt-5 grid gap-3 border-t border-border pt-5 text-sm">
         <div className="flex items-end justify-between gap-4 border-t border-border pt-4"><dt className="font-heading text-lg font-extrabold">Amount to pay</dt><dd className="font-heading text-2xl font-extrabold text-primary">{currency.format(total)}</dd></div>
-        {equipmentLines.length > 0 ? <p className="text-xs leading-5 text-muted-foreground">Equipment availability is confirmed when your reservation is verified. Pending reservations do not hold equipment.</p> : null}
       </dl>
     </section>
   );
@@ -249,6 +257,58 @@ export function ReservationCheckout() {
       return null;
     }
   }, [loaded]);
+  const optionsQuery = useReservationOptions(
+    draft?.selectedSlots[0]?.date ?? "",
+    draft?.selectedSlots.map((slot) => slot.startHour) ?? [],
+  );
+  const checkoutReview = useMemo(() => {
+    const options = optionsQuery.data;
+    if (!draft || !options || !options.configuration) return null;
+
+    const unavailable = new Set(options.unavailable_slots.map((slot) => `${slot.court_id}-${slot.start_hour}`));
+    const courts = new Map(options.courts.map((court) => [court.id, court]));
+    const selectedSlots = draft.selectedSlots.map((selected) => {
+      const court = courts.get(selected.courtId);
+      const period = options.slots.find((slot) => slot.start_hour === selected.startHour);
+      const available = Boolean(court && period) && !unavailable.has(`${selected.courtId}-${selected.startHour}`);
+      return {
+        ...selected,
+        courtName: court?.name ?? selected.courtName,
+        endHour: period?.end_hour ?? selected.endHour,
+        price: period?.price ?? selected.price,
+        available,
+      };
+    });
+    const scheduleAvailable = !options.is_date_closed
+      && options.date === draft.selectedSlots[0]?.date
+      && selectedSlots.every((slot) => slot.available);
+
+    const equipmentById = new Map(options.equipment.map((item) => [item.id, item]));
+    const equipment = draft.equipment.map((selected) => {
+      const current = equipmentById.get(selected.id);
+      return { ...selected, name: current?.name ?? selected.name, price: current?.price ?? selected.price };
+    });
+    const equipmentAvailable = draft.equipment.every((selected) => {
+      const current = equipmentById.get(selected.id);
+      return Boolean(current) && selected.quantity <= (current?.available_quantity ?? 0);
+    });
+    const refreshedDraft: ReservationDraft = {
+      selectedSlots,
+      equipment,
+      additionalPlayers: draft.additionalPlayers,
+      additionalPlayerUnitPrice: options.configuration.additional_player_price,
+      includedPlayersPerCourt: options.configuration.included_players_per_court,
+    };
+    const priceChanged = selectedSlots.some((slot, index) => Math.abs(slot.price - draft.selectedSlots[index].price) > 0.001)
+      || equipment.some((item, index) => Math.abs(item.price - draft.equipment[index].price) > 0.001)
+      || Math.abs(refreshedDraft.additionalPlayerUnitPrice - draft.additionalPlayerUnitPrice) > 0.001;
+
+    return {
+      draft: refreshedDraft,
+      valid: scheduleAvailable && equipmentAvailable,
+      priceChanged,
+    };
+  }, [draft, optionsQuery.data]);
   const [submitted, setSubmitted] = useState<ManagementReservation | null>(null);
   const [submitMessage, setSubmitMessage] = useState<string>();
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
@@ -279,7 +339,8 @@ export function ReservationCheckout() {
   }, [form, paymentEvidenceEnabled]);
 
   async function submitReservation(values: ReservationCheckoutValues) {
-    if (!selectedPaymentMethod || !draft) return;
+    if (!selectedPaymentMethod || !checkoutReview?.valid) return;
+    const currentDraft = checkoutReview.draft;
     setSubmitMessage(undefined);
     const input = new FormData();
     input.set("customer_name", values.customer_name);
@@ -289,14 +350,15 @@ export function ReservationCheckout() {
     input.set("payment_reference_number", values.payment_reference_number);
     const proof = values.payment_proof?.item(0);
     if (proof) input.set("payment_proof", proof);
-    input.set("additional_players", String(draft.additionalPlayers));
+    input.set("additional_players", String(currentDraft.additionalPlayers));
+    input.set("quoted_amount", reservationTotal(currentDraft).toFixed(2));
     input.set("policy_acknowledged", "1");
-    draft.selectedSlots.forEach((slot, index) => {
+    currentDraft.selectedSlots.forEach((slot, index) => {
       input.set(`slots[${index}][court_id]`, String(slot.courtId));
       input.set(`slots[${index}][date]`, slot.date);
       input.set(`slots[${index}][start_hour]`, String(slot.startHour));
     });
-    draft.equipment.forEach((item, index) => {
+    currentDraft.equipment.forEach((item, index) => {
       input.set(`equipment[${index}][id]`, String(item.id));
       input.set(`equipment[${index}][quantity]`, String(item.quantity));
     });
@@ -342,18 +404,29 @@ export function ReservationCheckout() {
 
   if (submitted) {
     return (
-      <section className="mx-auto max-w-2xl px-6 text-center sm:px-10">
-        <div className="rounded-2xl border border-primary/35 bg-card p-7 sm:p-12">
-          <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/12 text-primary"><FiCheckCircle className="size-8" aria-hidden="true" /></span>
-          <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Reservation received</p>
-          <p className="mt-4 font-heading text-2xl font-extrabold text-primary">{submitted.reference_number}</p>
-          <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Your selected court times are held while staff reviews the submitted reservation information. An email will be sent to you once the reservation is verified or rejected.</p>
-          <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Keep this reference for questions about your reservation.</p>
-          <Button nativeButton={false} variant="outline" className="mt-7 h-12 rounded-full px-6 font-extrabold" render={<Link href="/" />}>Return home</Button>
-        </div>
-      </section>
+      <>
+        <section className="mx-auto flex w-full max-w-2xl justify-center px-6 text-center sm:px-10">
+          <div className="w-full max-w-xl rounded-2xl border border-primary/35 bg-card p-7 sm:p-12">
+            <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/12 text-primary"><FiCheckCircle className="size-8" aria-hidden="true" /></span>
+            <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Reservation received</p>
+            <p className="mt-4 font-heading text-2xl font-extrabold text-primary">{submitted.reference_number}</p>
+            <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Your selected court times are held while staff reviews the submitted reservation information. An email will be sent to you once the reservation is verified or rejected.</p>
+            <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Keep this reference for questions about your reservation.</p>
+            <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted-foreground">If you do not see our email, please check your spam or junk folder.</p>
+            <Button nativeButton={false} variant="outline" className="mt-7 h-12 rounded-full px-6 font-extrabold" render={<Link href="/" />}>Return home</Button>
+          </div>
+        </section>
+        <PublicMessageButton />
+      </>
     );
   }
+
+  if (optionsQuery.isPending) {
+    return <div className="mx-auto min-h-[40svh] max-w-[76rem] px-6 sm:px-10"><div className="h-64 animate-pulse rounded-2xl bg-muted" aria-label="Refreshing reservation pricing" /></div>;
+  }
+
+  const currentDraft = checkoutReview?.draft ?? draft;
+  const checkoutUnavailable = optionsQuery.isError || !checkoutReview?.valid;
 
   return (
     <div className="mx-auto max-w-[76rem] px-6 pb-20 sm:px-10">
@@ -368,7 +441,11 @@ export function ReservationCheckout() {
 
       <form className="grid min-w-0 gap-5" onSubmit={submit} noValidate>
         {submitMessage ? <Alert variant="destructive"><AlertDescription>{submitMessage}</AlertDescription></Alert> : null}
-        <ReservationSummary draft={draft} />
+        {optionsQuery.isError ? <Alert variant="destructive"><AlertDescription>Current pricing and availability could not be refreshed. Return to availability or refresh this page before submitting.</AlertDescription></Alert> : null}
+        {!optionsQuery.isError && !checkoutReview ? <Alert variant="destructive"><AlertDescription>Current reservation pricing is not configured. Return to availability before submitting.</AlertDescription></Alert> : null}
+        {checkoutReview && !checkoutReview.valid ? <Alert variant="destructive"><AlertDescription>One or more selected court times or equipment items are no longer available. Return to availability and update the reservation.</AlertDescription></Alert> : null}
+        {checkoutReview?.priceChanged ? <Alert><AlertDescription>Pricing changed after your selection. The summary now shows the current configured amount. Review it before making your payment.</AlertDescription></Alert> : null}
+        <ReservationSummary draft={currentDraft} />
         <ReservationPolicyBanner initialSlug="court-rules" titleId="checkout-policy-title" />
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="customer-information-title">
@@ -492,37 +569,47 @@ export function ReservationCheckout() {
         </section>
 
         <section className="rounded-2xl border border-primary/35 bg-card p-4 sm:p-7">
-          <div className="flex gap-3">
+          <div className="flex items-start gap-3">
             <Checkbox
               id="acknowledgment"
               checked={acknowledged}
               onCheckedChange={(checked) => form.setValue("policy_acknowledged", checked === true, { shouldDirty: true, shouldValidate: true })}
               aria-invalid={Boolean(form.formState.errors.policy_acknowledged)}
               aria-describedby={form.formState.errors.policy_acknowledged ? "acknowledgment-error" : undefined}
-              className="mt-1 size-5"
+              className="mt-1 size-5 shrink-0"
             />
-            <Label htmlFor="acknowledgment" className="block cursor-pointer text-sm leading-6">
-              <strong className="block font-heading text-base">Reservation acknowledgment <span aria-hidden="true" className="text-destructive">*</span></strong>
-              <span className="mt-1 block font-normal text-muted-foreground">I reviewed the reservation summary and conditions. I confirm that my information and payment proof are accurate, and I understand that staff must verify the payment before the reservation is confirmed.</span>
-            </Label>
+            <div className="min-w-0 flex-1">
+              <Label htmlFor="acknowledgment" className="block cursor-pointer font-heading text-base font-extrabold leading-6">
+                Reservation acknowledgment <span aria-hidden="true" className="text-destructive">*</span>
+              </Label>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">I reviewed the reservation summary and conditions. I confirm that my information and payment proof are accurate, and I understand that staff must verify the payment before the reservation is confirmed.</p>
+            </div>
           </div>
           {form.formState.errors.policy_acknowledged?.message ? (
             <p id="acknowledgment-error" role="alert" className="mt-2 pl-8 text-xs leading-4 text-destructive">
               {form.formState.errors.policy_acknowledged.message}
             </p>
           ) : null}
-          <p className="mt-2 pl-8 text-sm leading-6 text-muted-foreground">
-            I have read and agree to the{" "}
-            <ReservationPolicyDialog initialSlug="court-rules" triggerLabel="Court Rules & Policy" triggerVariant="link" />{", "}
-            <ReservationPolicyDialog initialSlug="reservation-rules" triggerLabel="Reservation Rules & Policy" triggerVariant="link" />{", "}
-            <ReservationPolicyDialog initialSlug="reschedule-policy" triggerLabel="Reschedule Policy" triggerVariant="link" />{", and "}
-            <ReservationPolicyDialog initialSlug="cancellation-policy" triggerLabel="Cancellation Policy" triggerVariant="link" />.
-          </p>
-          <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground"><FiLock aria-hidden="true" /> Your payment proof is intended only for reservation verification.</div>
-          <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod || submitMutation.isPending} className="mt-5 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90">
-            <FiShield aria-hidden="true" /> {submitMutation.isPending ? "Submitting reservation…" : "Submit reservation"}
+          <div className="mt-4 ml-8 rounded-xl border border-border/80 bg-background/60 p-3 sm:mt-5 sm:p-4">
+            <p className="text-xs font-bold uppercase tracking-[.14em] text-muted-foreground">Policy agreement</p>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">I have read and agree to:</p>
+            <ul className="mt-2 grid gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1" aria-label="Reservation policy links">
+              <li><ReservationPolicyDialog initialSlug="court-rules" triggerLabel="Court Rules & Policy" triggerVariant="link" triggerClassName="w-full justify-start whitespace-normal text-left text-sm leading-5 sm:w-auto" /></li>
+              <li><ReservationPolicyDialog initialSlug="reservation-rules" triggerLabel="Reservation Rules & Policy" triggerVariant="link" triggerClassName="w-full justify-start whitespace-normal text-left text-sm leading-5 sm:w-auto" /></li>
+              <li><ReservationPolicyDialog initialSlug="reschedule-policy" triggerLabel="Reschedule Policy" triggerVariant="link" triggerClassName="w-full justify-start whitespace-normal text-left text-sm leading-5 sm:w-auto" /></li>
+              <li><ReservationPolicyDialog initialSlug="cancellation-policy" triggerLabel="Cancellation Policy" triggerVariant="link" triggerClassName="w-full justify-start whitespace-normal text-left text-sm leading-5 sm:w-auto" /></li>
+            </ul>
+          </div>
+          <div className="mt-4 ml-8 flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-xs leading-5 text-muted-foreground sm:mt-5">
+            <FiLock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <span>Your payment proof is intended only for reservation verification.</span>
+          </div>
+          <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod || checkoutUnavailable || optionsQuery.isFetching || submitMutation.isPending || isMutationRateLimited(submitMutation)} className="mt-4 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90 sm:mt-5">
+            <FiShield aria-hidden="true" /> {mutationButtonLabel("Submitting reservation…", "Submit reservation", submitMutation)}
           </Button>
-          {!selectedPaymentMethod ? (
+          {checkoutUnavailable ? (
+            <p className="mt-3 text-center text-xs text-destructive">Update unavailable selections before submitting.</p>
+          ) : !selectedPaymentMethod ? (
             <p className="mt-3 text-center text-xs text-muted-foreground">A payment method must be available before submitting.</p>
           ) : !acknowledged ? (
             <p className="mt-3 text-center text-xs text-muted-foreground">Check the acknowledgment above to enable submission.</p>
@@ -552,13 +639,13 @@ export function ReservationCheckout() {
             </DialogClose>
             <Button
               type="button"
-              disabled={submitMutation.isPending}
+              disabled={submitMutation.isPending || isMutationRateLimited(submitMutation) || checkoutUnavailable || optionsQuery.isFetching}
               className="h-12 rounded-full bg-energy font-extrabold text-energy-foreground hover:bg-energy/90"
               onClick={() => {
                 if (emailConfirmationValues) void submitReservation(emailConfirmationValues);
               }}
             >
-              <FiShield aria-hidden="true" /> {submitMutation.isPending ? "Submitting reservation…" : "Yes, submit reservation"}
+              <FiShield aria-hidden="true" /> {mutationButtonLabel("Submitting reservation…", "Yes, submit reservation", submitMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>

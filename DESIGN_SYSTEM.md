@@ -1,6 +1,9 @@
 # Design system
 
-The Phase A interface is deliberately neutral. A future Phase C may add `PROJECT_DESIGN.md` for brand and workflow-specific direction; it should extend rather than silently replace these reusable rules.
+This document defines the reusable interface rules beneath the implemented
+Dinks on Us brand direction in `PROJECT_DESIGN.md`. Project-specific screens
+must satisfy both documents; established components remain the primary visual
+and interaction references.
 
 Use Tailwind CSS and shadcn/ui. Prefer semantic tokens such as `background`, `foreground`, `primary`, `muted`, `border`, and sidebar tokens. Both light and dark themes must remain usable. Typography uses the system sans-serif stack; default radius is 0.625rem. Use a restrained spacing rhythm and preserve comfortable content widths.
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCreateEvent, useUpdateEvent } from "@/hooks/mutations/use-event-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { EventInput, EventRecord } from "@/types/event";
 import { EVENT_IMAGE_ACCEPT, eventSchema, type EventValues } from "@/validation/custom/event-schema";
 
@@ -143,8 +144,8 @@ export function EventFormDialog({
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>Cancel</DialogClose>
-          <Button form="event-form" type="submit" disabled={isPending}>
-            {isPending ? "Saving…" : event ? "Save changes" : "Add event"}
+          <Button form="event-form" type="submit" disabled={isPending || isMutationRateLimited(createMutation, updateMutation)}>
+            {mutationButtonLabel("Saving…", event ? "Save changes" : "Add event", createMutation, updateMutation)}
           </Button>
         </DialogFooter>
       </DialogContent>
