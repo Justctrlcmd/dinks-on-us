@@ -40,6 +40,8 @@ Use MySQL backups with documented retention and restore drills. Run migrations a
 
 `php artisan system:reset-demo --force` is an intentional break-glass operation for resetting a live demo instance. It permanently removes all application records and only recreates the configured Manager account; it does not restore starter operational content. Take and verify a database backup, place the application in maintenance mode, run the command from an interactive terminal, type its exact production confirmation phrase, validate the blank state, then run `php artisan up`. It recreates the configured Manager credentials, including the repository defaults when those values have not been changed, and logs its completion summary without creating an application audit row.
 
+Default data seeding remains disabled in production unless it is deliberately enabled for an empty demo instance. Do not alter `APP_ENV`, do not add this to normal deployment automation, and do not use `migrate:fresh`. Temporarily set `ALLOW_PRODUCTION_SEED=true` in the production environment, then run `php artisan config:clear`, `php artisan db:seed --force`, and `php artisan optimize`. Immediately set `ALLOW_PRODUCTION_SEED=false` again, then run `php artisan config:clear` and `php artisan optimize`. The seeder creates or preserves only the configured Manager account, operating-hours configuration, weekday/weekend rates, Courts 1–3, and Paddle, Ball, and Titan Machine defaults.
+
 Manual payment-proof cleanup removes active files from the configured private
 storage provider, but infrastructure snapshots, replicas, or backups may retain
 copies until their separate retention windows expire. Document those windows and
