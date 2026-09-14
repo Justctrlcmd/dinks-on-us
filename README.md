@@ -70,7 +70,7 @@ Laravel Sanctum owns browser sessions and CSRF protection. Public registration a
 
 `php artisan system:reset-demo --force` permanently removes all application data and generated payment-proof, event, gallery, and payment-method files, then creates only the configured protected Manager account. It preserves the database schema and migration history; it does not recreate starter courts, pricing, equipment, policies, or other content.
 
-In production, first place the app in maintenance mode with `php artisan down`. The reset command then requires an interactive exact confirmation phrase and refuses the repository's development Manager credentials. Bring the app back with `php artisan up` only after confirming the new blank state.
+In production, first place the app in maintenance mode with `php artisan down`. The reset command then requires an interactive exact confirmation phrase. It recreates the configured Manager credentials, including the repository defaults when those values have not been changed. Bring the app back with `php artisan up` only after confirming the new blank state.
 
 Portal navigation and every management API route enforce the same module permissions. Hiding a navigation item is never the authorization boundary.
 

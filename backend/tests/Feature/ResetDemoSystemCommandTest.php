@@ -148,10 +148,12 @@ class ResetDemoSystemCommandTest extends TestCase
         $this->assertSame(1, User::query()->count());
     }
 
-    public function test_production_reset_rejects_default_manager_credentials(): void
+    public function test_production_reset_recreates_the_configured_default_manager_credentials(): void
     {
         $this->app['env'] = 'production';
         $this->app->instance(MaintenanceMode::class, Mockery::mock(MaintenanceMode::class, ['active' => true]));
+        Storage::fake('local');
+        Storage::fake('public');
 
         config()->set('manager.default', [
             'name' => 'Dinks on Us Manager',
@@ -161,8 +163,13 @@ class ResetDemoSystemCommandTest extends TestCase
 
         $this->artisan('system:reset-demo --force')
             ->expectsQuestion('Type WIPE DINKS ON US PRODUCTION to continue', 'WIPE DINKS ON US PRODUCTION')
-            ->expectsOutputToContain('non-default Manager credentials')
-            ->assertExitCode(1);
+            ->expectsOutputToContain('Reset complete')
+            ->assertExitCode(0);
+
+        $this->assertSame(1, User::query()->count());
+        $manager = User::query()->sole();
+        $this->assertSame('manager@dinksonus.test', $manager->email);
+        $this->assertTrue(Hash::check('DinksManager2026!', $manager->password));
     }
 
     public function test_file_cleanup_failure_aborts_before_database_wipe(): void

@@ -22,7 +22,7 @@ class ActionLogResource extends JsonResource
             'action' => $action,
             'action_label' => $label,
             'module' => $module,
-            'target_label' => $this->target_label ?? self::legacyTargetLabel($this),
+            'target_label' => $this->target_label ?? self::legacyTargetLabel($this->resource),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

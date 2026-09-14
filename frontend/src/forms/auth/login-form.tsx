@@ -26,7 +26,6 @@ export function LoginForm() {
     try {
       await mutation.mutateAsync(values);
       router.replace("/portal");
-      router.refresh();
     } catch (error) {
       setMessage(applyApiErrors(error, form.setError));
     }
