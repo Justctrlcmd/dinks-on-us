@@ -28,4 +28,14 @@ describe("ThemedCalendar", () => {
 
     expect(screen.getByRole("gridcell", { name: "Friday, August 28, 2026" })).toBeDisabled();
   });
+
+  it("can clear an optional selected date", async () => {
+    const user = userEvent.setup();
+    const onClear = vi.fn();
+    render(<ThemedCalendar value="2026-08-25" onChange={vi.fn()} onClear={onClear} />);
+
+    await user.click(screen.getByRole("button", { name: "Clear date" }));
+
+    expect(onClear).toHaveBeenCalledOnce();
+  });
 });

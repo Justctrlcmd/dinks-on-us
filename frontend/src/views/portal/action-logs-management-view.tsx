@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
 import { Pagination } from "@/components/common/pagination";
+import { CalendarDatePicker } from "@/components/common/calendar-date-picker";
 import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,17 +44,21 @@ export function ActionLogsManagementView() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [module, setModule] = useState("ALL");
+  const [date, setDate] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
-  const query = useActionLogs({ page, search: deferredSearch, module: module === "ALL" ? "" : module });
+  const query = useActionLogs({ page, search: deferredSearch, module: module === "ALL" ? "" : module, date });
 
   function updateSearch(value: string) { setSearch(value); setPage(1); }
   function updateModule(value: string) { setModule(value); setPage(1); }
+  function updateDate(value: string) { setDate(value); setPage(1); }
+  function clearDate() { setDate(""); setPage(1); }
 
   return <div className="grid gap-4">
     <PageHeader title="Action Logs" description="Completed staff and management actions, plus account-security events. Customer reservations and device notification changes are excluded." />
-    <Card size="sm"><CardContent className="flex flex-col gap-2 pt-4 sm:flex-row sm:items-center">
+    <Card size="sm"><CardContent className="flex flex-col gap-2 pt-4 sm:flex-row sm:flex-wrap sm:items-center">
       <div className="relative min-w-0 flex-1"><FiSearch aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="Search person, item, or action" aria-label="Search action logs" className="pl-9" /></div>
       <SelectWithLabel id="action-log-module" value={module} onValueChange={(value) => updateModule(value ?? "")} options={moduleOptions} ariaLabel="Filter action logs by area" className="w-full sm:w-56" />
+      <div className="w-full sm:w-56"><label htmlFor="action-log-date" className="sr-only">Filter action logs by date</label><CalendarDatePicker id="action-log-date" value={date || undefined} onChange={updateDate} onClear={date ? clearDate : undefined} placeholder="Filter by date" /></div>
     </CardContent></Card>
     <Card size="sm" className="gap-0 py-0">
       <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[640px] text-left text-sm"><caption className="sr-only">Completed system actions</caption><thead className="border-b bg-muted/45 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-3">When</th><th className="px-4 py-3">Performed by</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">Area</th></tr></thead><tbody className="divide-y">{query.isPending ? <tr><td colSpan={4}><LoadingState message="Loading action logs…" /></td></tr> : query.isError ? <tr><td colSpan={4} className="p-4"><ErrorState title="We couldn't load the action logs." onRetry={() => void query.refetch()} /></td></tr> : query.data.data.length === 0 ? <tr><td colSpan={4}><EmptyState title="No actions match these filters." description="Completed operational and account-security actions will appear here." /></td></tr> : query.data.data.map((log) => <tr key={log.id} className="hover:bg-muted/30"><td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDateTime(log.created_at)}</td><td className="px-4 py-3 font-medium">{log.actor_name}</td><td className="px-4 py-3">{log.action_label}</td><td className="px-4 py-3 text-muted-foreground">{moduleLabels[log.module] ?? log.module}</td></tr>)}</tbody></table></div>

@@ -6,8 +6,8 @@ export const portalNavigation = [
   { title: "Dashboard", href: "/portal", icon: icons.dashboard, module: "DASHBOARD" },
   { title: "Reservations", href: "/portal/reservations", icon: icons.reservations, module: "RESERVATION" },
   { title: "History", href: "/portal/history", icon: icons.history, module: "HISTORY" },
-  { title: "Action Logs", href: "/portal/action-logs", icon: icons.actionLogs, module: "ACTION_LOGS" },
   { title: "Management", href: "/portal/management", icon: icons.management, module: "MANAGEMENT" },
+  { title: "Action Logs", href: "/portal/action-logs", icon: icons.actionLogs, module: "ACTION_LOGS" },
   { title: "Reports", href: "/portal/reports", icon: icons.reports, module: "REPORTS" },
 ] as const;
 

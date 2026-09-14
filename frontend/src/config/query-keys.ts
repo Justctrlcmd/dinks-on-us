@@ -61,7 +61,7 @@ export const paymentProofRetentionKeys = {
 
 export const actionLogKeys = {
   all: ["action-logs"] as const,
-  list: (filters: { page: number; search: string; module: string }) => [...actionLogKeys.all, "list", filters] as const,
+  list: (filters: { page: number; search: string; module: string; date: string }) => [...actionLogKeys.all, "list", filters] as const,
 };
 
 export const teamAccessKeys = {

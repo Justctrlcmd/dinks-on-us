@@ -22,12 +22,13 @@ function calendarDays(month: Date): Date[] {
   return Array.from({ length: 42 }, (_, index) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + index));
 }
 
-export function ThemedCalendar({ value, min, max, disabledDates = [], onChange }: {
+export function ThemedCalendar({ value, min, max, disabledDates = [], onChange, onClear }: {
   value?: string;
   min?: string;
   max?: string;
   disabledDates?: Iterable<string>;
   onChange: (value: string) => void;
+  onClear?: () => void;
 }) {
   const [visibleMonth, setVisibleMonth] = useState(() => monthStart(value || min || todayInTimeZone()));
   const disabled = useMemo(() => new Set(disabledDates), [disabledDates]);
@@ -84,20 +85,23 @@ export function ThemedCalendar({ value, min, max, disabledDates = [], onChange }
           );
         })}
       </div>
-      <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5 text-[0.68rem] font-medium text-muted-foreground">
-        <span className="size-2.5 rounded-sm bg-destructive/20 ring-1 ring-destructive/40" aria-hidden="true" />Closed dates are unavailable
-      </div>
+      {onClear ? <div className="mt-3 flex justify-end border-t border-border pt-2"><Button type="button" variant="ghost" size="sm" onClick={onClear}>Clear date</Button></div> : (
+        <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5 text-[0.68rem] font-medium text-muted-foreground">
+          <span className="size-2.5 rounded-sm bg-destructive/20 ring-1 ring-destructive/40" aria-hidden="true" />Closed dates are unavailable
+        </div>
+      )}
     </div>
   );
 }
 
-export function CalendarDatePicker({ id, value, min, max, disabledDates, onChange, placeholder = "Select a date", iconOnly = false, invalid = false, disabled = false }: {
+export function CalendarDatePicker({ id, value, min, max, disabledDates, onChange, onClear, placeholder = "Select a date", iconOnly = false, invalid = false, disabled = false }: {
   id?: string;
   value?: string;
   min?: string;
   max?: string;
   disabledDates?: Iterable<string>;
   onChange: (value: string) => void;
+  onClear?: () => void;
   placeholder?: string;
   iconOnly?: boolean;
   invalid?: boolean;
@@ -119,7 +123,7 @@ export function CalendarDatePicker({ id, value, min, max, disabledDates, onChang
         align={iconOnly ? "end" : "start"}
         collisionAvoidance={iconOnly ? undefined : { side: "shift", align: "shift", fallbackAxisSide: "none" }}
       >
-        <ThemedCalendar key={value || min || max} value={value} min={min} max={max} disabledDates={disabledDates} onChange={(date) => { onChange(date); setOpen(false); }} />
+        <ThemedCalendar key={value || min || max} value={value} min={min} max={max} disabledDates={disabledDates} onChange={(date) => { onChange(date); setOpen(false); }} onClear={onClear ? () => { onClear(); setOpen(false); } : undefined} />
       </PopoverContent>
     </Popover>
   );

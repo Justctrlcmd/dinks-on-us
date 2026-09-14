@@ -13,6 +13,7 @@ class ListActionLogsRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:180'],
             'module' => ['nullable', Rule::in([...array_keys(config('access.modules')), 'SECURITY', 'ACCOUNT'])],
+            'date' => ['nullable', 'date_format:Y-m-d'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50, 100])],
         ];
