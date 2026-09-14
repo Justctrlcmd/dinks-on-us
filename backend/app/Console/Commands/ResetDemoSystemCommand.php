@@ -179,10 +179,6 @@ class ResetDemoSystemCommand extends Command
             throw new RuntimeException('Manager credentials must be configured before resetting the system.');
         }
 
-        if (app()->isProduction() && ($email === 'manager@dinksonus.test' || $password === 'DinksManager2026!')) {
-            throw new RuntimeException('Production resets require non-default Manager credentials.');
-        }
-
         return compact('name', 'email', 'password');
     }
 

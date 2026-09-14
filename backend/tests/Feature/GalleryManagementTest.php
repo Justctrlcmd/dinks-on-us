@@ -157,6 +157,29 @@ class GalleryManagementTest extends TestCase
             ->assertJsonPath('errors.ids.0', 'The image list changed. Refresh the page and try ordering it again.');
     }
 
+    public function test_an_authorized_user_can_delete_a_gallery_image(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $tab = GalleryTab::query()->create(['name' => 'Interior', 'display_order' => 1]);
+        $image = GalleryImage::query()->create([
+            'gallery_tab_id' => $tab->id,
+            'image_path' => 'gallery/to-delete.webp',
+            'alt_text' => 'Court interior',
+            'display_order' => 1,
+            'uploaded_by_user_id' => $user->id,
+        ]);
+        Storage::disk('public')->put($image->image_path, 'image contents');
+
+        $this->actingAs($user)
+            ->deleteJson("/api/v1/management/gallery/{$image->id}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Gallery image deleted.');
+
+        $this->assertDatabaseMissing('gallery_images', ['id' => $image->id]);
+        Storage::disk('public')->assertMissing($image->image_path);
+    }
+
     public function test_gallery_management_requires_authentication_and_module_access(): void
     {
         $this->getJson('/api/v1/management/gallery-tabs')->assertUnauthorized();

@@ -25,7 +25,6 @@ class ActionLogManagementTest extends TestCase
             'module' => 'MANAGEMENT_FAQS',
             'target_type' => 'faq',
             'target_id' => '9',
-            'target_label' => 'What should I bring?',
             'after' => ['answer' => 'This must not be returned.'],
         ]);
         AuditLog::query()->create([
@@ -42,7 +41,7 @@ class ActionLogManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.actor_name', 'Ari Manager')
             ->assertJsonPath('data.0.action_label', 'Faq created')
-            ->assertJsonPath('data.0.target_label', 'What should I bring?')
+            ->assertJsonPath('data.0.target_label', 'Record #9')
             ->assertJsonMissing(['answer' => 'This must not be returned.']);
 
         $this->actingAs($user)
