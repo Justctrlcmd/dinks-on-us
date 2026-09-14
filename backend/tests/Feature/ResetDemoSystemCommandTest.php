@@ -196,6 +196,29 @@ class ResetDemoSystemCommandTest extends TestCase
         $this->assertSame(1, Role::query()->count());
     }
 
+    public function test_managed_storage_inspection_failure_aborts_before_database_wipe(): void
+    {
+        config()->set('manager.default', [
+            'name' => 'Reset Manager',
+            'email' => 'reset-manager@example.test',
+            'password' => 'ResetManager2026!',
+        ]);
+
+        $role = Role::factory()->create();
+        User::factory()->create(['role_id' => $role->id]);
+
+        $failingAdapter = Mockery::mock(FilesystemAdapter::class);
+        $failingAdapter->shouldReceive('allFiles')->andThrow(new \RuntimeException('Storage unavailable'));
+        Storage::shouldReceive('disk')->andReturn($failingAdapter);
+
+        $this->artisan('system:reset-demo --force')
+            ->expectsOutputToContain('could not inspect managed files')
+            ->assertExitCode(1);
+
+        $this->assertSame(1, User::query()->count());
+        $this->assertSame(1, Role::query()->count());
+    }
+
     public function test_reset_works_on_empty_database(): void
     {
         Storage::fake('local');

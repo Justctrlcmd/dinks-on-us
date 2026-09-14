@@ -80,8 +80,15 @@ class ResetDemoSystemCommand extends Command
 
             return self::FAILURE;
         }
-        $counts = $this->recordCounts();
-        $fileCount = $this->managedFileCount();
+        try {
+            $counts = $this->recordCounts();
+            $fileCount = $this->managedFileCount();
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->error('The reset could not inspect managed files. Verify storage permissions, then retry. No application data was removed.');
+
+            return self::FAILURE;
+        }
 
         $this->warn(sprintf(
             'Resetting %s: %d database records and %d managed files will be permanently removed.',
