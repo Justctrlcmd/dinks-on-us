@@ -62,6 +62,13 @@ export const deactivateTeamMember = (id: number) =>
     csrf: true,
   });
 
+export const deleteTeamMember = ({ id, current_password }: { id: number; current_password: string }) =>
+  authFetch<null>("/api/v1/management/staff/" + id, {
+    method: "DELETE",
+    csrf: true,
+    body: JSON.stringify({ current_password }),
+  });
+
 export const resetTeamMemberPassword = ({ id, input }: { id: number; input: ResetTeamPasswordInput }) =>
   authFetch<null>(`/api/v1/management/staff/${id}/password`, {
     method: "PUT",

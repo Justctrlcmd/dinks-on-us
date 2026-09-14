@@ -27,6 +27,21 @@ const mocks = vi.hoisted(() => {
     toastErrorMock: vi.fn(),
     defaultPaymentMethods,
     paymentMethods: [...defaultPaymentMethods],
+    reservationOptions: {
+      date: "2026-08-13",
+      configuration: {
+        id: 1, opening_hour: 7, closing_hour: 22, included_players_per_court: 4, additional_player_price: 100,
+        weekday_rates: [], weekend_rates: [], created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z",
+      },
+      courts: [{ id: 1, court_number: 1, name: "Court 1", created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" }],
+      slots: [{ start_hour: 7, end_hour: 8, price: 500 }],
+      is_date_closed: false,
+      unavailable_slots: [] as Array<{ court_id: number; start_hour: number }>,
+      reserved_slots: [],
+      past_slots: [],
+      equipment: [{ id: 1, name: "Paddle", price: 100, total_quantity: 10, is_active: true, available_quantity: 10, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" }],
+      equipment_confirmation: "Equipment is checked for your schedule.",
+    },
   };
 });
 
@@ -73,6 +88,16 @@ vi.mock("@/hooks/queries/use-payment-methods", () => ({
   }),
 }));
 
+vi.mock("@/hooks/queries/use-court-pricing", () => ({
+  useReservationOptions: () => ({
+    data: { ...mocks.reservationOptions },
+    isPending: false,
+    isFetching: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
   useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: mocks.submitReservationMock, isPending: false }),
 }));
@@ -82,6 +107,11 @@ beforeEach(() => {
   mocks.submitReservationMock.mockReset();
   mocks.submitReservationMock.mockResolvedValue({ data: { id: 1, reference_number: "RSV-100", status: "PENDING" } });
   mocks.paymentMethods.splice(0, mocks.paymentMethods.length, ...mocks.defaultPaymentMethods);
+  mocks.reservationOptions.slots[0].price = 500;
+  mocks.reservationOptions.equipment[0].price = 100;
+  mocks.reservationOptions.equipment[0].available_quantity = 10;
+  mocks.reservationOptions.configuration.additional_player_price = 100;
+  mocks.reservationOptions.unavailable_slots.splice(0);
   window.sessionStorage.setItem(
     RESERVATION_DRAFT_STORAGE_KEY,
     JSON.stringify({
@@ -211,5 +241,22 @@ describe("ReservationCheckout", () => {
     await user.click(screen.getByRole("button", { name: "Yes, submit reservation" }));
 
     expect(mocks.submitReservationMock).toHaveBeenCalledTimes(1);
+    const submittedInput = mocks.submitReservationMock.mock.calls[0][0].input as FormData;
+    expect(submittedInput.get("quoted_amount")).toBe("700.00");
+    expect(await screen.findByText("If you do not see our email, please check your spam or junk folder.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Message Us on Facebook" })).toHaveAttribute("href", "https://www.facebook.com/dinksonus");
+  });
+
+  it("refreshes configured prices and blocks a selection that became unavailable", () => {
+    mocks.reservationOptions.slots[0].price = 600;
+    const { rerender } = render(<ReservationCheckout />);
+
+    expect(screen.getByText(/Pricing changed after your selection/)).toBeInTheDocument();
+    expect(screen.getByText("₱800", { selector: "dd" })).toBeInTheDocument();
+
+    mocks.reservationOptions.unavailable_slots.push({ court_id: 1, start_hour: 7 });
+    rerender(<ReservationCheckout />);
+    expect(screen.getByText(/no longer available/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit reservation" })).toBeDisabled();
   });
 });

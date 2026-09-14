@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCreatePaymentMethod, useUpdatePaymentMethod } from "@/hooks/mutations/use-payment-method-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PaymentMethod } from "@/types/payment-method";
 import { PAYMENT_QR_ACCEPT, paymentMethodSchema, type PaymentMethodValues } from "@/validation/custom/payment-method-schema";
 
@@ -132,8 +133,8 @@ export function PaymentMethodFormDialog({
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>Cancel</DialogClose>
-          <Button form="payment-method-form" type="submit" disabled={isPending}>
-            {isPending ? "Saving…" : paymentMethod ? "Save changes" : "Add payment method"}
+          <Button form="payment-method-form" type="submit" disabled={isPending || isMutationRateLimited(createMutation, updateMutation)}>
+            {mutationButtonLabel("Saving…", paymentMethod ? "Save changes" : "Add payment method", createMutation, updateMutation)}
           </Button>
         </DialogFooter>
       </DialogContent>

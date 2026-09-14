@@ -13,6 +13,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PaymentMethodQrDialog } from "@/components/common/payment-method-qr-dialog";
 import { useCreateWalkInReservation } from "@/hooks/mutations/use-reservation-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
+import { equipmentForSchedule } from "@/lib/equipment-availability";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { formatDateOnly, todayInTimeZone } from "@/lib/date";
@@ -38,7 +40,7 @@ export function WalkInReservationForm() {
   const router = useRouter();
   const mutation = useCreateWalkInReservation();
   const paymentMethodsQuery = usePublicPaymentMethods();
-  const [ranges, setRanges] = useState<ReservationSlotSelection[]>([{ courtId: "", slot: "" }]);
+  const [ranges, setRanges] = useState<ReservationSlotSelection[]>([{ courtId: "", slots: [] }]);
   const form = useForm<WalkInReservationValues>({
     resolver: zodResolver(walkInReservationSchema),
     defaultValues: {
@@ -60,13 +62,24 @@ export function WalkInReservationForm() {
   const equipment = useWatch({ control: form.control, name: "equipment" });
   const paymentChannel = useWatch({ control: form.control, name: "payment_channel" });
   const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
-  const optionsQuery = useReservationOptions(date);
-  const options = optionsQuery.data;
+  const selectedSlots = useMemo(() => expandReservationRanges(date, ranges), [date, ranges]);
+  const optionsQuery = useReservationOptions(date, selectedSlots.map((slot) => slot.start_hour));
+
   const paymentMethods = paymentMethodsQuery.data ?? [];
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
   const paymentSelection = paymentChannel === "CASH" ? "CASH" : paymentMethodId ? `METHOD:${paymentMethodId}` : null;
   const nonCashPayment = paymentChannel === "EWALLET_BANK" && Boolean(paymentMethodId);
-  const selectedSlots = useMemo(() => expandReservationRanges(date, ranges), [date, ranges]);
+
+  const options = useMemo(() => optionsQuery.data ? {
+    ...optionsQuery.data,
+    equipment: equipmentForSchedule(optionsQuery.data, selectedSlots.map((slot) => slot.start_hour)),
+  } : undefined, [optionsQuery.data, selectedSlots]);
+
+  useEffect(() => {
+    if (!options) return;
+    const corrected = equipment.map((selected) => ({ ...selected, quantity: Math.min(selected.quantity, options.equipment.find((item) => item.id === selected.id)?.available_quantity ?? 0) })).filter((item) => item.quantity > 0);
+    if (JSON.stringify(corrected) !== JSON.stringify(equipment)) form.setValue("equipment", corrected, { shouldValidate: true });
+  }, [equipment, form, options]);
 
   useEffect(() => {
     form.setValue("slots", selectedSlots, { shouldValidate: form.formState.isSubmitted });
@@ -91,10 +104,11 @@ export function WalkInReservationForm() {
   const slotError = typeof form.formState.errors.slots?.message === "string" ? form.formState.errors.slots.message : undefined;
 
   function quantityFor(id: number): number {
-    return equipment.find((item) => item.id === id)?.quantity ?? 0;
+    return Math.min(equipment.find((item) => item.id === id)?.quantity ?? 0, options?.equipment.find((item) => item.id === id)?.available_quantity ?? 0);
   }
 
   function setEquipmentQuantity(id: number, quantity: number) {
+    quantity = Math.max(0, Math.min(quantity, options?.equipment.find((item) => item.id === id)?.available_quantity ?? 0));
     const next = quantity > 0
       ? [...equipment.filter((item) => item.id !== id), { id, quantity }]
       : equipment.filter((item) => item.id !== id);
@@ -102,7 +116,7 @@ export function WalkInReservationForm() {
   }
 
   const submit = form.handleSubmit(async (values) => {
-    if (selectedSlots.length !== ranges.length) {
+    if (selectedSlots.length === 0 || ranges.some((range) => !range.courtId || range.slots.length === 0)) {
       form.setError("slots", { message: "Complete or remove every court and time slot row." });
       return;
     }
@@ -112,7 +126,7 @@ export function WalkInReservationForm() {
         customer_email: values.customer_email.trim().toLowerCase(),
         customer_contact_number: values.customer_contact_number.trim(),
         slots: values.slots,
-        equipment: values.equipment,
+        equipment: selectedEquipment.map((item) => ({ id: item.id, quantity: quantityFor(item.id) })).filter((item) => item.quantity > 0),
         additional_players: values.additional_players,
         payment_channel: values.payment_channel,
         payment_method_id: values.payment_method_id,
@@ -135,8 +149,8 @@ export function WalkInReservationForm() {
           onRemoveRange={(index) => setRanges((current) => current.filter((_, rangeIndex) => rangeIndex !== index))}
           error={slotError}
         />
-        <Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" onClick={() => setRanges((current) => [...current, { courtId: "", slot: "" }])}>
-          <FiPlus aria-hidden="true" /> Add another time slot
+        <Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" onClick={() => setRanges((current) => [...current, { courtId: "", slots: [] }])}>
+          <FiPlus aria-hidden="true" /> Add another court
         </Button>
       </Card>
 
@@ -165,7 +179,7 @@ export function WalkInReservationForm() {
                 const quantity = quantityFor(item.id);
                 return (
                   <div key={item.id} className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0">
-                    <div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · up to {item.available_quantity}</p></div>
+                    <div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · {item.available_quantity === 0 ? "Unavailable for selected schedule" : `${item.available_quantity} available for your selected schedule`}</p></div>
                     <ReservationQuantityStepper
                       value={quantity}
                       decreaseDisabled={quantity === 0}
@@ -249,8 +263,8 @@ export function WalkInReservationForm() {
 
       <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div><p className="font-semibold">Create as verified Walk-in</p><p className="text-sm text-muted-foreground">Selected court times become unavailable online immediately.</p></div>
-        <Button type="submit" disabled={mutation.isPending || optionsQuery.isPending} className="sm:min-w-44">
-          {mutation.isPending ? "Submitting walk-in…" : "Submit walk-in"}
+        <Button type="submit" disabled={mutation.isPending || optionsQuery.isPending || isMutationRateLimited(mutation)} className="sm:min-w-44">
+          {mutationButtonLabel("Submitting walk-in…", "Submit walk-in", mutation)}
         </Button>
       </Card>
     </form>

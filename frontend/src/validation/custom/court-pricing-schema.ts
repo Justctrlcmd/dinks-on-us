@@ -39,6 +39,7 @@ export const rentalEquipmentSchema = z.object({
   name: z.string().trim().min(1, "Enter the equipment name.").max(120),
   price: z.number().min(0, "Enter a price of zero or more."),
   total_quantity: z.number().int().min(1, "Quantity must be at least one.").max(100000),
+  is_active: z.boolean(),
 });
 
 export type CourtConfigurationValues = z.infer<typeof courtConfigurationSchema>;

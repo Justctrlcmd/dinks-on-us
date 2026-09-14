@@ -83,11 +83,21 @@ export type HistoryKpis = { completed: number; cancelled: number; rejected: numb
 export type HistoryListData = { reservations: ManagementReservation[]; kpis: HistoryKpis };
 export type HistoryFilters = { page: number; search: string; status: "" | FinalReservationStatus; source: "" | ReservationSource };
 export type SlotInput = { court_id: number; date: string; start_hour: number };
+export type RescheduleReservationInput = {
+  slots: SlotInput[];
+  add_on_slots?: SlotInput[];
+  additional_players?: number;
+  equipment?: Array<{ id: number; quantity: number }>;
+  payment_channel?: ReservationAddOnPaymentChannel;
+  payment_method_id?: number;
+  payment_reference_number?: string;
+  payment_proof?: File;
+};
 export type ReservationAddOnsInput = {
   slots?: SlotInput[];
   additional_players?: number;
   equipment?: Array<{ id: number; quantity: number }>;
-  payment_channel: ReservationAddOnPaymentChannel;
+  payment_channel?: ReservationAddOnPaymentChannel;
   payment_method_id?: number;
   payment_reference_number?: string;
   payment_proof?: File;

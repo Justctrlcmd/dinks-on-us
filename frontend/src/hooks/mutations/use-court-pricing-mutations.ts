@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
 import { courtPricingKeys } from "@/config/query-keys";
 import {
   createCourt,
@@ -22,25 +23,25 @@ function useRefreshCourtPricing() {
 }
 
 export function useUpdateCourtConfiguration() {
-  return useMutation({ mutationFn: updateCourtConfiguration, onSuccess: useRefreshCourtPricing() });
+  return useRateLimitedMutation("court-configuration", { mutationFn: updateCourtConfiguration, onSuccess: useRefreshCourtPricing() });
 }
 
 export function useCreateCourt() {
-  return useMutation({ mutationFn: createCourt, onSuccess: useRefreshCourtPricing() });
+  return useRateLimitedMutation("court-create", { mutationFn: createCourt, onSuccess: useRefreshCourtPricing() });
 }
 
 export function useDeleteCourt() {
-  return useMutation({ mutationFn: deleteCourt, onSuccess: useRefreshCourtPricing() });
+  return useRateLimitedMutation("court-delete", { mutationFn: deleteCourt, onSuccess: useRefreshCourtPricing() });
 }
 
 export function useCreateRentalEquipment() {
-  return useMutation({ mutationFn: createRentalEquipment, onSuccess: useRefreshCourtPricing() });
+  return useRateLimitedMutation("rental-equipment-create", { mutationFn: createRentalEquipment, onSuccess: useRefreshCourtPricing() });
 }
 
 export function useUpdateRentalEquipment() {
-  return useMutation({ mutationFn: updateRentalEquipment, onSuccess: useRefreshCourtPricing() });
+  return useRateLimitedMutation("rental-equipment-update", { mutationFn: updateRentalEquipment, onSuccess: useRefreshCourtPricing() });
 }
 
 export function useDeleteRentalEquipment() {
-  return useMutation({ mutationFn: deleteRentalEquipment, onSuccess: useRefreshCourtPricing() });
+  return useRateLimitedMutation("rental-equipment-delete", { mutationFn: deleteRentalEquipment, onSuccess: useRefreshCourtPricing() });
 }

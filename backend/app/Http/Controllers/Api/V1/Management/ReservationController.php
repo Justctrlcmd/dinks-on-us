@@ -85,7 +85,7 @@ class ReservationController extends Controller
 
     public function reschedule(RescheduleReservationRequest $request, Reservation $reservation, ReservationService $service, ReservationMailDispatcher $mail): JsonResponse
     {
-        $updated = $service->reschedule($reservation, $request->user(), $request->validated('slots'));
+        $updated = $service->reschedule($reservation, $request->user(), $request->safe()->except('payment_proof'), $request->file('payment_proof'));
         $mail->dispatch($updated, 'rescheduled');
 
         return $this->actionResponse($request, $updated, 'Reservation rescheduled.');

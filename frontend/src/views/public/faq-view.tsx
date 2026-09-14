@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { FiArrowUpRight, FiHelpCircle } from "react-icons/fi";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { PublicSiteFrame } from "@/components/public/public-site-frame";
 import { Button } from "@/components/ui/button";
+import { siteConfig } from "@/config/site";
 import { usePublicFaqs } from "@/hooks/queries/use-faqs";
 
 export function FaqView() {
@@ -61,15 +61,14 @@ export function FaqView() {
                   Still have a question?
                 </h2>
                 <p className="mt-3 leading-7 text-muted-foreground">
-                  Official Messenger contact details will be published by Dinks on
-                  Us for direct questions and cancellation requests.
+                  Questions or concerns? Visit our official Facebook Page for direct help with reservations, payments, and cancellations.
                 </p>
                 <Button
                   nativeButton={false}
                   className="mt-7 h-12 rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90"
-                  render={<Link href="#contact" />}
+                  render={<a href={siteConfig.facebookUrl} target="_blank" rel="noreferrer" />}
                 >
-                  Contact details{" "}
+                  Facebook Page{" "}
                   <span className="ml-1 flex size-7 items-center justify-center rounded-full bg-brand-surface text-white">
                     <FiArrowUpRight className="size-3.5" aria-hidden="true" />
                   </span>

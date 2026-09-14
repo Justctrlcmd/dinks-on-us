@@ -15,6 +15,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { useDeletePaymentProofs } from "@/hooks/mutations/use-payment-proof-retention-mutations";
 import { usePaymentProofCleanupActivity, usePaymentProofCleanupPreview } from "@/hooks/queries/use-payment-proof-retention";
 import { formatDateOnly, formatDateTime, todayInTimeZone } from "@/lib/date";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PaymentProofCleanupActivity, PaymentProofCleanupPreview, PaymentProofCleanupRange } from "@/types/payment-proof-retention";
 
 const statusLabels: Record<string, string> = {
@@ -78,8 +79,14 @@ function ActivityCard({ activity }: { activity: PaymentProofCleanupActivity }) {
       <div className="min-w-0 flex-1">
         <h3 className="font-heading text-sm font-bold leading-5">{headline}</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">Booking dates {formatDateOnly(details.from)} – {formatDateOnly(details.to)}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{formatBytes(details.reclaimed_bytes)} reclaimed</p>
-        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><FiCheckCircle aria-hidden="true" className="size-3 text-emerald-600" /><span className="font-medium text-emerald-700 dark:text-emerald-300">Successful</span> · Deleted {formatDateTime(activity.created_at)} by {activity.actor_name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="whitespace-nowrap">{formatBytes(details.reclaimed_bytes)} reclaimed</span>
+          <span className="inline-flex items-center gap-1 whitespace-nowrap">
+            <FiCheckCircle aria-hidden="true" className="size-3 text-emerald-600" />
+            <span className="font-medium text-emerald-700 dark:text-emerald-300">Successful</span>
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">Deleted {formatDateTime(activity.created_at)} by {activity.actor_name}</p>
       </div>
     </article>
   );
@@ -160,7 +167,7 @@ export function PaymentProofRetentionManagementView() {
                 <PreviewSummary range={previewRange} preview={preview} />
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-primary/15 pt-3">
                   <p className="text-xs text-muted-foreground">Deletion is manual and cannot be undone from the portal.</p>
-                  <Button type="button" variant="destructive" disabled={!canDelete || deleteMutation.isPending} onClick={() => { setPasswordConfirmationOpen(false); setConfirmOpen(true); }}><FiTrash2 aria-hidden="true" />Delete payment proof images</Button>
+                  <Button type="button" variant="destructive" disabled={!canDelete || deleteMutation.isPending || isMutationRateLimited(deleteMutation)} onClick={() => { setPasswordConfirmationOpen(false); setConfirmOpen(true); }}><FiTrash2 aria-hidden="true" />{mutationButtonLabel("Deleting…", "Delete payment proof images", deleteMutation)}</Button>
                 </div>
               </div>
             )
@@ -183,7 +190,7 @@ export function PaymentProofRetentionManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" disabled={deleteMutation.isPending} />}>Keep images</DialogClose>
-            <Button type="button" variant="destructive" disabled={deleteMutation.isPending} onClick={() => setPasswordConfirmationOpen(true)}>Continue</Button>
+            <Button type="button" variant="destructive" disabled={deleteMutation.isPending || isMutationRateLimited(deleteMutation)} onClick={() => setPasswordConfirmationOpen(true)}>{mutationButtonLabel("Deleting…", "Continue", deleteMutation)}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -192,9 +199,10 @@ export function PaymentProofRetentionManagementView() {
         onOpenChange={setPasswordConfirmationOpen}
         title="Confirm permanent deletion"
         description={`Enter your current password to delete ${preview?.proof_count ?? 0} payment proof image${preview?.proof_count === 1 ? "" : "s"}.`}
-        confirmLabel="Delete images"
         destructive
         pending={deleteMutation.isPending}
+        disabled={isMutationRateLimited(deleteMutation)}
+        confirmLabel={mutationButtonLabel("Deleting…", "Delete images", deleteMutation)}
         onConfirm={deleteProofs}
       />
     </div>

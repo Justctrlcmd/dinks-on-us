@@ -128,7 +128,7 @@ The metric must be filtered using the date that matches its business meaning.
 | No-show recognized revenue | `no_show_at` | No-show revenue becomes reportable when no-show is recorded |
 | Reservation activity/submission trend | `submitted_at` or authoritative creation timestamp | Measures when reservations entered the system |
 | Reservation service/demand trend | `booking_date` | Measures when customers intended to use courts |
-| Court utilization | `reservation_slots.reservation_date` / reservation business date | Measures actual court usage by service date |
+| Court utilization | `reservation_slots.date` / reservation business date | Measures actual court usage by service date |
 | Popular times | slot reservation date + start time | Measures demand/usage by day/time |
 | Verification time | `submitted_at` to `verified_at` | Measures operational payment-review delay |
 | Cancellation operations | `cancelled_at` | Measures when cancellations were performed |
@@ -146,7 +146,7 @@ A report must label its time basis when there is a reasonable chance of ambiguit
 
 Measures revenue that the system can treat as final/reportable under current business rules.
 
-A `VERIFIED` reservation is not automatically recognized revenue because it may still be cancelled, become a no-show, receive extensions, or receive additional charges.
+A `VERIFIED` reservation is not automatically recognized revenue because it may still be cancelled, become a no-show, receive court-time add-ons, or receive additional charges.
 
 ---
 
@@ -165,7 +165,7 @@ AND completed_at is inside the selected report range
 Purpose:
 
 - captures the final business amount after valid slot charges and adjustments
-- avoids using the original amount when extensions/add-ons changed the final bill
+- avoids using the original amount when add-ons changed the final bill
 
 If current implementation guarantees completion only after outstanding balance is collected, `final_amount` is the reportable completed amount.
 
@@ -814,20 +814,20 @@ Shows how often a rescheduled booking tends to move again.
 
 ---
 
-# 26. Extension rate
+# 26. Court-time add-on rate
 
 Reservation-level formula:
 
 ```text
-Reservations With Extension
+Reservations With Court-Time Add-On
 =
-COUNT(DISTINCT reservation_id having slot_type = EXTENSION)
+COUNT(DISTINCT reservation_id having slot kind = ADD_ON)
 ```
 
 ```text
-Extension Rate %
+Court-Time Add-On Rate %
 =
-Reservations With Extension
+Reservations With Court-Time Add-On
 /
 Completed Reservations
 × 100
@@ -837,19 +837,20 @@ Purpose:
 
 Measures how often completed reservations purchased additional court time.
 
-If the business allows extensions that later end in a non-completed state, revise the denominator/sample definition explicitly rather than silently mixing states.
+The implemented report may retain an `extension_*` response key for compatibility;
+it represents `ADD_ON` court slots.
 
 ---
 
-# 27. Extension revenue
+# 27. Court-time add-on revenue
 
 Formula:
 
 ```text
-Extension Revenue
+Court-Time Add-On Revenue
 =
 SUM(rate_amount_snapshot)
-for EXTENSION reservation slots
+for ADD_ON reservation slots
 belonging to COMPLETED reservations
 recognized in the selected completed-revenue range
 ```
@@ -875,7 +876,7 @@ recognized in the selected completed-revenue range
 
 Purpose:
 
-Measures base court-booking revenue before extension slots and reservation-wide adjustments.
+Measures base court-booking revenue before court-time add-on slots and reservation-wide adjustments.
 
 ---
 
@@ -901,7 +902,7 @@ MANUAL
 
 Purpose:
 
-Measures completed revenue generated outside original/extension slot charges.
+Measures completed revenue generated outside original and court-time add-on slot charges.
 
 Use the actual implemented adjustment types.
 
@@ -916,7 +917,7 @@ Completed Final Revenue
 ≈
 Original Slot Revenue
 +
-Extension Revenue
+Court-Time Add-On Revenue
 +
 Adjustment Revenue
 ```
@@ -929,7 +930,8 @@ Provides a reconciliation check.
 
 Do not force equality by inventing values.
 
-If the system introduces refund/credit fields, the formula must be updated to reflect them.
+The implemented `refundable_credit` and refund-due records must remain visible
+in the reconciliation; they do not represent automatically transferred money.
 
 ---
 
@@ -940,7 +942,7 @@ For each one-hour start time:
 ```text
 Completed Slot Count at Time
 =
-COUNT(completed reservation slots grouped by start_time)
+COUNT(completed reservation slots grouped by start_hour)
 ```
 
 Purpose:
@@ -958,7 +960,7 @@ For each:
 ```text
 day_of_week
 +
-start_time
+start_hour
 ```
 
 calculate either:
@@ -1056,7 +1058,7 @@ Where:
 ```text
 Completed Slot-Derived Revenue
 =
-Original Slot Revenue + Extension Revenue
+Original Slot Revenue + Court-Time Add-On Revenue
 ```
 
 Purpose:

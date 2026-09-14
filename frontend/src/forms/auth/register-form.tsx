@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { PasswordInput } from "@/components/common/forms/password-input";
 import { useRegister } from "@/hooks/mutations/use-auth-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { registerSchema, type RegisterValues } from "@/validation/custom/auth-schemas";
 
 export function RegisterForm() {
@@ -19,7 +20,7 @@ export function RegisterForm() {
     <InputWithLabel label="Email" type="email" autoComplete="email" required {...form.register("email")} error={form.formState.errors.email?.message} />
     <PasswordInput label="Password" autoComplete="new-password" required {...form.register("password")} error={form.formState.errors.password?.message} />
     <PasswordInput label="Confirm password" autoComplete="new-password" required {...form.register("password_confirmation")} error={form.formState.errors.password_confirmation?.message} />
-    <Button disabled={mutation.isPending} type="submit">{mutation.isPending ? "Creating account..." : "Create account"}</Button>
+    <Button disabled={mutation.isPending || isMutationRateLimited(mutation)} type="submit">{mutationButtonLabel("Creating account…", "Create account", mutation)}</Button>
     <p className="text-center text-sm text-muted-foreground">Already registered? <Link href="/login" className="text-foreground underline-offset-4 hover:underline">Sign in</Link></p>
   </form>;
 }

@@ -6,6 +6,7 @@ import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCreateGalleryTab, useUpdateGalleryTab } from "@/hooks/mutations/use-gallery-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { GalleryTab } from "@/types/gallery";
 import { galleryTabSchema, type GalleryTabValues } from "@/validation/custom/gallery-schema";
 
@@ -58,8 +59,8 @@ export function GalleryTabFormDialog({
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>Cancel</DialogClose>
-          <Button form="gallery-tab-form" type="submit" disabled={isPending}>
-            {isPending ? "Saving…" : tab ? "Save changes" : "Add category"}
+          <Button form="gallery-tab-form" type="submit" disabled={isPending || isMutationRateLimited(createMutation, updateMutation)}>
+            {mutationButtonLabel("Saving…", tab ? "Save changes" : "Add category", createMutation, updateMutation)}
           </Button>
         </DialogFooter>
       </DialogContent>

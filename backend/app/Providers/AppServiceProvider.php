@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -27,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Password::defaults(fn (): Password => Password::min(8));
+
+        Gate::define('manage-own-profile', fn (User $user): bool => $user->role?->is_full_access === true);
 
         RateLimiter::for('login', function (Request $request) {
             $email = Str::transliterate(Str::lower(trim((string) $request->input('email'))));

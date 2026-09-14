@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\Management\AvailabilityClosureController;
+use App\Http\Controllers\Api\V1\Management\ActionLogController;
 use App\Http\Controllers\Api\V1\Management\CourtConfigurationController;
 use App\Http\Controllers\Api\V1\Management\CourtController;
 use App\Http\Controllers\Api\V1\Management\DashboardController;
@@ -67,9 +68,11 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
         Route::post('/logout', LogoutController::class)->name('logout');
         Route::get('/user', CurrentUserController::class)->name('user.show');
 
-        Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
-        Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-        Route::put('/password', [PasswordController::class, 'update'])->name('password.change');
+        Route::middleware('can:manage-own-profile')->group(function (): void {
+            Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+            Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+            Route::put('/password', [PasswordController::class, 'update'])->name('password.change');
+        });
 
         Route::prefix('management')->middleware('throttle:management')->name('management.')->group(function (): void {
             Route::middleware('module:DASHBOARD')->group(function (): void {
@@ -91,7 +94,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
                 Route::post('/reservations/{reservation}/verify', [ManagementReservationController::class, 'verify'])->name('reservations.verify');
                 Route::post('/reservations/{reservation}/reject', [ManagementReservationController::class, 'reject'])->name('reservations.reject');
                 Route::post('/reservations/{reservation}/start', [ManagementReservationController::class, 'start'])->name('reservations.start');
-                Route::post('/reservations/{reservation}/reschedule', [ManagementReservationController::class, 'reschedule'])->name('reservations.reschedule');
+                Route::post('/reservations/{reservation}/reschedule', [ManagementReservationController::class, 'reschedule'])->middleware('throttle:uploads')->name('reservations.reschedule');
                 Route::post('/reservations/{reservation}/add-ons', [ManagementReservationController::class, 'addOns'])->middleware('throttle:uploads')->name('reservations.add-ons');
                 Route::post('/reservations/{reservation}/complete', [ManagementReservationController::class, 'complete'])->middleware('throttle:uploads')->name('reservations.complete');
                 Route::post('/reservations/{reservation}/no-show', [ManagementReservationController::class, 'noShow'])->name('reservations.no-show');
@@ -133,6 +136,10 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
                 Route::get('/preview', [PaymentProofRetentionController::class, 'preview'])->name('preview');
                 Route::post('/delete', [PaymentProofRetentionController::class, 'delete'])->middleware(['throttle:proof-cleanup', 'throttle:destructive'])->name('delete');
                 Route::get('/activity', [PaymentProofRetentionController::class, 'activity'])->name('activity');
+            });
+
+            Route::middleware('module:ACTION_LOGS')->group(function (): void {
+                Route::get('/action-logs', [ActionLogController::class, 'index'])->name('action-logs.index');
             });
 
             Route::middleware('module:MANAGEMENT_AVAILABILITY_CLOSURES')->group(function (): void {
@@ -188,7 +195,9 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
                 Route::apiResource('roles', RoleController::class)
                     ->only(['index', 'store', 'update', 'destroy'])
                     ->middlewareFor(['store', 'update', 'destroy'], 'throttle:destructive');
-                Route::apiResource('staff', StaffController::class)->only(['index', 'store', 'update']);
+                Route::apiResource('staff', StaffController::class)
+                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->middlewareFor('destroy', 'throttle:destructive');
                 Route::post('/staff/{staff}/activate', [StaffController::class, 'activate'])->middleware('throttle:destructive')->name('staff.activate');
                 Route::post('/staff/{staff}/deactivate', [StaffController::class, 'deactivate'])->middleware('throttle:destructive')->name('staff.deactivate');
                 Route::put('/staff/{staff}/password', [StaffController::class, 'resetPassword'])->middleware('throttle:destructive')->name('staff.password.reset');

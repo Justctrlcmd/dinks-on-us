@@ -18,7 +18,7 @@ vi.mock("@/hooks/queries/use-court-pricing", () => ({
       configuration: { additional_player_price: 100 },
       courts: [{ id: 1, name: "Court 1" }],
       slots: [{ start_hour: 9, end_hour: 10, price: 500 }],
-      equipment: [{ id: 5, name: "Paddle", price: 50, total_quantity: 4, available_quantity: 4 }],
+      equipment: [{ id: 5, name: "Paddle", price: 50, total_quantity: 4, is_active: true, available_quantity: 4, slot_availability: [{ date: "2026-08-27", start_hour: 9, end_hour: 10, available_quantity: 4 }] }],
       unavailable_slots: [],
       reserved_slots: [],
       past_slots: [],
@@ -39,8 +39,8 @@ vi.mock("@/hooks/queries/use-payment-methods", () => ({
   }),
 }));
 vi.mock("@/forms/reservations/reservation-form-controls", () => ({
-  expandReservationRanges: (date: string, ranges: Array<{ courtId: string; slot: string }>) => ranges.flatMap((range) => range.courtId && range.slot ? [{ court_id: Number(range.courtId), date, start_hour: Number(range.slot) }] : []),
-  ReservationScheduleFields: ({ setRanges }: { setRanges: (ranges: Array<{ courtId: string; slot: string }>) => void }) => <button type="button" onClick={() => setRanges([{ courtId: "1", slot: "9" }])}>Choose test slot</button>,
+  expandReservationRanges: (date: string, ranges: Array<{ courtId: string; slots: string[] }>) => ranges.flatMap((range) => range.courtId ? range.slots.map((slot) => ({ court_id: Number(range.courtId), date, start_hour: Number(slot) })) : []),
+  ReservationScheduleFields: ({ setRanges }: { setRanges: (ranges: Array<{ courtId: string; slots: string[] }>) => void }) => <button type="button" onClick={() => setRanges([{ courtId: "1", slots: ["9"] }])}>Choose test slot</button>,
   ReservationQuantityStepper: ({ value, onDecrease, onIncrease, decreaseLabel, increaseLabel }: { value: number; onDecrease: () => void; onIncrease: () => void; decreaseLabel: string; increaseLabel: string }) => <div><button type="button" aria-label={decreaseLabel} onClick={onDecrease}>−</button><span>{value}</span><button type="button" aria-label={increaseLabel} onClick={onIncrease}>+</button></div>,
 }));
 

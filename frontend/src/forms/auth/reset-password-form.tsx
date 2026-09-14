@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { PasswordInput } from "@/components/common/forms/password-input";
 import { useResetPassword } from "@/hooks/mutations/use-auth-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { resetPasswordSchema, type ResetPasswordValues } from "@/validation/custom/auth-schemas";
 
 export function ResetPasswordForm() {
@@ -17,6 +18,6 @@ export function ResetPasswordForm() {
     <InputWithLabel label="Email" type="email" required {...form.register("email")} error={form.formState.errors.email?.message} />
     <PasswordInput label="New password" required {...form.register("password")} error={form.formState.errors.password?.message} />
     <PasswordInput label="Confirm password" required {...form.register("password_confirmation")} error={form.formState.errors.password_confirmation?.message} />
-    <Button disabled={mutation.isPending} type="submit">{mutation.isPending ? "Resetting..." : "Reset password"}</Button>
+    <Button disabled={mutation.isPending || isMutationRateLimited(mutation)} type="submit">{mutationButtonLabel("Resetting…", "Reset password", mutation)}</Button>
   </form>;
 }

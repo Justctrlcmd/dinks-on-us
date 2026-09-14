@@ -130,6 +130,7 @@ class CourtPricingManagementTest extends TestCase
             'total_quantity' => 8,
         ])->assertCreated()
             ->assertJsonPath('data.name', 'Training Paddle')
+            ->assertJsonPath('data.is_active', true)
             ->assertJsonPath('data.available_quantity', 8)
             ->json('data');
 
@@ -137,13 +138,55 @@ class CourtPricingManagementTest extends TestCase
             'name' => 'Training Paddle',
             'price' => 150,
             'total_quantity' => 10,
-        ])->assertOk()->assertJsonPath('data.price', 150);
+            'is_active' => false,
+        ])->assertOk()
+            ->assertJsonPath('data.price', 150)
+            ->assertJsonPath('data.is_active', false);
+
+        $this->actingAs($user)->getJson('/api/v1/management/rental-equipment')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.is_active', false);
+
+        $this->actingAs($user)->patchJson("/api/v1/management/rental-equipment/{$equipment['id']}", [
+            'name' => 'Training Paddle',
+            'price' => 150,
+            'total_quantity' => 10,
+            'is_active' => true,
+        ])->assertOk()->assertJsonPath('data.is_active', true);
 
         $this->actingAs($user)->deleteJson("/api/v1/management/rental-equipment/{$equipment['id']}")
             ->assertOk();
 
         $this->actingAs($user)->getJson('/api/v1/management/rental-equipment')
-            ->assertOk()->assertJsonCount(0, 'data');
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.is_active', false);
+    }
+
+    public function test_inactive_equipment_is_visible_to_management_but_hidden_from_reservation_options(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->putJson('/api/v1/management/court-configuration', $this->configurationPayload())->assertOk();
+        $this->actingAs($user)->postJson('/api/v1/management/courts')->assertCreated();
+
+        $equipment = $this->actingAs($user)->postJson('/api/v1/management/rental-equipment', [
+            'name' => 'Inactive Paddle',
+            'price' => 125,
+            'total_quantity' => 8,
+            'is_active' => false,
+        ])->assertCreated()
+            ->assertJsonPath('data.is_active', false)
+            ->json('data');
+
+        $this->actingAs($user)->getJson('/api/v1/management/rental-equipment')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $equipment['id'])
+            ->assertJsonPath('data.0.is_active', false);
+
+        $this->getJson('/api/v1/public/reservation-options?date=2030-09-12')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.equipment');
     }
 
     public function test_public_reservation_options_use_the_applicable_global_rate(): void
@@ -163,7 +206,25 @@ class CourtPricingManagementTest extends TestCase
             ->assertJsonPath('data.slots.0.price', 700)
             ->assertJsonPath('data.slots.16.end_hour', 24)
             ->assertJsonPath('data.equipment.0.available_quantity', 12)
-            ->assertJsonPath('data.equipment_confirmation', 'Equipment availability is confirmed when your reservation is verified.');
+            ->assertJsonPath('data.equipment_confirmation', 'Equipment is held when your reservation is successfully submitted, including while awaiting verification.');
+    }
+
+    public function test_dynamic_pricing_uses_monday_through_thursday_as_weekdays_and_friday_through_sunday_as_weekends(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->putJson('/api/v1/management/court-configuration', $this->configurationPayload())->assertOk();
+        $this->actingAs($user)->postJson('/api/v1/management/courts')->assertCreated();
+
+        foreach ([
+            ['date' => '2030-09-02', 'price' => 500], // Monday
+            ['date' => '2030-09-05', 'price' => 500], // Thursday
+            ['date' => '2030-09-06', 'price' => 700], // Friday
+            ['date' => '2030-09-08', 'price' => 700], // Sunday
+        ] as $case) {
+            $this->getJson("/api/v1/public/reservation-options?date={$case['date']}")
+                ->assertOk()
+                ->assertJsonPath('data.slots.0.price', $case['price']);
+        }
     }
 
     public function test_management_court_pricing_routes_require_authentication(): void

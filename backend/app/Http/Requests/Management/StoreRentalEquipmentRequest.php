@@ -21,6 +21,7 @@ class StoreRentalEquipmentRequest extends FormRequest
             'name' => ['required', 'string', 'max:120'],
             'price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
             'total_quantity' => ['required', 'integer', 'between:1,100000'],
+            'is_active' => ['sometimes', 'boolean'],
         ];
     }
 }

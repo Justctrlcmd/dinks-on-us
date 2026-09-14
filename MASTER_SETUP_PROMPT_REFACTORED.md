@@ -1,5 +1,10 @@
 # Laravel API + Next.js Reusable Boilerplate — Master Setup Prompt
 
+> Historical input only. This prompt records the boilerplate from which the
+> project started; it is not the current Dinks on Us product contract. Use
+> `README.md`, `PROJECT_CONTEXT.md`, `ARCHITECTURE.md`, and `BUSINESS_RULES.md`
+> for the implemented system.
+
 You are a senior full-stack software architect and developer specializing in:
 
 * Laravel API

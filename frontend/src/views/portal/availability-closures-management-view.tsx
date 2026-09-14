@@ -18,6 +18,7 @@ import { useReopenClosure } from "@/hooks/mutations/use-availability-closure-mut
 import { useAvailabilityActivity, useAvailabilityClosures } from "@/hooks/queries/use-availability-closures";
 import { useCourtPricingManagement } from "@/hooks/queries/use-court-pricing";
 import { formatDateOnly, formatDateTime } from "@/lib/date";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { formatHourRange } from "@/lib/time";
 import type { AvailabilityActivity, AvailabilityClosure, ClosurePeriod } from "@/types/availability-closures";
 import { availabilityReopenSchema, type AvailabilityReopenValues } from "@/validation/custom/reservation-management-schema";
@@ -59,10 +60,10 @@ function ScheduleOverview() {
     { icon: FiClock, label: "Operating hours", value: formatHourRange(configuration.opening_hour, configuration.closing_hour) },
     { icon: FiCalendar, label: "Active courts", value: `${courts.length} ${courts.length === 1 ? "court" : "courts"}` },
     { icon: FiActivity, label: "Reservation slots", value: "1 hour each" },
-    { icon: FiLock, label: "Rate coverage", value: "Weekday & weekend" },
+    { icon: FiLock, label: "Rate coverage", value: "Weekday & Weekend" },
   ];
 
-  return <div className="grid gap-2 sm:grid-cols-2">{items.map(({ icon: Icon, label, value }) => <div key={label} className="flex items-center gap-2.5 rounded-lg border border-border bg-background p-2.5"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon aria-hidden="true" className="size-3.5" /></span><div className="min-w-0"><p className="text-[0.68rem] font-bold uppercase tracking-[.1em] text-muted-foreground">{label}</p><p className="truncate font-heading text-sm font-bold">{value}</p></div></div>)}<p className="flex items-center gap-1.5 border-t border-border pt-2.5 text-xs text-muted-foreground sm:col-span-2"><FiClock aria-hidden="true" className="size-3.5" />Updated {formatDateTime(configuration.updated_at)}</p></div>;
+  return <div className="flex flex-1 flex-col gap-2"><div className="grid flex-1 grid-cols-1 auto-rows-fr gap-2">{items.map(({ icon: Icon, label, value }) => <div key={label} className="flex items-center gap-2.5 rounded-lg border border-border bg-background p-2.5"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon aria-hidden="true" className="size-3.5" /></span><div className="min-w-0"><p className="text-[0.68rem] font-bold uppercase tracking-[.1em] text-muted-foreground">{label}</p><p className="truncate font-heading text-sm font-bold">{value}</p></div></div>)}</div><p className="flex shrink-0 items-center gap-1.5 border-t border-border pt-2.5 text-xs text-muted-foreground"><FiClock aria-hidden="true" className="size-3.5" />Updated {formatDateTime(configuration.updated_at)}</p></div>;
 }
 
 function activityTitle(activity: AvailabilityActivity) {
@@ -76,7 +77,7 @@ function activityTitle(activity: AvailabilityActivity) {
 function ActivityCard({ activity }: { activity: AvailabilityActivity }) {
   const reopened = activity.action === "DATE_REOPENED" || activity.action === "COURT_SLOT_REOPENED";
   const Icon = reopened ? FiUnlock : FiLock;
-  return <article className="flex min-h-16 gap-2.5 rounded-lg border border-border bg-background p-2.5"><span className={reopened ? "grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary" : "grid size-8 shrink-0 place-items-center rounded-lg bg-destructive/10 text-destructive"}><Icon aria-hidden="true" className="size-3.5" /></span><div className="min-w-0 flex-1"><h3 className="font-heading text-sm font-bold leading-5">{activityTitle(activity)}</h3><p className="mt-0.5 text-xs text-muted-foreground"><span className="font-medium text-foreground">{reopened ? "Reopening description" : "Internal reason"}:</span> {activity.details.reason}</p><p className="mt-1 text-xs text-muted-foreground">{reopened ? "Reopened" : "Set"} {formatDateTime(activity.created_at)} by {activity.actor_name}</p></div></article>;
+  return <article className="flex min-h-16 gap-2.5 rounded-lg border border-border bg-background p-2.5"><span className={reopened ? "grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary" : "grid size-8 shrink-0 place-items-center rounded-lg bg-destructive/10 text-destructive"}><Icon aria-hidden="true" className="size-3.5" /></span><div className="min-w-0 flex-1"><h3 className="font-heading text-sm font-bold leading-5">{activityTitle(activity)}</h3><p className="mt-0.5 text-xs text-muted-foreground">{activity.details.reason}</p><p className="mt-1 text-xs text-muted-foreground">{formatDateTime(activity.created_at)} by {activity.actor_name}</p></div></article>;
 }
 
 export function AvailabilityClosuresManagementView() {
@@ -118,14 +119,14 @@ export function AvailabilityClosuresManagementView() {
   return (
     <div className="flex flex-col gap-4 xl:min-h-[calc(100svh-4rem)]">
       <PageHeader title="Availability & Closures" description="Close the full operation or selected court times without changing the shared court schedule." />
-      <div className="grid shrink-0 items-start gap-4 xl:grid-cols-2">
-        <Card size="sm">
+      <div className="grid shrink-0 items-start gap-4 xl:items-stretch xl:grid-cols-2">
+        <Card size="sm" className="order-2 xl:order-1">
           <CardHeader><CardTitle>Closed dates &amp; time blocks</CardTitle><CardDescription>Active closures preventing reservations.</CardDescription><CardAction><Button size="sm" onClick={() => setFormOpen(true)} disabled={pricingQuery.isPending || pricingQuery.isError}><FiPlus aria-hidden="true" />Add closure</Button></CardAction></CardHeader>
           <CardContent className="grid gap-2">
             {closuresQuery.isPending ? <LoadingState message="Loading active closures…" /> : closuresQuery.isError ? <ErrorState title="We couldn't load active closures." onRetry={() => void closuresQuery.refetch()} /> : closuresQuery.data.data.length === 0 ? <CompactEmpty title="No active closures." description="Closed dates and court times will appear here." /> : <>{closuresQuery.data.data.map((closure) => <ClosureCard key={closure.id} closure={closure} onReopen={openReopenDialog} />)}{closuresQuery.data.meta.last_page > 1 ? <Pagination page={closurePage} lastPage={closuresQuery.data.meta.last_page} onChange={setClosurePage} /> : null}</>}
           </CardContent>
         </Card>
-        <Card size="sm"><CardHeader><CardTitle>Schedule Overview</CardTitle><CardDescription>Current operating details used for closures.</CardDescription></CardHeader><CardContent><ScheduleOverview /></CardContent></Card>
+        <Card size="sm" className="order-1 xl:order-2"><CardHeader><CardTitle>Schedule Overview</CardTitle><CardDescription>Current operating details used for closures.</CardDescription></CardHeader><CardContent className="flex flex-1 flex-col"><ScheduleOverview /></CardContent></Card>
       </div>
       <section aria-labelledby="availability-activity-title" className="flex min-h-0 flex-1"><Card size="sm" className="h-full w-full"><CardHeader><CardTitle id="availability-activity-title">Activity Log</CardTitle><CardDescription>Recent closures, reopenings, and internal reasons.</CardDescription></CardHeader><CardContent className="flex flex-1 flex-col gap-2">{activityQuery.isPending ? <LoadingState message="Loading availability activity…" /> : activityQuery.isError ? <ErrorState title="We couldn't load the activity log." onRetry={() => void activityQuery.refetch()} /> : activityQuery.data.data.length === 0 ? <div className="flex flex-1 items-center"><CompactEmpty title="No availability activity yet." description="Closures and reopenings will be recorded here." /></div> : <>{activityQuery.data.data.map((activity) => <ActivityCard key={activity.id} activity={activity} />)}{activityQuery.data.meta.last_page > 1 ? <div className="mt-auto pt-1"><Pagination page={activityPage} lastPage={activityQuery.data.meta.last_page} onChange={setActivityPage} /></div> : null}</>}</CardContent></Card></section>
       {formOpen && !pricingQuery.isPending && !pricingQuery.isError ? <AvailabilityClosureFormDialog configuration={pricingQuery.data.configuration} courts={pricingQuery.data.courts} open onOpenChange={setFormOpen} /> : null}
@@ -142,7 +143,7 @@ export function AvailabilityClosuresManagementView() {
           </form>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" disabled={reopenMutation.isPending} />}>Cancel</DialogClose>
-            <Button form="availability-reopen-form" type="submit" disabled={reopenMutation.isPending}>{reopenMutation.isPending ? "Reopening…" : "Reopen closure"}</Button>
+            <Button form="availability-reopen-form" type="submit" disabled={reopenMutation.isPending || isMutationRateLimited(reopenMutation)}>{mutationButtonLabel("Reopening…", "Reopen closure", reopenMutation)}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

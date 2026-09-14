@@ -21,7 +21,7 @@ This specification defines:
 * Payment verification
 * Walk-in handling
 * Rescheduling
-* Extensions and adjustments
+* Rescheduling and add-ons
 * History
 * Dynamic content management
 * Reports and analytics
@@ -29,6 +29,11 @@ This specification defines:
 * Error responses
 * Transaction requirements
 * Concurrency protection
+
+This document describes the implemented `/api/v1` surface. Registered routes in
+`backend/routes/api.php`, FormRequests, resources, and migrations are the
+authority for exact transport and schema details when an example here is
+abbreviated.
 
 ---
 
@@ -43,7 +48,7 @@ All application APIs should use versioned routes.
 Examples:
 
 ```text
-/api/v1/public/availability
+/api/v1/public/reservation-options
 /api/v1/public/reservations
 /api/v1/management/reservations
 ```
@@ -76,7 +81,10 @@ Successful responses should follow a consistent structure.
 {
   "success": true,
   "message": "Reservation retrieved successfully.",
-  "data": {}
+  "code": null,
+  "data": {},
+  "errors": null,
+  "meta": null
 }
 ```
 
@@ -86,7 +94,9 @@ For list endpoints:
 {
   "success": true,
   "message": "Reservations retrieved successfully.",
+  "code": null,
   "data": [],
+  "errors": null,
   "meta": {
     "current_page": 1,
     "per_page": 20,
@@ -106,11 +116,14 @@ Errors should follow a predictable structure.
 {
   "success": false,
   "message": "Unable to process reservation.",
+  "code": "RESERVATION_VALIDATION_FAILED",
+  "data": null,
   "errors": {
     "slots": [
       "One or more selected slots are no longer available."
     ]
-  }
+  },
+  "meta": null
 }
 ```
 
@@ -177,6 +190,11 @@ Staff
 ```
 
 The management authentication implementation should use the project's secure authenticated-session approach.
+
+Public registration and password-recovery routes are disabled. Accounts are
+provisioned through Team & Access. Only the full-access Manager can use
+`/profile` and `/password`; team accounts receive credential changes from an
+authorized Manager.
 
 ---
 
@@ -278,30 +296,10 @@ The endpoint should not expose:
 
 # 11. Public Website Information
 
-## Get Public Site Information
-
-```http
-GET /api/v1/public/site
-```
-
-Provides general public business information required by the landing page.
-
-Possible response:
-
-```json
-{
-  "success": true,
-  "data": {
-    "business_name": "Dinks on Us",
-    "about_us": "...",
-    "operating_hours": {},
-    "contact": {},
-    "social_links": {},
-    "location": {},
-    "hero": {}
-  }
-}
-```
+General landing-page business copy, social links, and location information are
+application content. There is no generic `/public/site` endpoint. Dynamic public
+content uses the focused policy, gallery, FAQ, event, payment-method,
+closed-date, and reservation-options endpoints below.
 
 ---
 
@@ -372,9 +370,21 @@ Draft or archived events must not be publicly accessible.
 GET /api/v1/public/reservation-options?date=2026-08-25
 ```
 
-Returns the shared court configuration, active courts, the selected date's configured one-hour price slots, active rental equipment, and the verified-only equipment confirmation message.
+Returns the shared court configuration, active courts, the selected date's
+configured one-hour price slots, active rental equipment, hourly equipment stock,
+and the current equipment-hold message. Optional repeated `hours[]` query values
+make each equipment item's `available_quantity` the minimum stock across the
+selected hours.
 
-`unavailable_slots` contains every slot that cannot be selected, including elapsed times, operational closures, and active reservation locks. `past_slots` is the elapsed subset and should be presented as `Past`; a one-hour slot becomes past only after its end time in `Asia/Manila` (for example, 7:00–8:00 becomes past at 8:01). `reserved_slots` is the subset occupied by an active reservation lock and should be presented as `Reserved`. Any other unavailable slot should be presented as `Closed`.
+`unavailable_slots` contains every slot that cannot be selected, including
+elapsed times, operational closures, and active reservation locks. `past_slots`
+is the elapsed subset; a one-hour slot becomes past only after its end time in
+`Asia/Manila` (for example, 7:00–8:00 becomes past at 8:01).
+`reserved_slots` identifies active reservation locks and the remaining
+unavailable values are operational closures. The staff schedule multi-select
+keeps each option label to the time range without appending `Reserved` or
+`Closed`; those choices remain disabled. Other interfaces may show a written
+state where needed, and all disabled states retain an accessible description.
 
 Example:
 
@@ -394,8 +404,14 @@ Example:
     "unavailable_slots": [{ "court_id": 1, "start_hour": 7 }],
     "reserved_slots": [{ "court_id": 1, "start_hour": 7 }],
     "past_slots": [],
-    "equipment": [{ "id": 1, "name": "Paddle", "price": 100, "available_quantity": 12 }],
-    "equipment_confirmation": "Equipment availability is confirmed when your reservation is verified."
+    "equipment": [{
+      "id": 1,
+      "name": "Paddle",
+      "price": 100,
+      "available_quantity": 12,
+      "slot_availability": [{ "start_hour": 7, "end_hour": 8, "available_quantity": 12 }]
+    }],
+    "equipment_confirmation": "Equipment is held when your reservation is successfully submitted, including while awaiting verification."
   }
 }
 ```
@@ -407,6 +423,11 @@ Example:
 The frontend may display pricing information, but the frontend must not be trusted to calculate the authoritative reservation amount.
 
 The backend calculates the final reservation price.
+
+The client sends its latest displayed total as `quoted_amount`. Inside the
+creation transaction, the backend recalculates court, player, and equipment
+charges. A mismatch returns `409 Conflict` and creates no reservation, payment,
+slot lock, equipment allocation, history, or audit row.
 
 ---
 
@@ -442,54 +463,15 @@ Sensitive internal payment information must not be exposed.
 
 # 19. Public Availability
 
-## Get Available Slots
+Availability is part of the implemented reservation-options response:
 
 ```http
-GET /api/v1/public/availability
+GET /api/v1/public/reservation-options?date=2026-08-15&hours[]=9&hours[]=10
 ```
 
-Suggested query parameters:
-
-```text
-date
-court_id
-```
-
-Example:
-
-```http
-GET /api/v1/public/availability?date=2026-08-15
-```
-
-Possible response:
-
-```json
-{
-  "success": true,
-  "data": {
-    "date": "2026-08-15",
-    "courts": [
-      {
-        "court_id": 1,
-        "court_name": "Court 1",
-        "slots": [
-          {
-            "start_time": "09:00",
-            "end_time": "10:00",
-            "available": true,
-            "price": 500
-          },
-          {
-            "start_time": "10:00",
-            "end_time": "11:00",
-            "available": false
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+There is no separate `/public/availability` route. The response combines the
+day's courts, price slots, closed/reserved/past sets, and time-based equipment
+stock so one refresh uses one consistent snapshot.
 
 ---
 
@@ -570,24 +552,27 @@ Conceptual payload:
     {
       "court_id": 1,
       "date": "2026-08-15",
-      "start_time": "09:00"
+      "start_hour": 9
     },
     {
       "court_id": 2,
       "date": "2026-08-15",
-      "start_time": "11:00"
+      "start_hour": 11
     },
     {
       "court_id": 1,
       "date": "2026-08-15",
-      "start_time": "15:00"
+      "start_hour": 15
     }
   ],
 
+  "additional_players": 1,
+  "equipment": [{ "id": 3, "quantity": 2 }],
+  "quoted_amount": 1800,
   "payment_method_id": 1,
   "payment_reference_number": "1234567890",
-
-  "receipt": "<file>"
+  "payment_proof": "<file>",
+  "policy_acknowledged": true
 }
 ```
 
@@ -642,7 +627,7 @@ Every slot must contain:
 ```text
 court_id
 date
-start_time
+start_hour
 ```
 
 Each slot must:
@@ -664,10 +649,16 @@ Must contain:
 ```text
 payment_method_id
 payment_reference_number
-receipt
+payment_proof
+quoted_amount
+policy_acknowledged
 ```
 
 Payment method must currently be active.
+
+`quoted_amount` is a concurrency guard, not pricing authority. When it differs
+from the backend's live calculation, the API returns `409 Conflict` and the
+frontend refreshes reservation options before the customer submits again.
 
 ---
 
@@ -861,12 +852,14 @@ registration is safe to repeat.
 
 # 32. Management Authentication APIs
 
-Suggested routes:
+Implemented routes:
 
 ```http
-POST /api/v1/management/auth/login
-GET  /api/v1/management/auth/me
-POST /api/v1/management/auth/logout
+POST /api/v1/login
+GET  /api/v1/user
+POST /api/v1/logout
+GET  /api/v1/email/verify/{id}/{hash}
+POST /api/v1/email/verification-notification
 ```
 
 ---
@@ -874,7 +867,7 @@ POST /api/v1/management/auth/logout
 # 33. Login
 
 ```http
-POST /api/v1/management/auth/login
+POST /api/v1/login
 ```
 
 Payload:
@@ -913,7 +906,7 @@ Example:
 # 34. Current Authenticated User
 
 ```http
-GET /api/v1/management/auth/me
+GET /api/v1/user
 ```
 
 Used by the frontend to determine:
@@ -1033,7 +1026,7 @@ Returns complete operational information including:
 * Payment information
 * Receipt
 * Adjustments
-* Extension slots
+* Court-time add-on slots
 * Final amount
 * Status history
 * Schedule history
@@ -1276,15 +1269,23 @@ The management action itself must validate all target slots.
     {
       "court_id": 2,
       "date": "2026-08-17",
-      "start_time": "14:00"
+      "start_hour": 14
     },
     {
       "court_id": 3,
       "date": "2026-08-17",
-      "start_time": "16:00"
+      "start_hour": 16
     }
   ],
-  "reason": "Customer requested schedule change."
+  "add_on_slots": [
+    { "court_id": 1, "date": "2026-08-17", "start_hour": 18 }
+  ],
+  "additional_players": 1,
+  "equipment": [{ "id": 3, "quantity": 1 }],
+  "payment_channel": "EWALLET_BANK",
+  "payment_method_id": 1,
+  "payment_reference_number": "RESCHEDULE-001",
+  "payment_proof": "<required image when an online balance is due>"
 }
 ```
 
@@ -1305,8 +1306,12 @@ BEGIN
 6. Release previous availability
 7. Create schedule history
 8. Create audit log
-9. Require the replacement slot count to equal the current one-hour slot count
-10. Create an additional balance for a positive price difference or refundable credit for a negative difference
+9. Require the replacement base-slot count to equal the original base-slot count
+10. Move existing `ADD_ON` slots to the new date at their same court/start hour
+11. Revalidate and reprice replacement, migrated, and new add-on slots
+12. Recalculate equipment for the complete new schedule
+13. Apply existing refundable credit to the amount due
+14. Record a verified Cash or online payment for any remaining balance
 
 COMMIT
 ```
@@ -1319,14 +1324,20 @@ ROLLBACK
 
 The existing reservation schedule remains unchanged.
 
-After a successful commit, the reschedule email is sent when reservation emails are configured and enabled. It contains the reservation reference, newly active court/date/time prices, additional players, rental items, and amount paid. Previous schedule data is retained internally in history but is not presented as the active schedule in this email.
+After a successful commit, the reschedule email is sent when reservation emails
+are configured and enabled. It contains the reservation reference, newly active
+court/date/time prices, additional players, rental items, amount paid, and any
+remaining refundable credit. Additional payment is described as already
+collected because the action cannot succeed with an unpaid positive balance.
+Previous schedule data remains in internal history and is not presented as the
+active schedule in this email.
 
 ---
 
-# 48. Extend Reservation
+# 48. Add Reservation Add-Ons
 
 ```http
-POST /api/v1/management/reservations/{reservation}/extend
+POST /api/v1/management/reservations/{reservation}/add-ons
 ```
 
 Requires:
@@ -1335,69 +1346,56 @@ Requires:
 RESERVATION
 ```
 
-Only Staff/Manager can perform this action.
-
-Players cannot call a public extension endpoint.
+Authorized Staff or the Manager can perform this action for a `VERIFIED` or
+`ONGOING` reservation. Players cannot call a public add-on endpoint.
 
 ---
 
-# 49. Extension Payload
-
-Because reservations may contain multiple courts, the extension should identify which court receives the new slot.
+# 49. Add-On Payload
 
 ```json
 {
-  "court_id": 1,
-  "date": "2026-08-15",
-  "start_time": "16:00"
+  "slots": [{ "court_id": 1, "date": "2026-08-15", "start_hour": 16 }],
+  "additional_players": 1,
+  "equipment": [{ "id": 1, "quantity": 1 }],
+  "payment_channel": "EWALLET_BANK",
+  "payment_method_id": 1,
+  "payment_reference_number": "ADDON-001",
+  "payment_proof": "<required image for online payment>"
 }
 ```
 
-The backend determines:
-
-```text
-end_time
-applicable rate
-extension charge
-```
+At least one court time, player, or equipment item is required. Court times must
+use the reservation's current booking date.
 
 ---
 
-# 50. Extension Transaction
+# 50. Add-On Transaction
 
 ```text
 BEGIN
 
-1. Validate reservation is active
-2. Validate requested slot
-3. Lock slot
-4. Determine applicable current rate
-5. Create reservation_slot
-   type = EXTENSION
-6. Store rate snapshot
-7. Recalculate reservation totals
-8. Create audit log
+1. Validate the reservation is Verified or Ongoing
+2. Validate and lock every requested court slot and equipment item
+3. Price all items from the current configuration
+4. Create `ADD_ON` slots, equipment items, and adjustments
+5. Recalculate the final amount and refundable credit
+6. Apply existing credit to all unpaid amounts first
+7. Require Cash or an active e-wallet/bank method only when a balance remains
+8. Require transaction number and proof for e-wallet/bank payment
+9. Create one verified `ADD_ON` payment for the amount due
+10. Create an audit log
 
 COMMIT
 ```
 
 ---
 
-# 51. Reservation Adjustments
+# 51. Add-On Settlement
 
-## Add Adjustment
-
-```http
-POST /api/v1/management/reservations/{reservation}/adjustments
-```
-
-Requires:
-
-```text
-RESERVATION
-```
-
-Normal add-ons are accepted only while the reservation status is `ONGOING`. Supported operational add-ons are additional court times on the same booking date, additional players, and active rental equipment. The manager records payment for the add-ons in the same request.
+Supported operational add-ons are additional court times on the same booking
+date, additional players, and active rental equipment. The manager records any
+required payment in the same request.
 
 Payload example:
 
@@ -1413,7 +1411,14 @@ Payload example:
 }
 ```
 
-The request is multipart when a receipt is uploaded. The backend prices every item, records one verified `ADD_ON` payment for the amount due (including any prior outstanding balance after the adjustment), and updates `amount_paid`. Supported payment modes are `CASH` and `EWALLET_BANK`. Cash omits `payment_method_id` and may omit the transaction reference and receipt. Non-cash payments must use an active method returned by `GET /api/v1/public/payment-methods` and require both the transaction reference and receipt; the selected method ID and name snapshot are stored for reporting.
+The request is multipart when a proof is uploaded. The backend prices every
+item, applies existing refundable credit to the add-on and any prior outstanding
+balance, records one verified `ADD_ON` payment for the remainder, and updates
+`amount_paid`. Supported payment modes are `CASH` and `EWALLET_BANK`. Cash omits
+`payment_method_id`, transaction reference, and proof. Non-cash payments must use
+an active method returned by `GET /api/v1/public/payment-methods` and require both
+the transaction reference and proof; the method ID and name snapshot are stored
+for reporting. When credit covers the full amount, all payment fields are omitted.
 
 ---
 
@@ -1433,17 +1438,11 @@ total_amount
 
 ---
 
-# 53. Remove Adjustment
+# 53. Adjustment Immutability
 
-Before reservation completion, authorized management may remove an adjustment when appropriate.
-
-```http
-DELETE /api/v1/management/reservations/{reservation}/adjustments/{adjustment}
-```
-
-The action should be audited.
-
-Final History records must not permit normal adjustment mutation.
+There is no generic adjustment create, update, or delete route. Adjustments are
+created only as part of an atomic reschedule or add-on action and remain attached
+to the reservation's audit and reporting history.
 
 ---
 
@@ -1669,7 +1668,7 @@ Requires:
 MANAGEMENT
 ```
 
-Suggested routes:
+Implemented routes:
 
 ```http
 GET    /api/v1/management/courts
@@ -1686,6 +1685,8 @@ DELETE /api/v1/management/rental-equipment/{rentalEquipment}
 ```
 
 Court names are generated from permanent sequential numbers. `POST /courts` reactivates the lowest-numbered inactive court before creating a new sequential court record. The court list identifies the next number and whether the next action is a reactivation. The shared configuration applies to all courts. Delete operations deactivate records so historical references remain meaningful.
+
+Rental equipment responses include `is_active`. The management list includes both active and inactive equipment, with active items first, so staff can restore an item without creating a duplicate. `PATCH` accepts `is_active`; `DELETE` is a soft deactivation. Only active equipment is returned by public reservation options and accepted by online, walk-in, reschedule, and add-on reservation transactions.
 
 ---
 
@@ -1710,6 +1711,10 @@ Example payload:
 ```
 
 Backend must enforce whole-hour boundaries and complete, consecutive coverage from opening through closing for both weekday and weekend periods.
+
+`weekday_rates` apply Monday through Thursday. `weekend_rates` apply Friday
+through Sunday. Both reservation-option previews and final transaction pricing
+must use this same mapping.
 
 ---
 
@@ -1976,26 +1981,11 @@ Each FAQ is a public question-and-answer card. The display-order endpoint persis
 
 ---
 
-# 71. Website Settings Management
+# 71. General Website Settings
 
-```http
-GET   /api/v1/management/site-settings
-PATCH /api/v1/management/site-settings
-```
-
-May control approved configuration such as:
-
-* About Us
-* Operating hours
-* Contact details
-* Address
-* Social links
-* Facebook/Messenger URL
-* Hero information
-
-The API should only accept predefined supported settings.
-
-It must not become an arbitrary key/value code-execution mechanism.
+A generic management site-settings API is not implemented. Current dynamic
+public content is served through the focused FAQ, event, gallery, policy,
+payment-method, and reservation endpoints.
 
 ---
 
@@ -2003,13 +1993,13 @@ It must not become an arbitrary key/value code-execution mechanism.
 
 Manager-only administrative area.
 
-Suggested routes:
+Implemented routes:
 
 ```http
 GET    /api/v1/management/roles
 POST   /api/v1/management/roles
-GET    /api/v1/management/roles/{role}
 PATCH  /api/v1/management/roles/{role}
+DELETE /api/v1/management/roles/{role}
 ```
 
 Payload:
@@ -2042,13 +2032,16 @@ System Manager privileges should not be accidentally removable through normal ro
 
 Manager-only.
 
-Suggested routes:
+Implemented routes:
 
 ```http
 GET    /api/v1/management/staff
 POST   /api/v1/management/staff
-GET    /api/v1/management/staff/{staff}
 PATCH  /api/v1/management/staff/{staff}
+DELETE /api/v1/management/staff/{staff}
+POST   /api/v1/management/staff/{staff}/activate
+POST   /api/v1/management/staff/{staff}/deactivate
+PUT    /api/v1/management/staff/{staff}/password
 ```
 
 ---
@@ -2070,7 +2063,7 @@ Each Staff account must have exactly one role.
 
 ---
 
-# 76. Staff Deactivation
+# 76. Staff Deactivation and Soft Deletion
 
 Instead of deleting Staff with historical actions:
 
@@ -2086,24 +2079,40 @@ POST /api/v1/management/staff/{staff}/activate
 
 Historical audit records must continue referencing the Staff account.
 
+Deleting a Staff account uses the same management route pattern:
+
+```http
+DELETE /api/v1/management/staff/{staff}
+```
+
+The request requires the acting Manager's `current_password`. This is a soft
+delete: the account is marked inactive, signed out, excluded from Staff lists,
+and cannot log in, while reservations, audit logs, and other historical rows
+remain intact. The deleted Staff identity remains available to audit-log
+relations for historical actor display. A Manager cannot delete their own
+account or a protected account.
+
 ---
 
-# 77. Settings
+# 77. Profile and Credentials
 
 Authenticated Manager personal settings:
 
 ```http
-GET   /api/v1/management/settings/profile
-PATCH /api/v1/management/settings/profile
+GET   /api/v1/profile
+PATCH /api/v1/profile
 ```
 
 Credential update:
 
 ```http
-PATCH /api/v1/management/settings/password
+PUT /api/v1/password
 ```
 
-Password changes should require the current password unless another secure recovery flow applies.
+Profile and self-service password routes require the `manage-own-profile`
+ability and are available only to the full-access Manager. Password changes
+require the current password. Team accounts cannot call these endpoints; the
+Manager controls their identity and password through Team & Access.
 
 ---
 
@@ -2252,7 +2261,7 @@ payment-method breakdown for reservations in the selected scope.
 GET /api/v1/management/reports/operations
 ```
 
-Provides rejection concerns, reschedules, extensions, closure hours,
+Provides rejection concerns, reschedules, court-time add-ons, closure hours,
 operational availability, and finalized outcome counts.
 
 ---
@@ -2479,7 +2488,7 @@ Walk-in creation
 Reservation verification
 Reservation rejection
 Reservation rescheduling
-Reservation extension
+Reservation add-ons
 Reservation completion
 Reservation cancellation
 ```
@@ -2498,7 +2507,7 @@ Examples:
 RESERVATION_VERIFIED
 RESERVATION_REJECTED
 RESERVATION_RESCHEDULED
-RESERVATION_EXTENDED
+RESERVATION_ADD_ON_ADDED
 RESERVATION_COMPLETED
 RESERVATION_CANCELLED
 RESERVATION_NO_SHOW
@@ -2508,7 +2517,8 @@ ROLE_UPDATED
 
 STAFF_CREATED
 STAFF_UPDATED
-STAFF_DISABLED
+STAFF_DEACTIVATED
+STAFF_DELETED
 
 RATE_UPDATED
 PAYMENT_METHOD_UPDATED
@@ -2523,14 +2533,13 @@ COURT_SLOT_BLOCKED
 
 Emails should be triggered after successful state transitions.
 
-Current events:
+Current customer email events:
 
 ```text
-RESERVATION_SUBMITTED
 RESERVATION_VERIFIED
 RESERVATION_REJECTED
 RESERVATION_RESCHEDULED
-RESERVATION_CANCELLED
+WALK_IN_VERIFIED
 ```
 
 API success should represent successful business-state persistence.
@@ -2563,6 +2572,9 @@ Reservation local times:
 ```
 
 Court schedule times should preserve the Dinks on Us local business time.
+
+Date-only validation and report day boundaries use `BUSINESS_TIMEZONE`, which
+defaults to `Asia/Manila`. Today remains selectable; only past dates are rejected.
 
 ---
 
@@ -2648,7 +2660,7 @@ Important state changes should use explicit action endpoints:
 /verify
 /reject
 /reschedule
-/extend
+/add-ons
 /complete
 /no-show
 /cancel
@@ -2687,13 +2699,11 @@ The backend performs the valid transition and all required side effects.
 ```text
 GET  /api/v1/health
 
-GET  /api/v1/public/site
-GET  /api/v1/public/courts
-GET  /api/v1/public/rates
 GET  /api/v1/public/payment-methods
-GET  /api/v1/public/availability
+GET  /api/v1/public/closed-dates
+GET  /api/v1/public/reservation-options?date=YYYY-MM-DD&hours[]=HOUR
 
-GET  /api/v1/public/rules
+GET  /api/v1/public/policies
 GET  /api/v1/public/gallery
 GET  /api/v1/public/faqs
 
@@ -2708,9 +2718,15 @@ POST /api/v1/public/reservations
 ## Authentication
 
 ```text
-POST /api/v1/management/auth/login
-GET  /api/v1/management/auth/me
-POST /api/v1/management/auth/logout
+POST /api/v1/login
+GET  /api/v1/user
+POST /api/v1/logout
+GET  /api/v1/email/verify/{id}/{hash}
+POST /api/v1/email/verification-notification
+
+GET   /api/v1/profile
+PATCH /api/v1/profile
+PUT   /api/v1/password
 ```
 
 ---
@@ -2719,7 +2735,8 @@ POST /api/v1/management/auth/logout
 
 ```text
 GET /api/v1/management/dashboard
-GET /api/v1/management/dashboard/availability
+GET /api/v1/management/dashboard/reservations/{reservation}
+GET /api/v1/management/dashboard-payments/{payment}/proof
 ```
 
 ---
@@ -2738,14 +2755,13 @@ POST /api/v1/management/reservations/walk-in
 
 POST /api/v1/management/reservations/{reservation}/verify
 POST /api/v1/management/reservations/{reservation}/reject
+POST /api/v1/management/reservations/{reservation}/start
 POST /api/v1/management/reservations/{reservation}/reschedule
-POST /api/v1/management/reservations/{reservation}/extend
+POST /api/v1/management/reservations/{reservation}/add-ons
 POST /api/v1/management/reservations/{reservation}/complete
 POST /api/v1/management/reservations/{reservation}/no-show
 POST /api/v1/management/reservations/{reservation}/cancel
-
-POST   /api/v1/management/reservations/{reservation}/adjustments
-DELETE /api/v1/management/reservations/{reservation}/adjustments/{adjustment}
+GET  /api/v1/management/reservation-payments/{payment}/proof
 ```
 
 ---
@@ -2755,6 +2771,7 @@ DELETE /api/v1/management/reservations/{reservation}/adjustments/{adjustment}
 ```text
 GET /api/v1/management/history
 GET /api/v1/management/history/{reservation}
+GET /api/v1/management/history-payments/{payment}/proof
 ```
 
 ---
@@ -2762,19 +2779,43 @@ GET /api/v1/management/history/{reservation}
 ## Management
 
 ```text
-Courts & Pricing
-  - Courts, rates, player limits, operating hours, rental equipment
-Availability & Closures
-  - Closed dates and availability blocks
-Payment Methods
-Team & Access
-  - Roles and Staff accounts
-Reservation Policies
-Events
-Gallery
-FAQs
-Storage & Data Retention
-  - Manual finalized payment-proof preview, deletion, and activity
+GET/PUT      /api/v1/management/court-configuration
+GET/POST     /api/v1/management/courts
+DELETE       /api/v1/management/courts/{court}
+GET/POST     /api/v1/management/rental-equipment
+PUT/PATCH    /api/v1/management/rental-equipment/{rentalEquipment}
+DELETE       /api/v1/management/rental-equipment/{rentalEquipment}
+
+GET/POST     /api/v1/management/payment-methods
+PUT/PATCH    /api/v1/management/payment-methods/{paymentMethod}
+DELETE       /api/v1/management/payment-methods/{paymentMethod}
+
+GET          /api/v1/management/availability-closures
+POST         /api/v1/management/closed-dates
+DELETE       /api/v1/management/closed-dates/{closedDate}
+POST         /api/v1/management/availability-blocks
+DELETE       /api/v1/management/availability-blocks/{block}
+GET          /api/v1/management/availability-activity
+
+GET/POST     /api/v1/management/roles
+PUT/PATCH    /api/v1/management/roles/{role}
+DELETE       /api/v1/management/roles/{role}
+GET/POST     /api/v1/management/staff
+PUT/PATCH    /api/v1/management/staff/{staff}
+POST         /api/v1/management/staff/{staff}/activate
+POST         /api/v1/management/staff/{staff}/deactivate
+DELETE       /api/v1/management/staff/{staff}
+PUT          /api/v1/management/staff/{staff}/password
+
+CRUD         /api/v1/management/faqs
+CRUD         /api/v1/management/events
+CRUD         /api/v1/management/gallery-tabs
+CRUD         /api/v1/management/gallery
+GET/mutations for policy sections, subheaders, rules, and their order
+
+GET          /api/v1/management/payment-proof-retention/preview
+POST         /api/v1/management/payment-proof-retention/delete
+GET          /api/v1/management/payment-proof-retention/activity
 ```
 
 ---
@@ -2822,9 +2863,9 @@ The following API rules must always remain true:
 
 12. Rescheduling is atomic.
 
-13. Extensions can only use currently available slots.
+13. Court-time add-ons can only use currently available slots on the reservation date.
 
-14. Only management users may extend reservations.
+14. Add-ons are limited to Verified and Ongoing reservations.
 
 15. Manager currently has exclusive cancellation authority.
 
@@ -2837,6 +2878,14 @@ The following API rules must always remain true:
 19. Important management actions are auditable.
 
 20. Existing historical transaction values must survive future configuration changes.
+
+21. Weekday pricing means Monday through Thursday; weekend pricing means Friday through Sunday.
+
+22. A stale public `quoted_amount` fails with 409 before any records are written.
+
+23. Pending, Verified, and Ongoing reservations consume time-based equipment stock.
+
+24. Team accounts cannot access Profile or self-service credential changes.
 ```
 
 ---
@@ -2858,8 +2907,7 @@ Potential future API changes may depend on:
 Potential future validation depends on:
 
 * Rescheduling deadline
-* Number of allowed reschedules
-* Fees
+* Any business fee beyond the settled schedule price difference
 
 ### No-Show
 
@@ -2874,12 +2922,6 @@ If add-ons become a managed catalog, APIs may later include:
 ```text
 /api/v1/management/add-ons
 ```
-
-### Walk-In Payment
-
-Walk-in request payload may expand after client payment requirements are confirmed.
-
----
 
 # 105. Document Status
 

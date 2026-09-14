@@ -114,13 +114,14 @@ class PaymentProofRetentionService
         $summary['result'] = $summary['failed_files'] > 0 ? 'PARTIAL' : 'COMPLETED';
 
         if ($summary['proofs_deleted'] > 0) {
-            AuditLog::query()->create([
-                'actor_id' => $user->id,
-                'action' => AuditLog::PAYMENT_PROOFS_DELETED,
-                'target_type' => ReservationPayment::class,
-                'target_id' => null,
-                'after' => $summary,
-            ]);
+            app(SecurityAuditService::class)->recordFromContext(
+                AuditLog::PAYMENT_PROOFS_DELETED,
+                $user,
+                ReservationPayment::class,
+                $summary,
+                'MANAGEMENT_STORAGE_RETENTION',
+                'Payment proof cleanup',
+            );
         }
 
         return $summary;

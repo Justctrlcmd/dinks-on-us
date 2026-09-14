@@ -56,8 +56,11 @@ export const updateRentalEquipment = ({ id, input }: { id: number; input: Rental
 export const deleteRentalEquipment = (id: number) =>
   authFetch<null>(`/api/v1/management/rental-equipment/${id}`, { method: "DELETE", csrf: true });
 
-export const getReservationOptions = (date: string, signal?: AbortSignal) =>
-  publicFetch<ReservationOptions>(`/api/v1/public/reservation-options?date=${encodeURIComponent(date)}`, { signal });
+export const getReservationOptions = (date: string, signal?: AbortSignal, hours: number[] = []) => {
+  const query = new URLSearchParams({ date });
+  hours.forEach((hour) => query.append("hours[]", String(hour)));
+  return publicFetch<ReservationOptions>(`/api/v1/public/reservation-options?${query}`, { signal });
+};
 
 export const getReservationClosedDates = (signal?: AbortSignal) =>
   publicFetch<ReservationClosedDates>("/api/v1/public/closed-dates", { signal });

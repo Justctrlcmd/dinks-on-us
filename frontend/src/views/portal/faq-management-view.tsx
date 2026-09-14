@@ -35,6 +35,7 @@ import {
 import { FaqFormDialog } from "@/forms/faq/faq-form-dialog";
 import { useDeleteFaq, useUpdateFaqOrder } from "@/hooks/mutations/use-faq-mutations";
 import { useManagementFaqs } from "@/hooks/queries/use-faqs";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { cn } from "@/lib/utils";
 import type { Faq } from "@/types/faq";
 
@@ -88,7 +89,7 @@ export function FaqManagementView() {
   const moveByKeyboard = (faq: Faq, direction: -1 | 1) => {
     const index = orderedFaqs.findIndex(({ id }) => id === faq.id);
     const target = orderedFaqs[index + direction];
-    if (!target || orderMutation.isPending) return;
+    if (!target || orderMutation.isPending || isMutationRateLimited(orderMutation)) return;
     void persistOrder(moveFaq(orderedFaqs, faq.id, target.id));
   };
 
@@ -143,7 +144,7 @@ export function FaqManagementView() {
               <Card
                 key={faq.id}
                 role="listitem"
-                draggable={!orderMutation.isPending}
+                draggable={!orderMutation.isPending && !isMutationRateLimited(orderMutation)}
                 aria-label={`FAQ ${index + 1}: ${faq.question}. Drag this card to reorder it.`}
                 className={cn(
                   "relative cursor-grab gap-0 overflow-visible py-0 transition-[border-color,box-shadow,opacity] active:cursor-grabbing",
@@ -205,11 +206,11 @@ export function FaqManagementView() {
                         <FiEdit2 aria-hidden="true" />
                         Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem disabled={index === 0 || orderMutation.isPending} onClick={() => moveByKeyboard(faq, -1)}>
+                      <DropdownMenuItem disabled={index === 0 || orderMutation.isPending || isMutationRateLimited(orderMutation)} onClick={() => moveByKeyboard(faq, -1)}>
                         <FiArrowUp aria-hidden="true" />
                         Move up
                       </DropdownMenuItem>
-                      <DropdownMenuItem disabled={index === orderedFaqs.length - 1 || orderMutation.isPending} onClick={() => moveByKeyboard(faq, 1)}>
+                      <DropdownMenuItem disabled={index === orderedFaqs.length - 1 || orderMutation.isPending || isMutationRateLimited(orderMutation)} onClick={() => moveByKeyboard(faq, 1)}>
                         <FiArrowDown aria-hidden="true" />
                         Move down
                       </DropdownMenuItem>
@@ -240,8 +241,8 @@ export function FaqManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={deleteMutation.isPending} />}>Cancel</DialogClose>
-            <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => void confirmDelete()}>
-              {deleteMutation.isPending ? "Deleting…" : "Delete FAQ"}
+            <Button variant="destructive" disabled={deleteMutation.isPending || isMutationRateLimited(deleteMutation)} onClick={() => void confirmDelete()}>
+              {mutationButtonLabel("Deleting…", "Delete FAQ", deleteMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>

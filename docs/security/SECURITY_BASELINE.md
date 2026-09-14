@@ -17,9 +17,9 @@ release gate, not a claim that the system is invulnerable.
   must not be stored in `localStorage`.
 - Login rotates the session identifier. Logout invalidates the session and
   rotates the CSRF token.
-- Password changes, staff password resets, staff deactivation, and role changes
+- Password changes, staff password resets, staff deactivation, staff soft deletion, and role changes
   invalidate affected database sessions.
-- Role create/update/delete, staff password reset, and manual proof deletion
+- Role create/update/delete, staff password reset, staff soft deletion, and manual proof deletion
   require the acting user's current password.
 - Login successes/failures and privileged account/access changes write safe
   audit records. Failed-login records use an HMAC fingerprint, not the email.
@@ -40,6 +40,10 @@ release gate, not a claim that the system is invulnerable.
   reservation submission, uploads, reports, private proof reads, and destructive
   operations. Identity limits complement IP limits where NAT or proxy sharing is
   expected.
+- Throttled API responses preserve their server-provided `Retry-After` duration.
+  State-changing portal and public CTAs use that duration to disable only the
+  action that was throttled and show its countdown. This client feedback never
+  replaces server-side enforcement.
 
 ## Browser and output safety
 

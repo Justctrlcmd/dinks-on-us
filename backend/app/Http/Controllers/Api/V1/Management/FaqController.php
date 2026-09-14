@@ -8,8 +8,10 @@ use App\Http\Requests\Management\UpdateFaqOrderRequest;
 use App\Http\Requests\Management\UpdateFaqRequest;
 use App\Http\Resources\FaqResource;
 use App\Models\Faq;
+use App\Services\SecurityAuditService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -27,7 +29,7 @@ class FaqController extends Controller
         );
     }
 
-    public function store(StoreFaqRequest $request): JsonResponse
+    public function store(StoreFaqRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $faq = DB::transaction(function () use ($request): Faq {
             $nextOrder = ((int) Faq::query()->max('display_order')) + 1;
@@ -38,6 +40,7 @@ class FaqController extends Controller
                 'is_active' => true,
             ]);
         });
+        $audit->record('FAQ_CREATED', $request, $request->user(), $faq, module: 'MANAGEMENT_FAQS', targetLabel: $faq->question);
 
         return $this->respondSuccess(
             FaqResource::make($faq)->resolve($request),
@@ -46,9 +49,10 @@ class FaqController extends Controller
         );
     }
 
-    public function update(UpdateFaqRequest $request, Faq $faq): JsonResponse
+    public function update(UpdateFaqRequest $request, Faq $faq, SecurityAuditService $audit): JsonResponse
     {
         $faq->update($request->validated());
+        $audit->record('FAQ_UPDATED', $request, $request->user(), $faq, module: 'MANAGEMENT_FAQS', targetLabel: $faq->question);
 
         return $this->respondSuccess(
             FaqResource::make($faq->fresh())->resolve($request),
@@ -56,8 +60,9 @@ class FaqController extends Controller
         );
     }
 
-    public function destroy(Faq $faq): JsonResponse
+    public function destroy(Request $request, Faq $faq, SecurityAuditService $audit): JsonResponse
     {
+        $label = $faq->question;
         DB::transaction(function () use ($faq): void {
             $faq->delete();
 
@@ -65,11 +70,12 @@ class FaqController extends Controller
                 fn (Faq $remainingFaq, int $index) => $remainingFaq->update(['display_order' => $index + 1]),
             );
         });
+        $audit->record('FAQ_DELETED', $request, $request->user(), $faq, module: 'MANAGEMENT_FAQS', targetLabel: $label);
 
         return $this->respondSuccess(null, 'FAQ deleted.');
     }
 
-    public function updateDisplayOrder(UpdateFaqOrderRequest $request): JsonResponse
+    public function updateDisplayOrder(UpdateFaqOrderRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $faqs = DB::transaction(function () use ($request) {
             $ids = array_map('intval', $request->validated('ids'));
@@ -91,6 +97,7 @@ class FaqController extends Controller
 
             return Faq::query()->inDisplayOrder()->get();
         });
+        $audit->record('FAQ_ORDER_UPDATED', $request, $request->user(), Faq::class, module: 'MANAGEMENT_FAQS', targetLabel: 'FAQ display order');
 
         return $this->respondSuccess(
             FaqResource::collection($faqs)->resolve($request),

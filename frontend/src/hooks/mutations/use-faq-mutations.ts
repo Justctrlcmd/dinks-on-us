@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
 import { faqKeys } from "@/config/query-keys";
 import { createFaq, deleteFaq, updateFaq, updateFaqOrder } from "@/services/faq/faq-service";
 
@@ -17,23 +18,23 @@ function useRefreshFaqs() {
 
 export function useCreateFaq() {
   const refresh = useRefreshFaqs();
-  return useMutation({ mutationFn: createFaq, onSuccess: refresh });
+  return useRateLimitedMutation("faq-create", { mutationFn: createFaq, onSuccess: refresh });
 }
 
 export function useUpdateFaq() {
   const refresh = useRefreshFaqs();
-  return useMutation({ mutationFn: updateFaq, onSuccess: refresh });
+  return useRateLimitedMutation("faq-update", { mutationFn: updateFaq, onSuccess: refresh });
 }
 
 export function useDeleteFaq() {
   const refresh = useRefreshFaqs();
-  return useMutation({ mutationFn: deleteFaq, onSuccess: refresh });
+  return useRateLimitedMutation("faq-delete", { mutationFn: deleteFaq, onSuccess: refresh });
 }
 
 export function useUpdateFaqOrder() {
   const client = useQueryClient();
 
-  return useMutation({
+  return useRateLimitedMutation("faq-order", {
     mutationFn: updateFaqOrder,
     onSuccess: (response) => {
       client.setQueryData(faqKeys.management(), response.data);

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\BusinessClock;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreClosedDateRequest extends FormRequest
@@ -18,7 +19,7 @@ class StoreClosedDateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'date' => ['required', 'date_format:Y-m-d', BusinessClock::todayOrLaterRule()],
             'reason' => ['required', 'string', 'max:1000'],
         ];
     }

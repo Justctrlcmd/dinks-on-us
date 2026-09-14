@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useCreateAccess, useUpdateAccess } from "@/hooks/mutations/use-team-access-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { AccessModule } from "@/types/api";
 import type { AccessModuleOption, AccessProfile } from "@/types/team-access";
 import { accessSchema, type AccessValues } from "@/validation/custom/team-access-schema";
@@ -128,7 +129,7 @@ export function AccessFormDialog({ access, modules, open, onOpenChange }: {
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={pending} />}>Cancel</DialogClose>
-          <Button form="access-form" type="submit" disabled={pending}>{pending ? "Saving…" : access ? "Save changes" : "Add Access"}</Button>
+          <Button form="access-form" type="submit" disabled={pending || isMutationRateLimited(createMutation, updateMutation)}>{mutationButtonLabel("Saving…", access ? "Save changes" : "Add Access", createMutation, updateMutation)}</Button>
         </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -137,8 +138,9 @@ export function AccessFormDialog({ access, modules, open, onOpenChange }: {
         onOpenChange={(next) => { setConfirmationOpen(next); if (!next) setPendingValues(null); }}
         title={`Confirm ${access ? "Access changes" : "new Access"}`}
         description={`Enter your current password to ${access ? "save these module-access changes" : "create this Access profile"}.`}
-        confirmLabel={access ? "Save changes" : "Add Access"}
+        confirmLabel={mutationButtonLabel("Saving…", access ? "Save changes" : "Add Access", createMutation, updateMutation)}
         pending={pending}
+        disabled={isMutationRateLimited(createMutation, updateMutation)}
         onConfirm={confirm}
       />
     </>

@@ -6,6 +6,7 @@ export const portalNavigation = [
   { title: "Dashboard", href: "/portal", icon: icons.dashboard, module: "DASHBOARD" },
   { title: "Reservations", href: "/portal/reservations", icon: icons.reservations, module: "RESERVATION" },
   { title: "History", href: "/portal/history", icon: icons.history, module: "HISTORY" },
+  { title: "Action Logs", href: "/portal/action-logs", icon: icons.actionLogs, module: "ACTION_LOGS" },
   { title: "Management", href: "/portal/management", icon: icons.management, module: "MANAGEMENT" },
   { title: "Reports", href: "/portal/reports", icon: icons.reports, module: "REPORTS" },
 ] as const;
@@ -19,6 +20,10 @@ export function canAccessPortalModule(user: User, module: PortalModule) {
 
 export function getPortalNavigation(user: User) {
   return portalNavigation.filter((item) => canAccessPortalModule(user, item.module));
+}
+
+export function canManageOwnProfile(user: User) {
+  return user.role?.is_full_access === true;
 }
 
 export function getRequiredPortalModule(pathname: string): PortalModule | null {

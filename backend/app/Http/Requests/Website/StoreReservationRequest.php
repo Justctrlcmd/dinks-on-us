@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Website;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\BusinessClock;
 use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -31,12 +32,13 @@ class StoreReservationRequest extends FormRequest
             'idempotency_key' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._~-]+$/'],
             'slots' => ['required', 'array', 'min:1', 'max:48'],
             'slots.*.court_id' => ['required', 'integer', 'exists:courts,id'],
-            'slots.*.date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'slots.*.date' => ['required', 'date_format:Y-m-d', BusinessClock::todayOrLaterRule()],
             'slots.*.start_hour' => ['required', 'integer', 'between:0,23'],
             'equipment' => ['sometimes', 'array', 'max:30'],
-            'equipment.*.id' => ['required', 'integer', 'exists:rental_equipment,id'],
-            'equipment.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
+            'equipment.*.id' => ['required', 'integer', 'distinct', 'exists:rental_equipment,id'],
+            'equipment.*.quantity' => ['required', 'integer', 'min:0', 'max:1000'],
             'additional_players' => ['required', 'integer', 'min:0', 'max:1000'],
+            'quoted_amount' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
             'payment_method_id' => ['required', 'integer', 'exists:payment_methods,id'],
             'payment_reference_number' => ['required', 'string', 'max:180'],
             'payment_proof' => ImageUploadRules::required(),

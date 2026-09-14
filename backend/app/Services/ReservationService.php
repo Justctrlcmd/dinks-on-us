@@ -11,9 +11,9 @@ use App\Models\PaymentMethod;
 use App\Models\PolicySection;
 use App\Models\RentalEquipment;
 use App\Models\Reservation;
-use App\Models\ReservationEquipmentItem;
 use App\Models\ReservationSlotLock;
 use App\Models\User;
+use App\Support\BusinessClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -29,7 +29,10 @@ class ReservationService
 {
     private const DETAIL_RELATIONS = ['currentSlots.court', 'payments', 'equipmentItems', 'adjustments', 'scheduleHistories', 'refunds'];
 
-    public function __construct(private readonly PaymentProofStorageService $proofStorage) {}
+    public function __construct(
+        private readonly PaymentProofStorageService $proofStorage,
+        private readonly EquipmentAvailabilityService $equipmentAvailability,
+    ) {}
 
     /** @param array<string, mixed> $input */
     public function submit(array $input, UploadedFile $proof, ?string $idempotencyKey = null): Reservation
@@ -66,11 +69,14 @@ class ReservationService
                     throw ValidationException::withMessages(['payment_method_id' => ['Choose an active payment method.']]);
                 }
 
-                $equipment = $this->validateEquipment($input['equipment'] ?? [], false);
+                $equipment = $this->validateEquipment($input['equipment'] ?? []);
                 $courtAmount = collect($pricedSlots)->sum('unit_amount');
                 $playerAmount = (int) $input['additional_players'] * (float) $configuration->additional_player_price;
                 $equipmentAmount = $equipment->sum(fn (array $item): float => $item['quantity'] * $item['unit_amount']);
                 $originalAmount = round($courtAmount + $playerAmount + $equipmentAmount, 2);
+                if (abs($originalAmount - round((float) $input['quoted_amount'], 2)) > 0.001) {
+                    throw new ReservationConflictException('Reservation pricing changed while you were checking out. Review the updated total before paying and submitting again.');
+                }
 
                 $reservation = Reservation::query()->create([
                     'idempotency_key' => $idempotencyKey,
@@ -91,6 +97,8 @@ class ReservationService
                 foreach ($equipment as $item) {
                     $reservation->equipmentItems()->create([...$item, 'kind' => 'ORIGINAL', 'is_active' => true]);
                 }
+
+                $this->equipmentAvailability->assertReservationAvailable($reservation);
 
                 $reservation->payments()->create([
                     'payment_method_id' => $paymentMethod->id, 'payment_method_name' => $paymentMethod->name,
@@ -143,7 +151,7 @@ class ReservationService
 
                 $pricedSlots = $this->validateAndPriceSlots($slots, $configuration, $courts);
                 $this->assertNoClosureOrLock($pricedSlots);
-                $equipment = $this->validateEquipment($input['equipment'] ?? [], false);
+                $equipment = $this->validateEquipment($input['equipment'] ?? []);
                 $courtAmount = collect($pricedSlots)->sum('unit_amount');
                 $playerAmount = (int) $input['additional_players'] * (float) $configuration->additional_player_price;
                 $equipmentAmount = $equipment->sum(fn (array $item): float => $item['quantity'] * $item['unit_amount']);
@@ -200,7 +208,7 @@ class ReservationService
                         'added_by_user_id' => $user->id,
                     ]);
                 }
-                $this->assertEquipmentAvailable($reservation);
+                $this->equipmentAvailability->assertReservationAvailable($reservation);
 
                 $reservation->payments()->create([
                     'payment_method_id' => $paymentMethod?->id,
@@ -358,7 +366,7 @@ class ReservationService
         return DB::transaction(function () use ($reservation, $user): Reservation {
             $reservation = $this->lockReservation($reservation);
             $this->requireStatus($reservation, Reservation::STATUS_PENDING, 'Only pending reservations can be verified.');
-            $this->assertEquipmentAvailable($reservation);
+            $this->equipmentAvailability->assertReservationAvailable($reservation);
             $payment = $reservation->payments()->where('kind', 'INITIAL')->lockForUpdate()->firstOrFail();
             $payment->update(['status' => 'VERIFIED', 'verified_by_user_id' => $user->id, 'verified_at' => now()]);
             $reservation->update(['status' => Reservation::STATUS_VERIFIED, 'verified_by_user_id' => $user->id, 'verified_at' => now(), 'amount_paid' => $payment->amount]);
@@ -397,61 +405,146 @@ class ReservationService
         });
     }
 
-    /** @param list<array{court_id: int, date: string, start_hour: int}> $inputSlots */
-    public function reschedule(Reservation $reservation, User $user, array $inputSlots): Reservation
+    /** @param array<string, mixed> $input */
+    public function reschedule(Reservation $reservation, User $user, array $input, ?UploadedFile $proof = null): Reservation
     {
         $this->requireManager($user);
+        $proofPath = null;
 
-        return DB::transaction(function () use ($reservation, $user, $inputSlots): Reservation {
-            $reservation = $this->lockReservation($reservation);
-            $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be rescheduled.');
-            $oldSlots = $reservation->currentSlots()->with('court')->orderBy('date')->orderBy('court_id')->orderBy('start_hour')->lockForUpdate()->get();
-            if ($oldSlots->count() !== count($inputSlots)) {
-                throw ValidationException::withMessages(['slots' => ["Choose exactly {$oldSlots->count()} one-hour replacement slots."]]);
-            }
+        try {
+            return DB::transaction(function () use ($reservation, $user, $input, $proof, &$proofPath): Reservation {
+                $reservation = $this->lockReservation($reservation);
+                $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be rescheduled.');
+                $inputSlots = $input['slots'];
+                $inputAddOnSlots = $input['add_on_slots'] ?? [];
+                $oldCurrentSlots = $reservation->currentSlots()->with('court')->orderBy('date')->orderBy('court_id')->orderBy('start_hour')->lockForUpdate()->get();
+                $oldBaseSlots = $oldCurrentSlots->where('kind', '!=', 'ADD_ON')->values();
+                $oldAddOnSlots = $oldCurrentSlots->where('kind', 'ADD_ON')->values();
+                if ($oldBaseSlots->count() !== count($inputSlots)) {
+                    throw ValidationException::withMessages(['slots' => ["Choose exactly {$oldBaseSlots->count()} one-hour replacement slots."]]);
+                }
 
-            $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
-            if (! $configuration) {
-                throw ValidationException::withMessages(['slots' => ['Court pricing has not been configured.']]);
-            }
-            $courtIds = collect($inputSlots)->pluck('court_id')->unique()->sort()->values();
-            $courts = Court::query()->active()->whereIn('id', $courtIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-            if ($courts->count() !== $courtIds->count()) {
-                throw ValidationException::withMessages(['slots' => ['One or more selected courts are unavailable.']]);
-            }
-            $pricedSlots = $this->validateAndPriceSlots($inputSlots, $configuration, $courts);
-            $this->assertNoClosureOrLock($pricedSlots, $reservation->id);
+                $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
+                if (! $configuration) {
+                    throw ValidationException::withMessages(['slots' => ['Court pricing has not been configured.']]);
+                }
+                $newDate = (string) $inputSlots[0]['date'];
+                $migratedAddOnInputs = $oldAddOnSlots->map(fn ($slot): array => [
+                    'court_id' => $slot->court_id,
+                    'date' => $newDate,
+                    'start_hour' => $slot->start_hour,
+                ])->all();
+                $allInputSlots = array_merge($inputSlots, $migratedAddOnInputs, $inputAddOnSlots);
+                $courtIds = collect($allInputSlots)->pluck('court_id')->unique()->sort()->values();
+                $courts = Court::query()->active()->whereIn('id', $courtIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+                if ($courts->count() !== $courtIds->count()) {
+                    throw ValidationException::withMessages(['slots' => ['One or more selected courts are unavailable.']]);
+                }
+                $pricedSlots = $this->validateAndPriceSlots($inputSlots, $configuration, $courts);
+                $pricedMigratedAddOnSlots = $this->validateAndPriceSlots($migratedAddOnInputs, $configuration, $courts);
+                $pricedAddOnSlots = $this->validateAndPriceSlots($inputAddOnSlots, $configuration, $courts);
+                $newDate = $pricedSlots[0]['date'];
+                if (collect($pricedAddOnSlots)->contains(fn (array $slot): bool => $slot['date'] !== $newDate)) {
+                    throw ValidationException::withMessages(['add_on_slots' => ['Added court times must use the replacement date.']]);
+                }
 
-            $oldSnapshot = $this->slotSnapshot($oldSlots);
-            $oldAmount = (float) $oldSlots->sum('unit_amount');
-            $newAmount = (float) collect($pricedSlots)->sum('unit_amount');
-            $difference = round($newAmount - $oldAmount, 2);
+                $newKeys = collect($allInputSlots)->map(fn (array $slot): string => "{$slot['court_id']}-{$slot['date']}-{$slot['start_hour']}");
+                if ($newKeys->unique()->count() !== $newKeys->count()) {
+                    throw new ReservationConflictException('The replacement schedule overlaps an existing or newly selected add-on court time. Choose another time.');
+                }
+                $this->assertNoClosureOrLock([...$pricedSlots, ...$pricedMigratedAddOnSlots, ...$pricedAddOnSlots], $reservation->id);
 
-            $this->releaseLocks($reservation);
-            $oldSlots->each->update(['is_current' => false]);
-            foreach ($pricedSlots as $slotData) {
-                $slot = $reservation->slots()->create([...$slotData, 'kind' => 'RESCHEDULED', 'is_current' => true, 'added_by_user_id' => $user->id]);
-                ReservationSlotLock::query()->create(['reservation_slot_id' => $slot->id, 'court_id' => $slot->court_id, 'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour]);
-            }
-            if ($difference !== 0.0) {
-                $reservation->adjustments()->create([
-                    'type' => $difference > 0 ? 'RESCHEDULE_BALANCE' : 'RESCHEDULE_CREDIT',
-                    'description' => $difference > 0 ? 'Reschedule price difference' : 'Refundable reschedule credit',
-                    'quantity' => 1, 'unit_amount' => $difference, 'total_amount' => $difference, 'created_by_user_id' => $user->id,
+                $oldSnapshot = $this->slotSnapshot($oldCurrentSlots);
+                $oldAmount = (float) $oldCurrentSlots->sum('unit_amount');
+                $newAmount = (float) collect([...$pricedSlots, ...$pricedMigratedAddOnSlots])->sum('unit_amount');
+                $difference = round($newAmount - $oldAmount, 2);
+                $addOnAmount = (float) collect($pricedAddOnSlots)->sum('unit_amount');
+
+                $this->releaseLocksForSlots($oldCurrentSlots);
+                $oldCurrentSlots->each->update(['is_current' => false]);
+                foreach ($pricedSlots as $slotData) {
+                    $slot = $reservation->slots()->create([...$slotData, 'kind' => 'RESCHEDULED', 'is_current' => true, 'added_by_user_id' => $user->id]);
+                    ReservationSlotLock::query()->create(['reservation_slot_id' => $slot->id, 'court_id' => $slot->court_id, 'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour]);
+                }
+                foreach ($pricedMigratedAddOnSlots as $slotData) {
+                    $slot = $reservation->slots()->create([...$slotData, 'kind' => 'ADD_ON', 'is_current' => true, 'added_by_user_id' => $user->id]);
+                    ReservationSlotLock::query()->create(['reservation_slot_id' => $slot->id, 'court_id' => $slot->court_id, 'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour]);
+                }
+                foreach ($pricedAddOnSlots as $slotData) {
+                    $slot = $reservation->slots()->create([...$slotData, 'kind' => 'ADD_ON', 'is_current' => true, 'added_by_user_id' => $user->id]);
+                    ReservationSlotLock::query()->create(['reservation_slot_id' => $slot->id, 'court_id' => $slot->court_id, 'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour]);
+                    $reservation->adjustments()->create(['type' => 'COURT_ADD_ON', 'description' => "Additional Court {$courts[$slot->court_id]->court_number} time", 'quantity' => 1, 'unit_amount' => $slot->unit_amount, 'total_amount' => $slot->unit_amount, 'metadata' => ['slot_id' => $slot->id], 'created_by_user_id' => $user->id]);
+                }
+
+                if ($difference !== 0.0) {
+                    $reservation->adjustments()->create([
+                        'type' => $difference > 0 ? 'RESCHEDULE_BALANCE' : 'RESCHEDULE_CREDIT',
+                        'description' => $difference > 0 ? 'Reschedule price difference' : 'Refundable reschedule credit',
+                        'quantity' => 1, 'unit_amount' => $difference, 'total_amount' => $difference, 'created_by_user_id' => $user->id,
+                    ]);
+                }
+
+                $additionalPlayers = (int) ($input['additional_players'] ?? 0);
+                if ($additionalPlayers > 0) {
+                    $total = round($additionalPlayers * (float) $configuration->additional_player_price, 2);
+                    $addOnAmount += $total;
+                    $reservation->adjustments()->create(['type' => 'ADDITIONAL_PLAYER', 'description' => 'Additional player', 'quantity' => $additionalPlayers, 'unit_amount' => $configuration->additional_player_price, 'total_amount' => $total, 'created_by_user_id' => $user->id]);
+                }
+
+                $equipment = $this->validateEquipment($input['equipment'] ?? []);
+                foreach ($equipment as $item) {
+                    $equipmentItem = $reservation->equipmentItems()->create([...$item, 'kind' => 'ADD_ON', 'is_active' => true, 'added_by_user_id' => $user->id]);
+                    $total = round($item['quantity'] * $item['unit_amount'], 2);
+                    $addOnAmount += $total;
+                    $reservation->adjustments()->create(['type' => 'EQUIPMENT', 'description' => $item['name'], 'quantity' => $item['quantity'], 'unit_amount' => $item['unit_amount'], 'total_amount' => $total, 'metadata' => ['equipment_item_id' => $equipmentItem->id], 'created_by_user_id' => $user->id]);
+                }
+
+                $this->equipmentAvailability->assertReservationAvailable($reservation);
+                $reservation->scheduleHistories()->create([
+                    'old_booking_date' => $reservation->booking_date, 'new_booking_date' => $newDate,
+                    'old_slots' => $oldSnapshot, 'new_slots' => collect([...$pricedSlots, ...$pricedMigratedAddOnSlots, ...$pricedAddOnSlots])->map(fn (array $slot): array => $this->slotArray($slot))->all(),
+                    'old_slot_amount' => $oldAmount, 'new_slot_amount' => $newAmount, 'difference_amount' => $difference, 'performed_by_user_id' => $user->id,
                 ]);
-            }
-            $newDate = $pricedSlots[0]['date'];
-            $reservation->scheduleHistories()->create([
-                'old_booking_date' => $reservation->booking_date, 'new_booking_date' => $newDate,
-                'old_slots' => $oldSnapshot, 'new_slots' => collect($pricedSlots)->map(fn (array $slot): array => $this->slotArray($slot))->all(),
-                'old_slot_amount' => $oldAmount, 'new_slot_amount' => $newAmount, 'difference_amount' => $difference, 'performed_by_user_id' => $user->id,
-            ]);
-            $reservation->update(['booking_date' => $newDate, 'is_rescheduled' => true, 'reschedule_count' => $reservation->reschedule_count + 1]);
-            $this->recalculate($reservation);
-            $this->audit($user, AuditLog::RESERVATION_RESCHEDULED, $reservation, ['difference_amount' => $difference, 'reschedule_count' => $reservation->reschedule_count]);
+                $reservation->update(['booking_date' => $newDate, 'is_rescheduled' => true, 'reschedule_count' => $reservation->reschedule_count + 1]);
+                $this->recalculate($reservation);
 
-            return $reservation->fresh(self::DETAIL_RELATIONS);
-        });
+                $amountDue = max(0, round((float) $reservation->final_amount - (float) $reservation->amount_paid, 2));
+                $paymentAmount = 0.0;
+                if ($amountDue > 0) {
+                    $channel = $input['payment_channel'] ?? null;
+                    if (! $channel) {
+                        throw ValidationException::withMessages(['payment_channel' => ['Choose how the outstanding balance was collected.']]);
+                    }
+                    $paymentMethod = null;
+                    if ($channel === 'EWALLET_BANK') {
+                        $paymentMethod = PaymentMethod::query()->active()->lockForUpdate()->find($input['payment_method_id'] ?? null);
+                        if (! $paymentMethod) {
+                            throw ValidationException::withMessages(['payment_method_id' => ['Choose an active e-wallet or bank payment method.']]);
+                        }
+                    }
+                    $proofPath = $proof ? $this->proofStorage->store($proof) : null;
+                    $reservation->payments()->create([
+                        'payment_method_id' => $paymentMethod?->id,
+                        'payment_method_name' => $paymentMethod?->name ?? 'Cash',
+                        'channel' => $channel, 'kind' => 'RESCHEDULE', 'status' => 'VERIFIED', 'amount' => $amountDue,
+                        'reference_number' => $input['payment_reference_number'] ?? null, 'proof_path' => $proofPath,
+                        'recorded_by_user_id' => $user->id, 'verified_by_user_id' => $user->id, 'verified_at' => now(),
+                    ]);
+                    $reservation->update(['amount_paid' => round((float) $reservation->amount_paid + $amountDue, 2)]);
+                    $paymentAmount = $amountDue;
+                    $this->recalculate($reservation);
+                }
+
+                $this->audit($user, AuditLog::RESERVATION_RESCHEDULED, $reservation, ['difference_amount' => $difference, 'add_on_amount' => round($addOnAmount, 2), 'payment_amount' => $paymentAmount, 'reschedule_count' => $reservation->reschedule_count]);
+
+                return $reservation->fresh(self::DETAIL_RELATIONS);
+            });
+        } catch (Throwable $exception) {
+            if ($proofPath) {
+                $this->proofStorage->delete($proofPath);
+            }
+            throw $exception;
+        }
     }
 
     /** @param array<string, mixed> $input */
@@ -461,19 +554,12 @@ class ReservationService
         try {
             return DB::transaction(function () use ($reservation, $user, $input, $proof, &$proofPath): Reservation {
                 $reservation = $this->lockReservation($reservation);
-                $this->requireStatus($reservation, Reservation::STATUS_ONGOING, 'Add-ons can only be added to an ongoing reservation.');
+                if (! in_array($reservation->status, [Reservation::STATUS_VERIFIED, Reservation::STATUS_ONGOING], true)) {
+                    throw new ReservationConflictException('Add-ons can only be added to a verified or ongoing reservation.');
+                }
                 $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
                 if (! $configuration) {
                     throw ValidationException::withMessages(['add_ons' => ['Court pricing has not been configured.']]);
-                }
-
-                $channel = $input['payment_channel'];
-                $paymentMethod = null;
-                if ($channel === 'EWALLET_BANK') {
-                    $paymentMethod = PaymentMethod::query()->active()->lockForUpdate()->find($input['payment_method_id']);
-                    if (! $paymentMethod) {
-                        throw ValidationException::withMessages(['payment_method_id' => ['Choose an active e-wallet or bank payment method.']]);
-                    }
                 }
 
                 $slots = $input['slots'] ?? [];
@@ -501,7 +587,7 @@ class ReservationService
                     $reservation->adjustments()->create(['type' => 'ADDITIONAL_PLAYER', 'description' => 'Additional player', 'quantity' => $additionalPlayers, 'unit_amount' => $configuration->additional_player_price, 'total_amount' => $total, 'created_by_user_id' => $user->id]);
                 }
 
-                $equipment = $this->validateEquipment($input['equipment'] ?? [], true, $reservation);
+                $equipment = $this->validateEquipment($input['equipment'] ?? []);
                 foreach ($equipment as $item) {
                     $equipmentItem = $reservation->equipmentItems()->create([...$item, 'kind' => 'ADD_ON', 'is_active' => true, 'added_by_user_id' => $user->id]);
                     $total = round($item['quantity'] * $item['unit_amount'], 2);
@@ -509,9 +595,21 @@ class ReservationService
                     $reservation->adjustments()->create(['type' => 'EQUIPMENT', 'description' => $item['name'], 'quantity' => $item['quantity'], 'unit_amount' => $item['unit_amount'], 'total_amount' => $total, 'metadata' => ['equipment_item_id' => $equipmentItem->id], 'created_by_user_id' => $user->id]);
                 }
 
+                $this->equipmentAvailability->assertReservationAvailable($reservation);
                 $this->recalculate($reservation);
                 $amountDue = max(0, round((float) $reservation->final_amount - (float) $reservation->amount_paid, 2));
                 if ($amountDue > 0) {
+                    $channel = $input['payment_channel'] ?? null;
+                    if (! $channel) {
+                        throw ValidationException::withMessages(['payment_channel' => ['Choose how the outstanding add-on balance was collected.']]);
+                    }
+                    $paymentMethod = null;
+                    if ($channel === 'EWALLET_BANK') {
+                        $paymentMethod = PaymentMethod::query()->active()->lockForUpdate()->find($input['payment_method_id'] ?? null);
+                        if (! $paymentMethod) {
+                            throw ValidationException::withMessages(['payment_method_id' => ['Choose an active e-wallet or bank payment method.']]);
+                        }
+                    }
                     $proofPath = $proof ? $this->proofStorage->store($proof) : null;
                     $reservation->payments()->create([
                         'payment_method_id' => $paymentMethod?->id,
@@ -618,13 +716,13 @@ class ReservationService
                 throw ValidationException::withMessages(["slots.{$index}.start_hour" => ['Choose an active court time within operating hours.']]);
             }
             $date = CarbonImmutable::createFromFormat('Y-m-d', $slot['date']);
-            $now = CarbonImmutable::now('Asia/Manila');
+            $now = BusinessClock::now();
             $slotHasEnded = $date->toDateString() < $now->toDateString()
                 || ($date->toDateString() === $now->toDateString() && (($hour + 1) * 60) < (($now->hour * 60) + $now->minute));
             if ($slotHasEnded) {
                 throw ValidationException::withMessages(["slots.{$index}.start_hour" => ['Choose a court time that has not ended.']]);
             }
-            $dayType = $date->isWeekend() ? 'weekend' : 'weekday';
+            $dayType = CourtConfiguration::dayTypeForDate($date);
             $rate = $configuration->ratePeriods->first(fn ($period): bool => $period->day_type === $dayType && $period->start_hour <= $hour && $period->end_hour > $hour);
             if (! $rate) {
                 throw ValidationException::withMessages(["slots.{$index}.start_hour" => ['No rate is configured for this court time.']]);
@@ -661,7 +759,7 @@ class ReservationService
     }
 
     /** @param list<array{id: int, quantity: int}> $requested @return SupportCollection<int, array<string, mixed>> */
-    private function validateEquipment(array $requested, bool $checkAvailability, ?Reservation $reservation = null): SupportCollection
+    private function validateEquipment(array $requested): SupportCollection
     {
         if ($requested === []) {
             return new SupportCollection;
@@ -671,7 +769,7 @@ class ReservationService
         if ($items->count() !== $ids->count()) {
             throw ValidationException::withMessages(['equipment' => ['One or more equipment items are unavailable.']]);
         }
-        $result = collect($requested)->map(function (array $requestedItem) use ($items): array {
+        $result = collect($requested)->filter(fn (array $item): bool => (int) $item['quantity'] > 0)->map(function (array $requestedItem) use ($items): array {
             $item = $items[(int) $requestedItem['id']];
             if ((int) $requestedItem['quantity'] > $item->total_quantity) {
                 throw ValidationException::withMessages(['equipment' => ["Only {$item->total_quantity} {$item->name} are available."]]);
@@ -679,57 +777,8 @@ class ReservationService
 
             return ['rental_equipment_id' => $item->id, 'name' => $item->name, 'quantity' => (int) $requestedItem['quantity'], 'unit_amount' => $item->price];
         });
-        if ($checkAvailability && $reservation) {
-            $existing = $reservation->equipmentItems()->where('is_active', true)->get()
-                ->groupBy('rental_equipment_id')
-                ->map(fn ($group, $equipmentId): array => [
-                    'rental_equipment_id' => (int) $equipmentId,
-                    'name' => $group->first()->name,
-                    'quantity' => (int) $group->sum('quantity'),
-                    'unit_amount' => $group->first()->unit_amount,
-                ]);
-            $combined = $existing->concat($result)->groupBy('rental_equipment_id')->map(fn ($group): array => [
-                'rental_equipment_id' => $group->first()['rental_equipment_id'],
-                'name' => $group->first()['name'],
-                'quantity' => (int) $group->sum('quantity'),
-                'unit_amount' => $group->first()['unit_amount'],
-            ])->values();
-            $this->assertEquipmentSelectionAvailable($reservation, $combined, $items);
-        }
 
         return $result;
-    }
-
-    private function assertEquipmentAvailable(Reservation $reservation): void
-    {
-        $selection = $reservation->equipmentItems()->where('is_active', true)->get()->map(fn (ReservationEquipmentItem $item): array => ['rental_equipment_id' => $item->rental_equipment_id, 'name' => $item->name, 'quantity' => $item->quantity, 'unit_amount' => $item->unit_amount]);
-        if ($selection->isEmpty()) {
-            return;
-        }
-        $ids = $selection->pluck('rental_equipment_id')->filter()->unique()->sort()->values();
-        $items = RentalEquipment::query()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-        $this->assertEquipmentSelectionAvailable($reservation, $selection, $items);
-    }
-
-    private function assertEquipmentSelectionAvailable(Reservation $reservation, SupportCollection $selection, EloquentCollection $items): void
-    {
-        $hours = $reservation->currentSlots()->get(['date', 'start_hour'])->unique(fn ($slot): string => $slot->date->toDateString().'-'.$slot->start_hour);
-        foreach ($selection as $selected) {
-            $item = $items->get($selected['rental_equipment_id']);
-            if (! $item) {
-                throw ValidationException::withMessages(['equipment' => ["{$selected['name']} is no longer offered."]]);
-            }
-            foreach ($hours as $hour) {
-                $used = ReservationEquipmentItem::query()->where('rental_equipment_id', $item->id)->where('is_active', true)
-                    ->where('reservation_id', '!=', $reservation->id)
-                    ->whereHas('reservation', fn ($query) => $query->whereIn('status', [Reservation::STATUS_VERIFIED, Reservation::STATUS_ONGOING])
-                        ->whereHas('currentSlots', fn ($slots) => $slots->whereDate('date', $hour->date)->where('start_hour', $hour->start_hour)))
-                    ->sum('quantity');
-                if ($used + $selected['quantity'] > $item->total_quantity) {
-                    throw new ReservationConflictException("There is not enough {$item->name} stock for the selected reservation time.");
-                }
-            }
-        }
     }
 
     private function recalculate(Reservation $reservation): void
@@ -743,6 +792,11 @@ class ReservationService
     private function releaseLocks(Reservation $reservation): void
     {
         ReservationSlotLock::query()->whereIn('reservation_slot_id', $reservation->currentSlots()->select('id'))->delete();
+    }
+
+    private function releaseLocksForSlots(EloquentCollection $slots): void
+    {
+        ReservationSlotLock::query()->whereIn('reservation_slot_id', $slots->modelKeys())->delete();
     }
 
     private function lockReservation(Reservation $reservation): Reservation
@@ -771,7 +825,14 @@ class ReservationService
 
     private function audit(?User $user, string $action, Reservation $reservation, array $after): void
     {
-        AuditLog::query()->create(['actor_id' => $user?->id, 'action' => $action, 'target_type' => Reservation::class, 'target_id' => (string) $reservation->id, 'after' => $after]);
+        app(SecurityAuditService::class)->recordFromContext(
+            $action,
+            $user,
+            $reservation,
+            $after,
+            'RESERVATION',
+            $reservation->reference_number ?? "Reservation #{$reservation->id}",
+        );
     }
 
     private function policySnapshot(): array

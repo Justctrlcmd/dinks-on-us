@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Support\BusinessClock;
 use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -33,11 +34,11 @@ class StoreWalkInReservationRequest extends FormRequest
             'customer_contact_number' => ['required', 'string', 'size:11', 'regex:/^09[0-9]{9}$/'],
             'slots' => ['required', 'array', 'min:1', 'max:48'],
             'slots.*.court_id' => ['required', 'integer', 'exists:courts,id'],
-            'slots.*.date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'slots.*.date' => ['required', 'date_format:Y-m-d', BusinessClock::todayOrLaterRule()],
             'slots.*.start_hour' => ['required', 'integer', 'between:0,23'],
             'equipment' => ['sometimes', 'array', 'max:30'],
-            'equipment.*.id' => ['required', 'integer', 'exists:rental_equipment,id'],
-            'equipment.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
+            'equipment.*.id' => ['required', 'integer', 'distinct', 'exists:rental_equipment,id'],
+            'equipment.*.quantity' => ['required', 'integer', 'min:0', 'max:1000'],
             'additional_players' => ['required', 'integer', 'min:0', 'max:1000'],
             'payment_channel' => ['required', Rule::in(['CASH', 'EWALLET_BANK'])],
             'payment_method_id' => [

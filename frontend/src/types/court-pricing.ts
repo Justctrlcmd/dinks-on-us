@@ -38,12 +38,14 @@ export type RentalEquipment = {
   name: string;
   price: number;
   total_quantity: number;
+  is_active: boolean;
   available_quantity: number;
+  slot_availability?: { date: string; start_hour: number; end_hour: number; available_quantity: number }[];
   created_at: string;
   updated_at: string;
 };
 
-export type RentalEquipmentInput = Pick<RentalEquipment, "name" | "price" | "total_quantity">;
+export type RentalEquipmentInput = Pick<RentalEquipment, "name" | "price" | "total_quantity" | "is_active">;
 
 export type ReservationOptionSlot = {
   start_hour: number;

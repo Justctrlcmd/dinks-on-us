@@ -29,6 +29,7 @@ import {
   useUpdateGalleryTabOrder,
 } from "@/hooks/mutations/use-gallery-mutations";
 import { useGalleryImages, useGalleryTabs } from "@/hooks/queries/use-gallery";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { cn } from "@/lib/utils";
 import type { GalleryImage, GalleryTab } from "@/types/gallery";
 
@@ -131,14 +132,14 @@ export function GalleryManagementView() {
   const moveTabByKeyboard = (tab: GalleryTab, direction: -1 | 1) => {
     const index = orderedTabs.findIndex(({ id }) => id === tab.id);
     const target = orderedTabs[index + direction];
-    if (!target || tabOrderMutation.isPending) return;
+    if (!target || tabOrderMutation.isPending || isMutationRateLimited(tabOrderMutation)) return;
     void persistTabOrder(moveItem(orderedTabs, tab.id, target.id));
   };
 
   const moveImageByKeyboard = (image: GalleryImage, direction: -1 | 1) => {
     const index = orderedImages.findIndex(({ id }) => id === image.id);
     const target = orderedImages[index + direction];
-    if (!target || imageOrderMutation.isPending) return;
+    if (!target || imageOrderMutation.isPending || isMutationRateLimited(imageOrderMutation)) return;
     void persistImageOrder(moveItem(orderedImages, image.id, target.id));
   };
 
@@ -197,7 +198,7 @@ export function GalleryManagementView() {
             {orderedTabs.map((tab, index) => (
               <div
                 key={tab.id}
-                draggable={!tabOrderMutation.isPending}
+                draggable={!tabOrderMutation.isPending && !isMutationRateLimited(tabOrderMutation)}
                 className={cn(
                   "flex shrink-0 cursor-grab items-center rounded-full border bg-background transition-[border-color,box-shadow,opacity] active:cursor-grabbing",
                   activeTabId === tab.id && "border-primary bg-primary text-primary-foreground",
@@ -255,8 +256,8 @@ export function GalleryManagementView() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-42">
                       <DropdownMenuItem onClick={() => openEditTab(tab)}><FiEdit2 aria-hidden="true" />Edit</DropdownMenuItem>
-                      <DropdownMenuItem disabled={index === 0 || tabOrderMutation.isPending} onClick={() => moveTabByKeyboard(tab, -1)}><FiArrowLeft aria-hidden="true" />Move left</DropdownMenuItem>
-                      <DropdownMenuItem disabled={index === orderedTabs.length - 1 || tabOrderMutation.isPending} onClick={() => moveTabByKeyboard(tab, 1)}><FiArrowRight aria-hidden="true" />Move right</DropdownMenuItem>
+                      <DropdownMenuItem disabled={index === 0 || tabOrderMutation.isPending || isMutationRateLimited(tabOrderMutation)} onClick={() => moveTabByKeyboard(tab, -1)}><FiArrowLeft aria-hidden="true" />Move left</DropdownMenuItem>
+                      <DropdownMenuItem disabled={index === orderedTabs.length - 1 || tabOrderMutation.isPending || isMutationRateLimited(tabOrderMutation)} onClick={() => moveTabByKeyboard(tab, 1)}><FiArrowRight aria-hidden="true" />Move right</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem variant="destructive" onClick={() => setDeletingTab(tab)}><FiTrash2 aria-hidden="true" />Delete</DropdownMenuItem>
                     </DropdownMenuContent>
@@ -294,7 +295,7 @@ export function GalleryManagementView() {
                 <Card
                   key={image.id}
                   role="listitem"
-                  draggable={!imageOrderMutation.isPending}
+                  draggable={!imageOrderMutation.isPending && !isMutationRateLimited(imageOrderMutation)}
                   aria-label={`Image ${index + 1}: ${image.alt_text}. Drag this card to reorder it.`}
                   className={cn(
                     "group relative cursor-grab gap-0 overflow-hidden py-0 transition-[border-color,box-shadow,opacity] active:cursor-grabbing",
@@ -345,8 +346,8 @@ export function GalleryManagementView() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-42">
                           <DropdownMenuItem onClick={() => openEditImage(image)}><FiEdit2 aria-hidden="true" />Edit</DropdownMenuItem>
-                          <DropdownMenuItem disabled={index === 0 || imageOrderMutation.isPending} onClick={() => moveImageByKeyboard(image, -1)}><FiArrowUp aria-hidden="true" />Move earlier</DropdownMenuItem>
-                          <DropdownMenuItem disabled={index === orderedImages.length - 1 || imageOrderMutation.isPending} onClick={() => moveImageByKeyboard(image, 1)}><FiArrowDown aria-hidden="true" />Move later</DropdownMenuItem>
+                          <DropdownMenuItem disabled={index === 0 || imageOrderMutation.isPending || isMutationRateLimited(imageOrderMutation)} onClick={() => moveImageByKeyboard(image, -1)}><FiArrowUp aria-hidden="true" />Move earlier</DropdownMenuItem>
+                          <DropdownMenuItem disabled={index === orderedImages.length - 1 || imageOrderMutation.isPending || isMutationRateLimited(imageOrderMutation)} onClick={() => moveImageByKeyboard(image, 1)}><FiArrowDown aria-hidden="true" />Move later</DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem variant="destructive" onClick={() => setDeletingImage(image)}><FiTrash2 aria-hidden="true" />Delete</DropdownMenuItem>
                         </DropdownMenuContent>
@@ -378,8 +379,8 @@ export function GalleryManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={deleteTabMutation.isPending} />}>Cancel</DialogClose>
-            <Button variant="destructive" disabled={deleteTabMutation.isPending} onClick={() => void confirmDeleteTab()}>
-              {deleteTabMutation.isPending ? "Deleting…" : "Delete category"}
+            <Button variant="destructive" disabled={deleteTabMutation.isPending || isMutationRateLimited(deleteTabMutation)} onClick={() => void confirmDeleteTab()}>
+              {mutationButtonLabel("Deleting…", "Delete category", deleteTabMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -393,8 +394,8 @@ export function GalleryManagementView() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={deleteImageMutation.isPending} />}>Cancel</DialogClose>
-            <Button variant="destructive" disabled={deleteImageMutation.isPending} onClick={() => void confirmDeleteImage()}>
-              {deleteImageMutation.isPending ? "Deleting…" : "Delete image"}
+            <Button variant="destructive" disabled={deleteImageMutation.isPending || isMutationRateLimited(deleteImageMutation)} onClick={() => void confirmDeleteImage()}>
+              {mutationButtonLabel("Deleting…", "Delete image", deleteImageMutation)}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCreateGalleryImage, useUpdateGalleryImage } from "@/hooks/mutations/use-gallery-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { GalleryImage, GalleryImageInput, GalleryTab } from "@/types/gallery";
 import { GALLERY_IMAGE_ACCEPT, galleryImageSchema, type GalleryImageValues } from "@/validation/custom/gallery-schema";
 
@@ -133,8 +134,8 @@ export function GalleryImageFormDialog({
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={isPending} />}>Cancel</DialogClose>
-          <Button form="gallery-image-form" type="submit" disabled={isPending}>
-            {isPending ? "Saving…" : image ? "Save changes" : "Add image"}
+          <Button form="gallery-image-form" type="submit" disabled={isPending || isMutationRateLimited(createMutation, updateMutation)}>
+            {mutationButtonLabel("Saving…", image ? "Save changes" : "Add image", createMutation, updateMutation)}
           </Button>
         </DialogFooter>
       </DialogContent>

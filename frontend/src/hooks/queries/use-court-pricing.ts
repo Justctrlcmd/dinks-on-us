@@ -11,11 +11,15 @@ export function useCourtPricingManagement() {
   });
 }
 
-export function useReservationOptions(date: string) {
+export function useReservationOptions(date: string, hours: number[] = []) {
+  const selectedHours = [...new Set(hours)].sort((left, right) => left - right);
   return useQuery({
-    queryKey: courtPricingKeys.reservationOptions(date),
-    queryFn: ({ signal }) => getReservationOptions(date, signal).then((response) => response.data),
-    staleTime: 30_000,
+    queryKey: courtPricingKeys.reservationOptions(date, selectedHours),
+    queryFn: ({ signal }) => getReservationOptions(date, signal, selectedHours).then((response) => response.data),
+    placeholderData: (previous) => previous?.date === date ? previous : undefined,
+    staleTime: 0,
+    refetchInterval: 30_000,
+    enabled: Boolean(date),
   });
 }
 

@@ -7,6 +7,7 @@ use App\Models\Court;
 use App\Models\CourtConfiguration;
 use App\Models\Reservation;
 use App\Models\ReservationSlotLock;
+use App\Support\BusinessClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -38,7 +39,7 @@ class CourtAvailabilityService
 
         $slots = [];
         if ($configuration) {
-            $dayType = $parsedDate->isWeekend() ? 'weekend' : 'weekday';
+            $dayType = CourtConfiguration::dayTypeForDate($parsedDate);
             $rates = $configuration->ratePeriods->where('day_type', $dayType);
 
             for ($hour = $configuration->opening_hour; $hour < $configuration->closing_hour; $hour++) {
@@ -61,7 +62,7 @@ class CourtAvailabilityService
         $reservedSlots = [];
         $pastSlots = [];
         $reservationsBySlot = [];
-        $now = CarbonImmutable::now('Asia/Manila');
+        $now = BusinessClock::now();
 
         foreach ($courts as $court) {
             foreach ($slots as $slot) {

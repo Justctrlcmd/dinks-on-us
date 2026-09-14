@@ -38,7 +38,7 @@ export const courtPricingKeys = {
   all: ["court-pricing"] as const,
   management: () => [...courtPricingKeys.all, "management"] as const,
   closedDates: () => [...courtPricingKeys.all, "closed-dates"] as const,
-  reservationOptions: (date: string) => [...courtPricingKeys.all, "reservation-options", date] as const,
+  reservationOptions: (date: string, hours: number[] = []) => [...courtPricingKeys.all, "reservation-options", date, hours] as const,
 };
 
 export const availabilityClosureKeys = {
@@ -57,6 +57,11 @@ export const paymentProofRetentionKeys = {
   all: ["payment-proof-retention"] as const,
   preview: (range: { from: string; to: string } | null) => [...paymentProofRetentionKeys.all, "preview", range] as const,
   activity: (page: number) => [...paymentProofRetentionKeys.all, "activity", page] as const,
+};
+
+export const actionLogKeys = {
+  all: ["action-logs"] as const,
+  list: (filters: { page: number; search: string; module: string }) => [...actionLogKeys.all, "list", filters] as const,
 };
 
 export const teamAccessKeys = {

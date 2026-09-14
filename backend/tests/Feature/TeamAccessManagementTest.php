@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -138,6 +139,59 @@ class TeamAccessManagementTest extends TestCase
         ])->assertOk();
 
         $this->assertNotNull($staff->fresh()->last_login_at);
+    }
+
+    public function test_team_member_can_be_soft_deleted_without_losing_historical_identity_or_audit_data(): void
+    {
+        $manager = User::factory()->create();
+        $access = Role::factory()->create(['is_full_access' => false]);
+        $access->modules()->create(['module' => 'MANAGEMENT_TEAM_ACCESS']);
+        $staff = User::factory()->create([
+            'role_id' => $access->id,
+            'email' => 'deleted-staff@example.com',
+            'password' => 'password123',
+        ]);
+        $historicalAudit = AuditLog::query()->create([
+            'actor_id' => $staff->id,
+            'action' => AuditLog::LOGIN_SUCCEEDED,
+            'target_type' => User::class,
+            'target_id' => (string) $staff->id,
+        ]);
+
+        $this->actingAs($manager)
+            ->deleteJson("/api/v1/management/staff/{$staff->id}", ['current_password' => 'password'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Team member deleted. Historical activity remains intact.');
+
+        $this->assertSoftDeleted('users', ['id' => $staff->id]);
+        $this->assertDatabaseHas('users', [
+            'id' => $staff->id,
+            'email' => 'deleted-staff@example.com',
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => AuditLog::STAFF_DELETED,
+            'target_type' => User::class,
+            'target_id' => (string) $staff->id,
+        ]);
+        $this->assertSame(
+            'deleted-staff@example.com',
+            $historicalAudit->fresh()->user?->email,
+        );
+
+        $this->actingAs($manager)
+            ->getJson('/api/v1/management/staff')
+            ->assertOk()
+            ->assertJsonMissing(['email' => 'deleted-staff@example.com']);
+
+        $this->app['auth']->forgetGuards();
+        $this->flushSession();
+
+        $this->withHeader('Origin', 'http://localhost:3000')->postJson('/api/v1/login', [
+            'email' => 'deleted-staff@example.com',
+            'password' => 'password123',
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'INVALID_CREDENTIALS');
     }
 
     public function test_protected_or_assigned_access_cannot_be_deleted(): void

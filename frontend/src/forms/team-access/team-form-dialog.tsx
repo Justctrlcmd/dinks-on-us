@@ -9,6 +9,7 @@ import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCreateTeamMember, useUpdateTeamMember } from "@/hooks/mutations/use-team-access-mutations";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { AccessProfile, TeamMember } from "@/types/team-access";
 import { teamSchema, type TeamValues } from "@/validation/custom/team-access-schema";
 
@@ -100,7 +101,7 @@ export function TeamFormDialog({ member, accesses, open, onOpenChange }: {
 
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" disabled={pending} />}>Cancel</DialogClose>
-          <Button form="team-form" type="submit" disabled={pending}>{pending ? "Saving…" : member ? "Save changes" : "Add Team"}</Button>
+          <Button form="team-form" type="submit" disabled={pending || isMutationRateLimited(createMutation, updateMutation)}>{mutationButtonLabel("Saving…", member ? "Save changes" : "Add Team", createMutation, updateMutation)}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

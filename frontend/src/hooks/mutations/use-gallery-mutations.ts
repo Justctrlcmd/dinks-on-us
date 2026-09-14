@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
 import { galleryKeys } from "@/config/query-keys";
 import {
   createGalleryImage,
@@ -20,22 +21,22 @@ function useRefreshGallery() {
 
 export function useCreateGalleryTab() {
   const refresh = useRefreshGallery();
-  return useMutation({ mutationFn: createGalleryTab, onSuccess: refresh });
+  return useRateLimitedMutation("gallery-tab-create", { mutationFn: createGalleryTab, onSuccess: refresh });
 }
 
 export function useUpdateGalleryTab() {
   const refresh = useRefreshGallery();
-  return useMutation({ mutationFn: updateGalleryTab, onSuccess: refresh });
+  return useRateLimitedMutation("gallery-tab-update", { mutationFn: updateGalleryTab, onSuccess: refresh });
 }
 
 export function useDeleteGalleryTab() {
   const refresh = useRefreshGallery();
-  return useMutation({ mutationFn: deleteGalleryTab, onSuccess: refresh });
+  return useRateLimitedMutation("gallery-tab-delete", { mutationFn: deleteGalleryTab, onSuccess: refresh });
 }
 
 export function useUpdateGalleryTabOrder() {
   const client = useQueryClient();
-  return useMutation({
+  return useRateLimitedMutation("gallery-tab-order", {
     mutationFn: updateGalleryTabOrder,
     onSuccess: (response) => {
       client.setQueryData(galleryKeys.tabs(), response.data);
@@ -46,22 +47,22 @@ export function useUpdateGalleryTabOrder() {
 
 export function useCreateGalleryImage() {
   const refresh = useRefreshGallery();
-  return useMutation({ mutationFn: createGalleryImage, onSuccess: refresh });
+  return useRateLimitedMutation("gallery-image-create", { mutationFn: createGalleryImage, onSuccess: refresh });
 }
 
 export function useUpdateGalleryImage() {
   const refresh = useRefreshGallery();
-  return useMutation({ mutationFn: updateGalleryImage, onSuccess: refresh });
+  return useRateLimitedMutation("gallery-image-update", { mutationFn: updateGalleryImage, onSuccess: refresh });
 }
 
 export function useDeleteGalleryImage() {
   const refresh = useRefreshGallery();
-  return useMutation({ mutationFn: deleteGalleryImage, onSuccess: refresh });
+  return useRateLimitedMutation("gallery-image-delete", { mutationFn: deleteGalleryImage, onSuccess: refresh });
 }
 
 export function useUpdateGalleryImageOrder(tabId: number) {
   const client = useQueryClient();
-  return useMutation({
+  return useRateLimitedMutation(`gallery-image-order-${tabId}`, {
     mutationFn: (ids: number[]) => updateGalleryImageOrder({ tabId, ids }),
     onSuccess: (response) => {
       client.setQueryData(galleryKeys.images(tabId), response.data);

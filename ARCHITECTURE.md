@@ -70,7 +70,11 @@ Laravel FormRequests remain authoritative. Compatible password-free schemas may 
 
 ## Dates, lists, and names
 
-API timestamps are UTC ISO 8601. Use `lib/date.ts` to display timestamps. Keep date-only values as calendar dates rather than timezone-shifting them.
+API timestamps are UTC ISO 8601. Use `lib/date.ts` to display timestamps. Keep date-only values as calendar dates rather than timezone-shifting them. Business-day boundaries use `App\Support\BusinessClock` and `BUSINESS_TIMEZONE` (Asia/Manila by default); do not derive reservation or closure dates from the UTC application clock.
+
+Dynamic court pricing uses the configured `weekday_rates` for Monday through
+Thursday and `weekend_rates` for Friday through Sunday. The shared day-type rule
+is applied by both court availability previews and final reservation pricing.
 
 Future collection endpoints default to `per_page=10`, allow 10/25/50/100, and cap at 100. Search/filter/sort values require module-specific allowlists; never pass unrestricted sort columns to `orderBy`.
 
@@ -78,7 +82,7 @@ Laravel classes use PascalCase, methods camelCase, tables plural snake_case, col
 
 ## Portal and future modules
 
-The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized. The account menu owns Profile, an in-place light/dark mode control, and Logout. As management modules are introduced, both navigation visibility and backend authorization must use the authenticated account's assigned role and module access.
+The portal uses a collapsible desktop sidebar and mobile sheet. Navigation is centralized. The account menu owns Profile, an in-place light/dark mode control, and Logout. Profile and self-service credential changes are restricted to the full-access Manager role. Team accounts cannot open Profile or read/update the profile and password API endpoints; authorized Team & Access management remains responsible for their account details and password resets. Both navigation visibility and backend authorization use the authenticated account's assigned role and module access.
 
 Future modules create only needed pieces. Simple CRUD does not justify repositories, actions, or service layers automatically. Use transactions for multi-write invariants, eager load serialized relations, add indexes from query patterns, enforce important uniqueness in validation and the database, and choose delete behavior intentionally.
 
@@ -100,3 +104,60 @@ decodes and re-encodes a bounded WebP under a generated UUID path. Original
 filenames and image bytes are never served as trusted content.
 
 Prohibited patterns include raw exception messages, localStorage authentication, arbitrary HTML rendering, scattered `toLocaleString`, scattered fetch calls, duplicated server caches, giant configurable controls, premature business roles, and hard-coded deployment assumptions.
+
+## Rental equipment availability
+
+`EquipmentAvailabilityService` is the shared authority for time-based rental
+inventory. `rental_equipment.total_quantity` currently represents usable stock;
+there is no damaged/maintenance stock model. `usableStock()` is the extension
+point if those concepts are introduced. Availability is derived, never stored as
+an incrementing/decrementing counter.
+
+Active `reservation_equipment_items` consume shared stock across all courts while
+the reservation is `PENDING`, `VERIFIED`, or `ONGOING`. Final statuses release the
+allocation. Equipment occupies each actual current one-hour slot as `[start, end)`;
+a booking ending at noon does not block noon onward. Non-consecutive hours do not
+occupy the gap. A reservation's quantity applies once per occupied hour, even when
+it books several courts simultaneously. Original and add-on quantities are summed
+and apply to all current booked hours. Reservation-wide equipment pricing remains
+quantity × captured unit price.
+
+Public options return server-calculated `slot_availability` per equipment item
+for the requested date, plus `available_quantity` for the optional selected
+`hours[]`, without customer/allocation details. The booking and staff
+forms use the minimum for the actual selected hours, disable exhausted equipment,
+and clamp quantities when limits fall. Missing hourly data permits zero units.
+Options refresh on date/hour changes, window focus, and every 30 seconds. While
+refreshing hours on the same date, limits recalculate immediately from the last
+hourly snapshot; data from a different date is never reused. Preview
+availability is advisory; successful submission holds equipment immediately,
+including during payment verification.
+
+Checkout rebuilds slot, equipment, and additional-player prices from the latest
+reservation options. It sends the displayed total as `quoted_amount`; the backend
+recalculates under the booking transaction and rejects a changed quote before it
+creates a reservation or payment record.
+
+Submission, walk-in creation, verification, rescheduling, and add-ons use the same
+transactional check. The existing reservation service owns transaction boundaries;
+equipment rows are locked in ID order and allocations are re-read with a locking
+join before committing. This current read is essential under MySQL REPEATABLE READ:
+a transaction that waited for inventory must see bookings committed after its
+initial snapshot. Queries include only relevant equipment, dates, current hours,
+and blocking statuses; existing equipment and reservation-slot indexes are reused.
+A conflict rolls back slots, allocations, prices, and payment records together.
+Staff-assisted bookings use the existing walk-in flow; no separate booking source
+or inventory table has been introduced.
+
+Rescheduling moves every current court slot to the reservation's single new
+booking date. Base slots use the submitted replacement selection; existing court
+add-ons keep their court and start hour, are revalidated and repriced on the new
+date, and block the reschedule if unavailable. New add-ons are charged separately.
+Existing refundable credit covers add-ons before another payment is required.
+
+Run `php tests/Integration/equipment-concurrency.php` from `backend` to test
+simultaneous public/walk-in submissions on MySQL, including stale transaction
+snapshots. This creates and drops a randomly named isolated database using the
+configured MySQL connection (which must permit database creation). It never
+migrates or writes the configured application database. Normal feature tests use
+SQLite and do not claim to verify MySQL locks.

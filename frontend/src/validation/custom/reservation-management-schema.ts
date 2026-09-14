@@ -21,7 +21,7 @@ const fileListSchema = z.custom<FileList | undefined>((value) => {
 });
 const slotSelectionSchema = z.object({
   courtId: z.string(),
-  slot: z.string(),
+  slots: z.array(z.string()),
 });
 
 export const rejectReservationSchema = z.object({
@@ -29,21 +29,52 @@ export const rejectReservationSchema = z.object({
   reason: z.string().trim().min(1, "Enter a rejection reason.").max(1500, "Keep the reason under 1,500 characters."),
 });
 
-export function rescheduleReservationSchema(requiredCount: number) {
+export function rescheduleReservationSchema(requiredCount: number, requiresPayment = false) {
   return z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a reservation date."),
-    ranges: z.array(slotSelectionSchema).length(requiredCount, "Select every required replacement slot."),
+    ranges: z.array(slotSelectionSchema).min(1, "Select every required replacement slot."),
+    add_on_ranges: z.array(slotSelectionSchema).min(1).default([{ courtId: "", slots: [] }]),
+    additional_players: z.number().int().min(0).max(1000).default(0),
+    equipment: z.record(z.string(), z.number().int().min(0).max(1000)).default({}),
+    payment_channel: addOnPaymentChannelSchema.nullable().default(null),
+    payment_method_id: z.number().int().positive().optional(),
+    payment_reference_number: z.string().trim().max(180, "Keep the transaction reference under 180 characters.").optional(),
+    payment_proof: fileListSchema.optional(),
   }).superRefine((values, context) => {
     values.ranges.forEach((range, index) => {
       if (!range.courtId) context.addIssue({ code: "custom", path: ["ranges", index, "courtId"], message: "Choose a court." });
-      if (!range.slot) context.addIssue({ code: "custom", path: ["ranges", index, "slot"], message: "Choose a time slot." });
+      if (range.slots.length === 0) context.addIssue({ code: "custom", path: ["ranges", index, "slots"], message: "Choose at least one time slot." });
     });
 
-    const completeRanges = values.ranges.filter((range) => range.courtId && range.slot);
-    const keys = completeRanges.map((range) => `${range.courtId}-${range.slot}`);
+    const completeRanges = values.ranges.filter((range) => range.courtId && range.slots.length > 0);
+    const keys = completeRanges.flatMap((range) => range.slots.map((slot) => `${range.courtId}-${slot}`));
     if (new Set(keys).size !== keys.length) {
       context.addIssue({ code: "custom", path: ["ranges"], message: "Replacement slots cannot contain duplicates." });
     }
+    if (keys.length !== requiredCount) {
+      context.addIssue({ code: "custom", path: ["ranges"], message: "Select every required replacement slot." });
+    }
+
+    values.add_on_ranges.forEach((range, index) => {
+      if (!range.courtId && range.slots.length === 0) return;
+      if (!range.courtId) context.addIssue({ code: "custom", path: ["add_on_ranges", index, "courtId"], message: "Choose a court." });
+      if (range.slots.length === 0) context.addIssue({ code: "custom", path: ["add_on_ranges", index, "slots"], message: "Choose at least one time slot." });
+    });
+    const allKeys = values.ranges.concat(values.add_on_ranges)
+      .filter((range) => range.courtId && range.slots.length > 0)
+      .flatMap((range) => range.slots.map((slot) => `${range.courtId}-${slot}`));
+    if (new Set(allKeys).size !== allKeys.length) {
+      context.addIssue({ code: "custom", path: ["add_on_ranges"], message: "Selected court times cannot contain duplicates." });
+    }
+    if (requiresPayment && !values.payment_channel) {
+      context.addIssue({ code: "custom", path: ["payment_channel"], message: "Choose how the outstanding balance was collected." });
+    }
+    if (requiresPayment && values.payment_channel === "EWALLET_BANK") {
+      if (!values.payment_method_id) context.addIssue({ code: "custom", path: ["payment_method_id"], message: "Choose an active e-wallet or bank payment method." });
+      if (!values.payment_reference_number?.trim()) context.addIssue({ code: "custom", path: ["payment_reference_number"], message: "Enter the transaction reference for this payment method." });
+      if (!(values.payment_proof?.item(0))) context.addIssue({ code: "custom", path: ["payment_proof"], message: "Select a receipt image for this payment method." });
+    }
+    validateReceipt(values.payment_proof, context);
   });
 }
 
@@ -59,19 +90,15 @@ const addOnsBaseSchema = z.object({
 
 export const reservationAddOnsSchema = addOnsBaseSchema.superRefine((values, context) => {
   values.ranges.forEach((range, index) => {
-    if (!range.courtId && !range.slot) return;
+    if (!range.courtId && range.slots.length === 0) return;
     if (!range.courtId) context.addIssue({ code: "custom", path: ["ranges", index, "courtId"], message: "Choose a court." });
-    if (!range.slot) context.addIssue({ code: "custom", path: ["ranges", index, "slot"], message: "Choose a time slot." });
+    if (range.slots.length === 0) context.addIssue({ code: "custom", path: ["ranges", index, "slots"], message: "Choose at least one time slot." });
   });
-  const hasCompleteRange = values.ranges.some((range) => range.courtId && range.slot);
+  const hasCompleteRange = values.ranges.some((range) => range.courtId && range.slots.length > 0);
   const hasEquipment = Object.values(values.equipment).some((quantity) => quantity > 0);
   if (!hasCompleteRange && values.additional_players === 0 && !hasEquipment) {
     context.addIssue({ code: "custom", path: ["ranges"], message: "Add at least one court time, player, or equipment item." });
   }
-  if (!values.payment_channel) {
-    context.addIssue({ code: "custom", path: ["payment_channel"], message: "Choose a payment method." });
-  }
-
   if (values.payment_channel === "EWALLET_BANK") {
     if (!values.payment_method_id) {
       context.addIssue({ code: "custom", path: ["payment_method_id"], message: "Choose an active e-wallet or bank payment method." });

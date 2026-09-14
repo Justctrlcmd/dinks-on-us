@@ -11,7 +11,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Illuminate\Routing\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -57,6 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             string $code,
             int $status,
             ?array $errors = null,
+            array $headers = [],
         ) => response()->json([
             'success' => false,
             'message' => $message,
@@ -64,7 +65,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'data' => null,
             'errors' => $errors,
             'meta' => null,
-        ], $status);
+        ], $status, $headers);
 
         $exceptions->render(function (ValidationException $exception, Request $request) use ($apiFailure) {
             if (! $request->is('api/*')) {
@@ -98,9 +99,18 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (ThrottleRequestsException $exception, Request $request) use ($apiFailure) {
-            return $request->is('api/*')
-                ? $apiFailure("You've made several requests in a short time. Please try again shortly.", 'TOO_MANY_REQUESTS', 429)
-                : null;
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            $retryAfter = max(1, (int) ($exception->getHeaders()['Retry-After'] ?? 60));
+
+            return $apiFailure(
+                "You've made several requests in a short time. Please try again shortly.",
+                'TOO_MANY_REQUESTS',
+                429,
+                headers: ['Retry-After' => (string) $retryAfter],
+            );
         });
 
         $exceptions->render(function (ReservationConflictException $exception, Request $request) use ($apiFailure) {

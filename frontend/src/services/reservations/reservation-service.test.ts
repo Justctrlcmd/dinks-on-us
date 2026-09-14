@@ -87,4 +87,31 @@ describe("reservation service", () => {
     expect(body.get("payment_reference_number")).toBe("ADDON-100");
     expect(body.get("payment_proof")).toBe(proof);
   });
+
+  it("serializes reschedule slots, add-ons, and balance payment as multipart data", async () => {
+    const { rescheduleReservation } = await import("./reservation-service");
+    const proof = new File(["receipt"], "reschedule.png", { type: "image/png" });
+    authFetch.mockClear();
+
+    rescheduleReservation(12, {
+      slots: [{ court_id: 2, date: "2026-08-28", start_hour: 18 }],
+      add_on_slots: [{ court_id: 1, date: "2026-08-28", start_hour: 19 }],
+      additional_players: 1,
+      payment_channel: "EWALLET_BANK",
+      payment_method_id: 7,
+      payment_reference_number: "RESCHEDULE-100",
+      payment_proof: proof,
+    });
+
+    expect(authFetch).toHaveBeenCalledWith(
+      "/api/v1/management/reservations/12/reschedule",
+      expect.objectContaining({ method: "POST", csrf: true }),
+    );
+    const body = authFetch.mock.calls[0][1].body as FormData;
+    expect(body.get("slots[0][start_hour]")).toBe("18");
+    expect(body.get("add_on_slots[0][start_hour]")).toBe("19");
+    expect(body.get("additional_players")).toBe("1");
+    expect(body.get("payment_reference_number")).toBe("RESCHEDULE-100");
+    expect(body.get("payment_proof")).toBe(proof);
+  });
 });

@@ -31,10 +31,12 @@ import {
   useActivateTeamMember,
   useDeactivateTeamMember,
   useDeleteAccess,
+  useDeleteTeamMember,
 } from "@/hooks/mutations/use-team-access-mutations";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useAccessOverview, useTeam } from "@/hooks/queries/use-team-access";
 import { formatDateTime } from "@/lib/date";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { AccessModuleOption, AccessProfile, TeamMember } from "@/types/team-access";
 
 function teamId(id: number) {
@@ -80,41 +82,47 @@ function AccessCard({ access, modules, onEdit, onDelete }: {
   );
 }
 
-function TeamActions({ member, currentUserId, onEdit, onReset, onDeactivate, onActivate, activating }: {
+function TeamActions({ member, currentUserId, onEdit, onReset, onDeactivate, onActivate, onDelete, activating, activationLabel }: {
   member: TeamMember;
   currentUserId?: number;
   onEdit: (member: TeamMember) => void;
   onReset: (member: TeamMember) => void;
   onDeactivate: (member: TeamMember) => void;
   onActivate: (member: TeamMember) => void;
+  onDelete: (member: TeamMember) => void;
   activating: boolean;
+  activationLabel: string;
 }) {
   const isCurrentAccount = member.id === currentUserId;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${member.name}`} />}><FiMoreHorizontal aria-hidden="true" /></DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onClick={() => onEdit(member)}><FiEdit2 aria-hidden="true" />Edit Team member</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onReset(member)}><FiKey aria-hidden="true" />Reset password</DropdownMenuItem>
+        <DropdownMenuItem disabled={isCurrentAccount} onClick={() => onEdit(member)}><FiEdit2 aria-hidden="true" />Edit Team member</DropdownMenuItem>
+        <DropdownMenuItem disabled={isCurrentAccount} onClick={() => onReset(member)}><FiKey aria-hidden="true" />Reset password</DropdownMenuItem>
         <DropdownMenuSeparator />
         {member.is_active ? (
           <DropdownMenuItem variant="destructive" disabled={isCurrentAccount} onClick={() => onDeactivate(member)}><FiUserX aria-hidden="true" />{isCurrentAccount ? "Current account" : "Deactivate"}</DropdownMenuItem>
         ) : (
-          <DropdownMenuItem disabled={activating} onClick={() => onActivate(member)}><FiRefreshCw aria-hidden="true" />Reactivate</DropdownMenuItem>
+          <DropdownMenuItem disabled={activating} onClick={() => onActivate(member)}><FiRefreshCw aria-hidden="true" />{activationLabel}</DropdownMenuItem>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" disabled={isCurrentAccount} onClick={() => onDelete(member)}><FiTrash2 aria-hidden="true" />{isCurrentAccount ? "Current account" : "Delete"}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function TeamMemberCard({ member, currentUserId, onEdit, onReset, onDeactivate, onActivate, activating }: {
+function TeamMemberCard({ member, currentUserId, onEdit, onReset, onDeactivate, onActivate, onDelete, activating, activationLabel }: {
   member: TeamMember;
   currentUserId?: number;
   onEdit: (member: TeamMember) => void;
   onReset: (member: TeamMember) => void;
   onDeactivate: (member: TeamMember) => void;
   onActivate: (member: TeamMember) => void;
+  onDelete: (member: TeamMember) => void;
   activating: boolean;
+  activationLabel: string;
 }) {
   return (
     <article className="rounded-xl border p-3">
@@ -131,7 +139,9 @@ function TeamMemberCard({ member, currentUserId, onEdit, onReset, onDeactivate, 
           onReset={onReset}
           onDeactivate={onDeactivate}
           onActivate={onActivate}
+          onDelete={onDelete}
           activating={activating}
+          activationLabel={activationLabel}
         />
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -166,10 +176,13 @@ export function TeamAccessManagementView() {
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [resettingMember, setResettingMember] = useState<TeamMember | null>(null);
   const [deactivatingMember, setDeactivatingMember] = useState<TeamMember | null>(null);
+  const [deletingMember, setDeletingMember] = useState<TeamMember | null>(null);
+  const [deleteTeamPasswordOpen, setDeleteTeamPasswordOpen] = useState(false);
   const accessQuery = useAccessOverview();
   const teamQuery = useTeam(page);
   const currentUser = useCurrentUser();
   const deleteAccessMutation = useDeleteAccess();
+  const deleteTeamMutation = useDeleteTeamMember();
   const deactivateMutation = useDeactivateTeamMember();
   const activateMutation = useActivateTeamMember();
   const assignableAccesses = accessQuery.data?.accesses ?? [];
@@ -214,6 +227,18 @@ export function TeamAccessManagementView() {
     } catch {
       setDeactivatingMember(null);
     }
+  }
+
+  async function deleteSelectedMember(currentPassword: string) {
+    if (!deletingMember) return;
+    await deleteTeamMutation.mutateAsync({ id: deletingMember.id, current_password: currentPassword });
+    setDeleteTeamPasswordOpen(false);
+    setDeletingMember(null);
+  }
+
+  function openDeleteMember(member: TeamMember) {
+    setDeleteTeamPasswordOpen(false);
+    setDeletingMember(member);
   }
 
   async function activateMember(member: TeamMember) {
@@ -287,7 +312,7 @@ export function TeamAccessManagementView() {
                   <td className="px-4 py-3"><span className="rounded-full border px-2 py-1 text-xs font-medium">{member.access.name}</span></td>
                   <td className="px-4 py-3"><span className={member.is_active ? "inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary" : "inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground"}><span aria-hidden="true" className={member.is_active ? "size-1.5 rounded-full bg-primary" : "size-1.5 rounded-full bg-muted-foreground"} />{member.is_active ? "Active" : "Inactive"}</span></td>
                   <td className="px-4 py-3 text-muted-foreground">{member.last_login_at ? formatDateTime(member.last_login_at) : "Never"}</td>
-                  <td className="px-4 py-3 text-right"><TeamActions member={member} currentUserId={currentUser.data?.id} onEdit={openEditTeam} onReset={setResettingMember} onDeactivate={setDeactivatingMember} onActivate={(item) => void activateMember(item)} activating={activateMutation.isPending} /></td>
+                  <td className="px-4 py-3 text-right"><TeamActions member={member} currentUserId={currentUser.data?.id} onEdit={openEditTeam} onReset={setResettingMember} onDeactivate={setDeactivatingMember} onActivate={(item) => void activateMember(item)} onDelete={openDeleteMember} activating={activateMutation.isPending || isMutationRateLimited(activateMutation)} activationLabel={mutationButtonLabel("Reactivating…", "Reactivate", activateMutation)} /></td>
                 </tr>
               ))}
             </tbody>
@@ -309,7 +334,9 @@ export function TeamAccessManagementView() {
               onReset={setResettingMember}
               onDeactivate={setDeactivatingMember}
               onActivate={(item) => void activateMember(item)}
-              activating={activateMutation.isPending}
+              onDelete={openDeleteMember}
+              activating={activateMutation.isPending || isMutationRateLimited(activateMutation)}
+              activationLabel={mutationButtonLabel("Reactivating…", "Reactivate", activateMutation)}
             />
           ))}
         </div>
@@ -335,7 +362,7 @@ export function TeamAccessManagementView() {
       <Dialog open={Boolean(deletingAccess) && !deletePasswordOpen} onOpenChange={(open) => { if (!open && !deleteAccessMutation.isPending && !deletePasswordOpen) setDeletingAccess(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Delete {deletingAccess?.name} Access?</DialogTitle><DialogDescription>This permanently removes the unused Access profile. This action cannot be undone.</DialogDescription></DialogHeader>
-          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteAccessMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteAccessMutation.isPending} onClick={() => setDeletePasswordOpen(true)}>Continue</Button></DialogFooter>
+          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteAccessMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteAccessMutation.isPending || isMutationRateLimited(deleteAccessMutation)} onClick={() => setDeletePasswordOpen(true)}>{mutationButtonLabel("Deleting…", "Continue", deleteAccessMutation)}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -344,16 +371,36 @@ export function TeamAccessManagementView() {
         onOpenChange={setDeletePasswordOpen}
         title={`Confirm deletion of ${deletingAccess?.name ?? "Access"}`}
         description="Enter your current password to permanently delete this unused Access profile."
-        confirmLabel="Delete Access"
         destructive
         pending={deleteAccessMutation.isPending}
+        disabled={isMutationRateLimited(deleteAccessMutation)}
+        confirmLabel={mutationButtonLabel("Deleting…", "Delete Access", deleteAccessMutation)}
         onConfirm={deleteSelectedAccess}
+      />
+
+      <Dialog open={Boolean(deletingMember) && !deleteTeamPasswordOpen} onOpenChange={(open) => { if (!open && !deleteTeamMutation.isPending && !deleteTeamPasswordOpen) setDeletingMember(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Delete {deletingMember?.name}?</DialogTitle><DialogDescription>This soft-deletes the Team account so it can no longer sign in or appear in Team Access. Historical reservations, activity, and audit logs remain intact.</DialogDescription></DialogHeader>
+          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteTeamMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteTeamMutation.isPending || isMutationRateLimited(deleteTeamMutation)} onClick={() => setDeleteTeamPasswordOpen(true)}>{mutationButtonLabel("Deleting…", "Continue", deleteTeamMutation)}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CurrentPasswordConfirmationDialog
+        open={Boolean(deletingMember) && deleteTeamPasswordOpen}
+        onOpenChange={setDeleteTeamPasswordOpen}
+        title={"Confirm deletion of " + (deletingMember?.name ?? "Team account")}
+        description="Enter your current password to soft-delete this Team account. Historical records will remain available."
+        destructive
+        pending={deleteTeamMutation.isPending}
+        disabled={isMutationRateLimited(deleteTeamMutation)}
+        confirmLabel={mutationButtonLabel("Deleting…", "Delete Team account", deleteTeamMutation)}
+        onConfirm={deleteSelectedMember}
       />
 
       <Dialog open={Boolean(deactivatingMember)} onOpenChange={(open) => !open && !deactivateMutation.isPending && setDeactivatingMember(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Deactivate {deactivatingMember?.name}?</DialogTitle><DialogDescription>The account will be signed out immediately and cannot log in until it is reactivated. Historical activity remains intact.</DialogDescription></DialogHeader>
-          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deactivateMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deactivateMutation.isPending} onClick={() => void deactivateSelectedMember()}>{deactivateMutation.isPending ? "Deactivating…" : "Deactivate Team member"}</Button></DialogFooter>
+          <DialogFooter><DialogClose render={<Button variant="outline" disabled={deactivateMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deactivateMutation.isPending || isMutationRateLimited(deactivateMutation)} onClick={() => void deactivateSelectedMember()}>{mutationButtonLabel("Deactivating…", "Deactivate Team member", deactivateMutation)}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -6,6 +6,11 @@
 
 No backend host, frontend host, managed database, public domains, storage provider, email provider, queue worker, scheduler, persistent process, concurrency target, monitoring service, backup policy, or rollback mechanism has been selected.
 
+Set `BUSINESS_TIMEZONE=Asia/Manila` unless the business formally changes its
+operating timezone. Reservation dates, elapsed slots, closure validation, and
+report day boundaries depend on this value and must remain consistent across web
+and worker processes.
+
 The backend runtime baseline is PHP 8.4.1 or newer within the PHP 8.x release line. Deploy the latest supported PHP 8.4 patch release and keep CLI, web server/PHP-FPM, and worker runtimes aligned. The deployed runtime must provide Laravel's required extensions plus GD with WebP support before payment-proof normalization is enabled.
 
 ## Required deployment discovery
@@ -32,6 +37,8 @@ stored user password begins with the Argon2id hash identifier, set
 ## Data and changes
 
 Use MySQL backups with documented retention and restore drills. Run migrations as a controlled release step and back up before destructive changes. Never edit an already-deployed migration; add a new one. A production release needs health checks, centralized logs without secrets, error monitoring, uptime monitoring, and a rollback plan for application code and schema compatibility.
+
+`php artisan system:reset-demo --force` is an intentional break-glass operation for resetting a live demo instance. It permanently removes all application records and only recreates the configured Manager account; it does not restore starter operational content. Take and verify a database backup, place the application in maintenance mode, run the command from an interactive terminal, type its exact production confirmation phrase, validate the blank state, then run `php artisan up`. The command refuses development Manager credentials in production and logs its completion summary without creating an application audit row.
 
 Manual payment-proof cleanup removes active files from the configured private
 storage provider, but infrastructure snapshots, replicas, or backups may retain

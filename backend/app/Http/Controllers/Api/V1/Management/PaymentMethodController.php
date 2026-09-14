@@ -7,9 +7,11 @@ use App\Http\Requests\Management\StorePaymentMethodRequest;
 use App\Http\Requests\Management\UpdatePaymentMethodRequest;
 use App\Http\Resources\PaymentMethodResource;
 use App\Models\PaymentMethod;
+use App\Services\SecurityAuditService;
 use App\Services\OptimizedImageStorageService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -29,7 +31,7 @@ class PaymentMethodController extends Controller
         );
     }
 
-    public function store(StorePaymentMethodRequest $request): JsonResponse
+    public function store(StorePaymentMethodRequest $request, SecurityAuditService $audit): JsonResponse
     {
         $imagePath = $this->images->store($request->file('qr_image'), 'public', 'payment-methods');
 
@@ -44,6 +46,7 @@ class PaymentMethodController extends Controller
 
             throw $exception;
         }
+        $audit->record('PAYMENT_METHOD_CREATED', $request, $request->user(), $paymentMethod, module: 'MANAGEMENT_PAYMENT_METHODS', targetLabel: $paymentMethod->name);
 
         return $this->respondSuccess(
             PaymentMethodResource::make($paymentMethod)->resolve($request),
@@ -52,7 +55,7 @@ class PaymentMethodController extends Controller
         );
     }
 
-    public function update(UpdatePaymentMethodRequest $request, PaymentMethod $paymentMethod): JsonResponse
+    public function update(UpdatePaymentMethodRequest $request, PaymentMethod $paymentMethod, SecurityAuditService $audit): JsonResponse
     {
         $newImagePath = $request->hasFile('qr_image')
             ? $this->images->store($request->file('qr_image'), 'public', 'payment-methods')
@@ -75,6 +78,7 @@ class PaymentMethodController extends Controller
         if ($newImagePath) {
             Storage::disk('public')->delete($oldImagePath);
         }
+        $audit->record('PAYMENT_METHOD_UPDATED', $request, $request->user(), $paymentMethod, module: 'MANAGEMENT_PAYMENT_METHODS', targetLabel: $paymentMethod->name);
 
         return $this->respondSuccess(
             PaymentMethodResource::make($paymentMethod->fresh())->resolve($request),
@@ -82,9 +86,10 @@ class PaymentMethodController extends Controller
         );
     }
 
-    public function destroy(PaymentMethod $paymentMethod): JsonResponse
+    public function destroy(Request $request, PaymentMethod $paymentMethod, SecurityAuditService $audit): JsonResponse
     {
         $paymentMethod->update(['is_active' => false]);
+        $audit->record('PAYMENT_METHOD_REMOVED', $request, $request->user(), $paymentMethod, module: 'MANAGEMENT_PAYMENT_METHODS', targetLabel: $paymentMethod->name);
 
         return $this->respondSuccess(null, 'Payment method removed.');
     }

@@ -13,6 +13,7 @@ export type AccessModule =
   | "MANAGEMENT_AVAILABILITY_CLOSURES"
   | "MANAGEMENT_PAYMENT_METHODS"
   | "MANAGEMENT_STORAGE_RETENTION"
+  | "ACTION_LOGS"
   | "MANAGEMENT_TEAM_ACCESS"
   | "MANAGEMENT_RULES_POLICIES"
   | "MANAGEMENT_EVENTS"
@@ -34,4 +35,5 @@ export interface ApiError {
   message: string;
   code: string | null;
   errors?: Record<string, string[]>;
+  retryAfterSeconds?: number;
 }

@@ -15,6 +15,7 @@ class RentalEquipmentResource extends JsonResource
             'name' => $this->name,
             'price' => (float) $this->price,
             'total_quantity' => $this->total_quantity,
+            'is_active' => (bool) $this->is_active,
             'available_quantity' => $this->total_quantity,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

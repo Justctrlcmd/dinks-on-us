@@ -1,5 +1,6 @@
 import {
   FiAlertCircle,
+  FiActivity,
   FiBarChart2,
   FiCalendar,
   FiChevronLeft,
@@ -24,6 +25,7 @@ import {
 import { LuPhilippinePeso } from "react-icons/lu";
 
 export const icons = {
+  actionLogs: FiActivity,
   alert: FiAlertCircle,
   availability: FiClock,
   blockedSlots: FiSlash,

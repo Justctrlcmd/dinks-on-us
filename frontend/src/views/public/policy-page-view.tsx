@@ -29,7 +29,7 @@ export function PolicyPageView({ title, description, slug }: PolicyPageViewProps
             </h1>
             <Link
               href="/policies"
-              className="inline-flex min-h-11 shrink-0 items-start gap-1.5 self-end whitespace-nowrap pt-1 text-md font-semibold tracking-[.04em] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:mt-6 sm:self-auto"
+              className="inline-flex min-h-11 shrink-0 items-start gap-1.5 self-start whitespace-nowrap pt-1 text-md font-semibold tracking-[.04em] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:mt-6 sm:self-auto"
             >
               <FiArrowLeft className="mt-0.5" aria-hidden="true" />Back to policies
             </Link>

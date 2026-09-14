@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
 import { availabilityClosureKeys, courtPricingKeys } from "@/config/query-keys";
 import { closeCourtTimes, closeEntireOperation, reopenClosure } from "@/services/availability-closures/availability-closure-service";
 
@@ -16,13 +17,13 @@ function useRefreshAvailabilityClosures() {
 }
 
 export function useCloseEntireOperation() {
-  return useMutation({ mutationFn: closeEntireOperation, onSuccess: useRefreshAvailabilityClosures() });
+  return useRateLimitedMutation("availability-close-operation", { mutationFn: closeEntireOperation, onSuccess: useRefreshAvailabilityClosures() });
 }
 
 export function useCloseCourtTimes() {
-  return useMutation({ mutationFn: closeCourtTimes, onSuccess: useRefreshAvailabilityClosures() });
+  return useRateLimitedMutation("availability-close-court-times", { mutationFn: closeCourtTimes, onSuccess: useRefreshAvailabilityClosures() });
 }
 
 export function useReopenClosure() {
-  return useMutation({ mutationFn: reopenClosure, onSuccess: useRefreshAvailabilityClosures() });
+  return useRateLimitedMutation("availability-reopen", { mutationFn: reopenClosure, onSuccess: useRefreshAvailabilityClosures() });
 }

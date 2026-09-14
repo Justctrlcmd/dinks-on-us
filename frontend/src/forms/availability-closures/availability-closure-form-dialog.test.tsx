@@ -18,6 +18,20 @@ afterEach(() => {
 });
 
 describe("AvailabilityClosureFormDialog", () => {
+  it("keeps the entire-operation form content-sized on mobile", () => {
+    render(
+      <AvailabilityClosureFormDialog
+        open
+        onOpenChange={vi.fn()}
+        configuration={null}
+        courts={[]}
+      />,
+    );
+
+    expect(screen.getByRole("dialog")).toHaveClass("max-h-none", "overflow-visible", "p-3");
+    expect(screen.getByRole("dialog")).not.toHaveClass("overflow-y-auto");
+  });
+
   it("keeps the court selector controlled while choosing a court", async () => {
     const user = userEvent.setup();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);

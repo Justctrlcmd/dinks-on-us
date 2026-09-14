@@ -27,7 +27,7 @@ class PasswordController extends Controller
         if ($request->hasSession()) {
             $request->session()->regenerate();
         }
-        $audit->record(AuditLog::PASSWORD_CHANGED, $request, $user, $user);
+        $audit->record(AuditLog::PASSWORD_CHANGED, $request, $user, $user, module: 'ACCOUNT', targetLabel: 'Account password');
 
         return $this->respondSuccess(message: 'Your password has been changed.');
     }

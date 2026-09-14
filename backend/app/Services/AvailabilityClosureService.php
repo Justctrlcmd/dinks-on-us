@@ -9,6 +9,8 @@ use App\Models\Court;
 use App\Models\CourtConfiguration;
 use App\Models\ReservationSlotLock;
 use App\Models\User;
+use App\Support\BusinessClock;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -17,9 +19,20 @@ class AvailabilityClosureService
     public function closeEntireOperation(User $user, string $date, string $reason): AvailabilityClosure
     {
         return DB::transaction(function () use ($user, $date, $reason): AvailabilityClosure {
-            Court::query()->active()->orderBy('id')->lockForUpdate()->get();
-            if (ReservationSlotLock::query()->whereDate('date', $date)->exists()) {
-                throw ValidationException::withMessages(['date' => ['Active reservations use this date. Handle those reservations before closing the operation.']]);
+            $courts = Court::query()->active()->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $activeReservation = ReservationSlotLock::query()
+                ->whereDate('date', $date)
+                ->orderBy('court_id')
+                ->orderBy('start_hour')
+                ->first();
+            if ($activeReservation) {
+                $courtNumber = $courts->get($activeReservation->court_id)?->court_number ?? $activeReservation->court_id;
+                throw ValidationException::withMessages(['date' => [sprintf(
+                    'Cannot close %s because Court %s has an active reservation at %s. Handle that reservation before closing the operation.',
+                    $this->formatDate($date),
+                    $courtNumber,
+                    $this->formatPeriod($activeReservation->start_hour, $activeReservation->start_hour + 1),
+                )]]);
             }
             $existing = AvailabilityClosure::query()
                 ->whereDate('date', $date)
@@ -27,7 +40,10 @@ class AvailabilityClosureService
                 ->get();
 
             if ($existing->contains(fn (AvailabilityClosure $closure): bool => $closure->is_active && $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION)) {
-                throw ValidationException::withMessages(['date' => ['The entire operation is already closed for this date.']]);
+                throw ValidationException::withMessages(['date' => [sprintf(
+                    'The entire operation is already closed for %s. Choose a different date or reopen the existing closure first.',
+                    $this->formatDate($date),
+                )]]);
             }
 
             $closure = AvailabilityClosure::query()->create([
@@ -65,9 +81,20 @@ class AvailabilityClosureService
                     ]);
                 }
 
-                if (ReservationSlotLock::query()->where('court_id', $court->id)->whereDate('date', $date)
-                    ->where('start_hour', '>=', $period['start_hour'])->where('start_hour', '<', $period['end_hour'])->exists()) {
-                    throw ValidationException::withMessages(["periods.{$index}.start_hour" => ['An active reservation uses this court time. Handle the reservation before blocking it.']]);
+                $activeReservation = ReservationSlotLock::query()
+                    ->where('court_id', $court->id)
+                    ->whereDate('date', $date)
+                    ->where('start_hour', '>=', $period['start_hour'])
+                    ->where('start_hour', '<', $period['end_hour'])
+                    ->orderBy('start_hour')
+                    ->first();
+                if ($activeReservation) {
+                    throw ValidationException::withMessages(["periods.{$index}.start_hour" => [sprintf(
+                        'Cannot close Court %s on %s at %s because an active reservation uses that court time. Handle the reservation before blocking it.',
+                        $court->court_number,
+                        $this->formatDate($date),
+                        $this->formatPeriod($activeReservation->start_hour, $activeReservation->start_hour + 1),
+                    )]]);
                 }
             }
 
@@ -78,7 +105,11 @@ class AvailabilityClosureService
                 ->get();
 
             if ($closuresForDate->contains(fn (AvailabilityClosure $closure): bool => $closure->is_active && $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION)) {
-                throw ValidationException::withMessages(['date' => ['The entire operation is already closed for this date.']]);
+                throw ValidationException::withMessages(['date' => [sprintf(
+                    'The entire operation is already closed for %s, so Court %s time ranges cannot be added. Reopen the date closure first.',
+                    $this->formatDate($date),
+                    $court->court_number,
+                )]]);
             }
 
             $existingPeriods = $closuresForDate
@@ -95,7 +126,12 @@ class AvailabilityClosureService
                     $existing->end_hour,
                 ))) {
                     throw ValidationException::withMessages([
-                        "periods.{$index}.start_hour" => ['This time range overlaps an existing active closure for the selected court.'],
+                        "periods.{$index}.start_hour" => [sprintf(
+                            'Cannot close Court %s on %s for %s because it overlaps an existing active closure. Choose a time outside that closure or reopen it first.',
+                            $court->court_number,
+                            $this->formatDate($date),
+                            $this->formatPeriod($period['start_hour'], $period['end_hour']),
+                        )],
                     ]);
                 }
             }
@@ -152,6 +188,25 @@ class AvailabilityClosureService
         return $firstStart < $secondEnd && $firstEnd > $secondStart;
     }
 
+    private function formatDate(string $date): string
+    {
+        return CarbonImmutable::createFromFormat('Y-m-d', $date, BusinessClock::timezone())->format('M j, Y');
+    }
+
+    private function formatPeriod(int $startHour, int $endHour): string
+    {
+        return $this->formatHour($startHour).'–'.$this->formatHour($endHour);
+    }
+
+    private function formatHour(int $hour): string
+    {
+        $normalized = $hour % 24;
+        $displayHour = $normalized % 12 ?: 12;
+        $period = $normalized < 12 ? 'AM' : 'PM';
+
+        return "{$displayHour}:00 {$period}";
+    }
+
     /** @param array<string, mixed>|null $oldValues @param array<string, mixed>|null $newValues */
     private function recordAudit(User $user, string $action, AvailabilityClosure $closure, ?array $oldValues = null, ?array $newValues = null): void
     {
@@ -167,18 +222,18 @@ class AvailabilityClosureService
             'reason' => $closure->reason,
         ];
 
-        AuditLog::query()->create([
-            'actor_id' => $user->id,
-            'action' => $action,
-            'target_type' => AvailabilityClosure::class,
-            'target_id' => (string) $closure->id,
-            'before' => $oldValues,
-            'after' => [
+        app(SecurityAuditService::class)->recordFromContext(
+            $action,
+            $user,
+            $closure,
+            [
                 ...$snapshot,
-                ...($newValues ?? [
-                    'is_active' => $closure->is_active,
-                ]),
+                ...($newValues ?? ['is_active' => $closure->is_active]),
             ],
-        ]);
+            'MANAGEMENT_AVAILABILITY_CLOSURES',
+            $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION
+                ? "Entire operation on {$snapshot['date']}"
+                : "{$snapshot['court_name']} on {$snapshot['date']}",
+        );
     }
 }
