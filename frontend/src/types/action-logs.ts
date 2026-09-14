@@ -14,6 +14,7 @@ export type ActionLogFilters = {
   page: number;
   search: string;
   module: string;
+  date: string;
 };
 
 export type PaginatedActionLogs = {

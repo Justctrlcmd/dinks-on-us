@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Management\ListActionLogsRequest;
 use App\Http\Resources\ActionLogResource;
 use App\Models\AuditLog;
+use App\Support\BusinessClock;
 use App\Traits\ApiResponse;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 
 class ActionLogController extends Controller
@@ -42,7 +44,12 @@ class ActionLogController extends Controller
             });
         }
 
-        $logs = $query->paginate((int) ($validated['per_page'] ?? 25));
+        if ($date = $validated['date'] ?? null) {
+            $start = CarbonImmutable::createFromFormat('Y-m-d', $date, BusinessClock::timezone())->startOfDay()->utc();
+            $query->where('created_at', '>=', $start)->where('created_at', '<', $start->addDay());
+        }
+
+        $logs = $query->paginate((int) ($validated['per_page'] ?? 10));
 
         return $this->respondSuccess(ActionLogResource::collection($logs->items())->resolve($request), 'Action logs retrieved.', meta: [
             'current_page' => $logs->currentPage(),

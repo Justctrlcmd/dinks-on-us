@@ -16,10 +16,10 @@ import type { AccessModule } from "@/types/api";
 import type { AccessModuleOption, AccessProfile } from "@/types/team-access";
 import { accessSchema, type AccessValues } from "@/validation/custom/team-access-schema";
 
-function ModuleChoice({ module, checked, onChange }: { module: AccessModuleOption; checked: boolean; onChange: (checked: boolean) => void }) {
+function ModuleChoice({ module, checked, onChange, className }: { module: AccessModuleOption; checked: boolean; onChange: (checked: boolean) => void; className?: string }) {
   const id = `access-module-${module.key.toLowerCase()}`;
   return (
-    <div className="flex items-start gap-3 rounded-lg border bg-background p-3">
+    <div className={`flex items-start gap-3 rounded-lg border bg-background p-3 ${className ?? ""}`}>
       <Checkbox id={id} className="mt-0.5" checked={checked} onCheckedChange={onChange} />
       <div className="min-w-0">
         <Label htmlFor={id} className="cursor-pointer font-semibold">{module.name}</Label>
@@ -97,7 +97,7 @@ export function AccessFormDialog({ access, modules, open, onOpenChange }: {
             <legend className="mb-2 font-medium">Module access <span aria-hidden="true">*</span></legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {primaryModules.map((module) => (
-                <ModuleChoice key={module.key} module={module} checked={selected.includes(module.key)} onChange={(checked) => setModule(module.key, checked)} />
+                <ModuleChoice key={module.key} module={module} checked={selected.includes(module.key)} onChange={(checked) => setModule(module.key, checked)} className={module.key === "REPORTS" ? "sm:col-span-2" : undefined} />
               ))}
             </div>
 
