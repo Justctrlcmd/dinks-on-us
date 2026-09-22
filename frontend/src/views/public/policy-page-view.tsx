@@ -15,8 +15,8 @@ type PolicyPageViewProps = {
   slug: PolicySection["slug"];
 };
 
-export function PolicyPageView({ title, description, slug }: PolicyPageViewProps) {
-  const query = usePublicPolicies();
+export function PolicyPageView({ title, description, slug, initialPolicies }: PolicyPageViewProps & { initialPolicies?: PolicySection[] }) {
+  const query = usePublicPolicies(initialPolicies);
   const section = query.data?.find((item) => item.slug === slug);
 
   return (

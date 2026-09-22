@@ -697,7 +697,7 @@ class ReservationService
             $this->releaseLocks($reservation);
             $reservation->update(['status' => Reservation::STATUS_CANCELLED, 'cancellation_reason' => $reason, 'cancelled_by_user_id' => $user->id, 'cancelled_at' => now(), 'refundable_credit' => $refundAmount]);
             if ($refundAmount > 0) {
-                $reservation->refunds()->create(['type' => 'CANCELLATION', 'status' => 'DUE', 'amount' => $refundAmount, 'reason' => $reason, 'created_by_user_id' => $user->id]);
+                $reservation->refunds()->create(['type' => 'CANCELLATION', 'status' => 'COMPLETED', 'amount' => $refundAmount, 'reason' => $reason, 'created_by_user_id' => $user->id]);
             }
             $this->recordTransition($reservation, Reservation::STATUS_VERIFIED, Reservation::STATUS_CANCELLED, $user, $reason);
             $this->audit($user, AuditLog::RESERVATION_CANCELLED, $reservation, ['status' => Reservation::STATUS_CANCELLED, 'refund_amount' => $refundAmount]);
@@ -753,7 +753,10 @@ class ReservationService
                 ->when($ignoreReservationId, fn ($query) => $query->whereHas('reservationSlot', fn ($slotQuery) => $slotQuery->where('reservation_id', '!=', $ignoreReservationId)))
                 ->exists();
             if ($lock) {
-                throw new ReservationConflictException('One or more selected court times were just reserved. Choose another time.');
+                throw new ReservationConflictException(
+                    'Some of your selected times were just booked. Please choose another available time.',
+                    'RESERVATION_SLOTS_UNAVAILABLE',
+                );
             }
         }
     }

@@ -23,7 +23,7 @@ import { formatDateOnly } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
 import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { reservationProofUrl } from "@/services/reservations/reservation-service";
-import type { ManagementReservation, ReservationAddOnsInput } from "@/types/reservation";
+import type { ManagementReservation, ReservationAddOnsInput, RescheduleReservationInput } from "@/types/reservation";
 import { PaymentMethodQrDialog } from "@/components/common/payment-method-qr-dialog";
 import {
   expandReservationRanges as expandRanges,
@@ -81,6 +81,41 @@ function SummaryLine({ label, amount, labelClassName, amountClassName }: { label
       <strong className={`shrink-0 whitespace-nowrap text-right font-heading font-bold tabular-nums ${amountClassName ?? ""}`}>{currency.format(amount)}</strong>
     </div>
   );
+}
+
+function ReservationActionConfirmationDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  destructive = false,
+  pending,
+  disabled = false,
+  onConfirm,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  pending: boolean;
+  disabled?: boolean;
+  onConfirm: () => void;
+  children: React.ReactNode;
+}) {
+  return <Dialog open={open} onOpenChange={(nextOpen) => { if (!pending) onOpenChange(nextOpen); }}>
+    <DialogContent showCloseButton={!pending}>
+      <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+      <div className="rounded-lg border bg-muted/20 p-3 text-sm">{children}</div>
+      <DialogFooter>
+        <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Back</Button>
+        <Button type="button" variant={destructive ? "destructive" : "default"} disabled={pending || disabled} onClick={onConfirm}>{confirmLabel}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
 export function ReservationDetailDialog({ reservation, reservationId, open, onOpenChange, source = "reservations" }: { reservation: ManagementReservation | null; reservationId?: number | null; open: boolean; onOpenChange: (open: boolean) => void; source?: "reservations" | "history" | "dashboard" }) {
@@ -180,6 +215,7 @@ export function ReservationDetailDialog({ reservation, reservationId, open, onOp
 
 export function RejectReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const mutation = useRejectReservation();
+  const [pendingValues, setPendingValues] = useState<RejectReservationValues | null>(null);
   const form = useForm<RejectReservationValues>({
     resolver: zodResolver(rejectReservationSchema),
     defaultValues: { concern: concernOptions[0][0], reason: "" },
@@ -190,17 +226,34 @@ export function RejectReservationDialog({ reservation, open, onOpenChange }: { r
     if (open) form.reset({ concern: concernOptions[0][0], reason: "" });
   }, [form, open, reservation?.id]);
 
-  const submit = form.handleSubmit((values) => {
-    if (!reservation) return;
-    mutation.mutate({ id: reservation.id, concern: values.concern, reason: values.reason }, { onSuccess: () => onOpenChange(false) });
-  });
+  const submit = form.handleSubmit((values) => setPendingValues(values));
+  function confirm() {
+    if (!reservation || !pendingValues) return;
+    mutation.mutate(
+      { id: reservation.id, concern: pendingValues.concern, reason: pendingValues.reason },
+      { onSuccess: () => { setPendingValues(null); onOpenChange(false); }, onError: () => setPendingValues(null) },
+    );
+  }
   const reasonError = form.formState.errors.reason?.message;
 
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Reject {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes the reservation and immediately releases its court times.</DialogDescription></DialogHeader>
+  return <><Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Reject {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes the reservation and immediately releases its court times.</DialogDescription></DialogHeader>
     <SelectWithLabel id="reservation-concern" label="Concern" required value={concern} error={form.formState.errors.concern?.message} options={concernOptions.map(([value, label]) => ({ value, label }))} onValueChange={(value) => { if (value) form.setValue("concern", value as RejectReservationValues["concern"], { shouldDirty: true, shouldValidate: true }); }} />
     <Field label="Reason" htmlFor="reservation-rejection-reason" required error={reasonError}><Textarea id="reservation-rejection-reason" aria-invalid={Boolean(reasonError)} aria-describedby={reasonError ? "reservation-rejection-reason-error" : undefined} {...form.register("reason")} maxLength={1500} rows={5} placeholder="Explain why this reservation cannot be accepted." /></Field>
-    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep reservation</Button>} /><Button type="submit" variant="destructive" disabled={mutation.isPending || isMutationRateLimited(mutation)}>{mutationButtonLabel("Rejecting…", "Yes, reject reservation", mutation)}</Button></DialogFooter>
-  </form></DialogContent></Dialog>;
+    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep reservation</Button>} /><Button type="submit" variant="destructive" disabled={mutation.isPending || isMutationRateLimited(mutation)}>Review rejection</Button></DialogFooter>
+  </form></DialogContent></Dialog>
+  <ReservationActionConfirmationDialog
+    open={Boolean(pendingValues)}
+    onOpenChange={(nextOpen) => { if (!nextOpen) setPendingValues(null); }}
+    title={`Reject ${reservation?.reference_number}?`}
+    description="This cannot be reversed. The reservation will be finalized and its court times released."
+    confirmLabel={mutationButtonLabel("Rejecting…", "Reject reservation", mutation)}
+    destructive
+    pending={mutation.isPending}
+    disabled={isMutationRateLimited(mutation)}
+    onConfirm={confirm}
+  >
+    <dl className="grid gap-2"><div><dt className="text-muted-foreground">Concern</dt><dd className="font-medium">{concernOptions.find(([value]) => value === pendingValues?.concern)?.[1] ?? "Not specified"}</dd></div><div><dt className="text-muted-foreground">Reason</dt><dd className="whitespace-pre-wrap font-medium">{pendingValues?.reason}</dd></div></dl>
+  </ReservationActionConfirmationDialog></>;
 }
 
 function RescheduleForm({ reservation, onDone }: { reservation: ManagementReservation; onDone: () => void }) {
@@ -208,6 +261,7 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
   const requiredCount = reservation.slots?.filter((slot) => slot.kind !== "ADD_ON").length ?? 0;
   const mutation = useRescheduleReservation();
   const [addOnsOpen, setAddOnsOpen] = useState(false);
+  const [pendingInput, setPendingInput] = useState<RescheduleReservationInput | null>(null);
   const detailQuery = useReservation(reservation.id);
   const detail = detailQuery.data ?? reservation;
   const form = useForm<RescheduleReservationValues>({
@@ -318,7 +372,7 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
       return;
     }
     const proof = values.payment_proof?.item(0);
-    mutation.mutate({ id: reservation.id, input: {
+    const input: RescheduleReservationInput = {
       slots: expandRanges(values.date, values.ranges ?? []),
       add_on_slots: expandRanges(values.date, values.add_on_ranges ?? []),
       additional_players: values.additional_players ?? 0,
@@ -329,13 +383,21 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
         payment_reference_number: values.payment_reference_number?.trim() || undefined,
         payment_proof: proof && proof.size > 0 ? proof : undefined,
       } : {}),
-    } }, { onSuccess: onDone });
+    };
+    setPendingInput(input);
   });
+  function confirm() {
+    if (!pendingInput) return;
+    mutation.mutate(
+      { id: reservation.id, input: pendingInput },
+      { onSuccess: () => { setPendingInput(null); onDone(); }, onError: () => setPendingInput(null) },
+    );
+  }
   const scheduleError = form.formState.errors.date?.message ?? form.formState.errors.ranges?.message;
   const addOnScheduleError = form.formState.errors.add_on_ranges?.message ?? (form.formState.errors.add_on_ranges ? "Complete each added court time." : undefined);
   const paymentError = form.formState.errors.payment_channel?.message ?? form.formState.errors.payment_method_id?.message;
   const oldBaseSlots = originalSlots.map((slot) => ({ court_id: slot.court_id, start_hour: slot.start_hour, date: slot.date }));
-  return <form onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Reschedule {reservation.reference_number}?</DialogTitle><DialogDescription>Choose exactly {requiredCount} replacement slots. Existing add-on court times move to the new date at their same court and hour, using the current configured price. Players and equipment stay on this reservation.</DialogDescription></DialogHeader>
+  return <><form onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Reschedule {reservation.reference_number}?</DialogTitle><DialogDescription>Choose exactly {requiredCount} replacement slots. Existing add-on court times move to the new date at their same court and hour, using the current configured price. Players and equipment stay on this reservation.</DialogDescription></DialogHeader>
     <ScheduleFields idPrefix="reservation-replacement" date={date} setDate={(nextDate) => form.setValue("date", nextDate, { shouldDirty: true, shouldValidate: true })} ranges={ranges} setRanges={(nextRanges) => form.setValue("ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} allowedCurrentSlots={oldBaseSlots} disableClosedDates={false} maxSelectedSlots={requiredCount} onRemoveRange={(index) => form.setValue("ranges", ranges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={scheduleError} />
     <Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" disabled={slotCount >= requiredCount} onClick={() => form.setValue("ranges", [...ranges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another court</Button>
     <p className={slotCount === requiredCount ? "text-sm font-semibold text-primary" : "text-sm font-semibold text-destructive"}>{slotCount} of {requiredCount} replacement slots selected</p>
@@ -344,8 +406,20 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
     <section className="rounded-xl border"><button type="button" className="flex min-h-12 w-full items-center justify-between gap-4 px-4 text-left font-semibold" aria-expanded={addOnsOpen} onClick={() => setAddOnsOpen((open) => !open)}><span>Add-ons for the new schedule?</span><FiChevronDown className={`shrink-0 transition-transform ${addOnsOpen ? "rotate-180" : ""}`} aria-hidden="true" /></button>{addOnsOpen ? <div className="grid gap-4 border-t p-4"><p className="text-sm text-muted-foreground">Add court time, players, or rental equipment to the same reservation.</p><ScheduleFields idPrefix="reservation-reschedule-addon" date={date} setDate={() => undefined} showDate={false} ranges={addOnRanges} setRanges={(nextRanges) => form.setValue("add_on_ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} disableClosedDates={false} onRemoveRange={(index) => form.setValue("add_on_ranges", addOnRanges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={addOnScheduleError} /><Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" onClick={() => form.setValue("add_on_ranges", [...addOnRanges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another add-on court</Button><div className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><h4 className="font-semibold">Additional players</h4><p className="text-sm text-muted-foreground">{currency.format(options?.configuration?.additional_player_price ?? 0)} each</p></div><QuantityStepper value={players} decreaseDisabled={players === 0} increaseDisabled={false} decreaseLabel="Remove one additional player" increaseLabel="Add one additional player" onDecrease={() => form.setValue("additional_players", Math.max(0, players - 1), { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("additional_players", players + 1, { shouldDirty: true, shouldValidate: true })} /></div><div className="rounded-xl border p-4"><h4 className="font-semibold">Rental equipment</h4><div className="mt-3 grid gap-3">{options?.equipment.map((item) => { const quantity = equipment[item.id] ?? 0; return <div key={item.id} className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0"><div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · {item.available_quantity === 0 ? "Unavailable for selected schedule" : `${item.available_quantity} available for your selected schedule`}</p></div><QuantityStepper value={quantity} decreaseDisabled={quantity === 0} increaseDisabled={quantity >= item.available_quantity} decreaseLabel={`Remove one ${item.name}`} increaseLabel={`Add one ${item.name}`} onDecrease={() => form.setValue("equipment", { ...equipment, [item.id]: Math.max(0, quantity - 1) }, { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("equipment", { ...equipment, [item.id]: quantity + 1 }, { shouldDirty: true, shouldValidate: true })} /></div>; })}</div></div></div> : null}</section>
     {scheduleComplete && addOnRangesComplete && pricingReady ? <section className="rounded-xl border p-4"><h3 className="font-semibold">Updated balance</h3><div className="mt-3 grid gap-2 text-sm">{replacementDetails.map((slot) => <div key={`replacement-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>{slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{migratedAddOnDetails.map((slot) => <div key={`migrated-add-on-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>Existing add-on moved · {slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{addOnDetails.map((slot) => <div key={`add-on-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>New add-on · {slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={item.id} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-2 grid gap-2 border-t pt-3"><div className="flex justify-between gap-3"><span>Current reservation total</span><strong>{currency.format(detail.amounts.final)}</strong></div>{detail.amounts.outstanding > 0 ? <div className="flex justify-between gap-3 text-muted-foreground"><span>Current outstanding balance</span><strong>{currency.format(detail.amounts.outstanding)}</strong></div> : null}<div className="flex justify-between gap-3"><span>Updated reservation total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <div className="flex justify-between gap-3 text-base font-extrabold text-destructive"><span>Balance to collect now</span><strong>{currency.format(amountToPay)}</strong></div> : resultingCredit > 0 ? <div className="flex justify-between gap-3 text-base font-extrabold text-primary"><span>Refundable credit</span><strong>{currency.format(resultingCredit)}</strong></div> : <div className="flex justify-between gap-3 font-semibold text-primary"><span>No balance difference</span><strong>{currency.format(0)}</strong></div>}</div></div></section> : null}
     {paymentRequired ? <section className="grid gap-4 rounded-xl border p-4"><div><h3 className="font-semibold">Payment method</h3><p className="text-sm text-muted-foreground">Collect the full outstanding balance after this reschedule.</p></div><SelectWithLabel id="reservation-reschedule-payment-method" label="Payment method" required value={paymentSelection} error={paymentError} options={[{ value: "CASH", label: "Cash" }, ...paymentMethods.map((method) => ({ value: `METHOD:${method.id}`, label: method.name }))]} placeholder="Select payment method" onValueChange={(value) => { if (!value) return; if (value === "CASH") { form.setValue("payment_channel", "CASH", { shouldDirty: true, shouldValidate: true }); form.setValue("payment_method_id", undefined, { shouldDirty: true, shouldValidate: true }); form.setValue("payment_reference_number", "", { shouldDirty: true, shouldValidate: true }); form.resetField("payment_proof", { defaultValue: undefined }); } else { form.setValue("payment_channel", "EWALLET_BANK", { shouldDirty: true, shouldValidate: true }); form.setValue("payment_method_id", Number(value.replace("METHOD:", "")), { shouldDirty: true, shouldValidate: true }); } }} description={paymentMethodsQuery.isPending ? "Loading active e-wallet and bank methods…" : "Cash or an active payment account."} />{paymentMethodsQuery.isError ? <p role="alert" className="text-sm text-destructive">Online payment methods could not be loaded. Cash remains available.</p> : null}{selectedPaymentMethod ? <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-muted-foreground">Account name</dt><dd className="font-medium">{selectedPaymentMethod.account_name}</dd></div><div><dt className="text-muted-foreground">Account number</dt><dd className="font-medium">{selectedPaymentMethod.account_number}</dd></div></dl><PaymentMethodQrDialog method={selectedPaymentMethod} /></div> : null}<Field label="Transaction number" required={nonCashPayment} error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_reference_number")} /></Field><Field label="Payment proof" required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field><div className="rounded-lg bg-muted/30 p-3 text-sm font-semibold"><div className="flex justify-between gap-3"><span>Balance to collect now</span><strong>{currency.format(amountToPay)}</strong></div></div></section> : null}
-    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep current schedule</Button>} /><Button type="submit" disabled={!canSubmit || mutation.isPending || isMutationRateLimited(mutation)}>{mutationButtonLabel("Rescheduling…", "Yes, reschedule", mutation)}</Button></DialogFooter>
-  </form>;
+    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep current schedule</Button>} /><Button type="submit" disabled={!canSubmit || mutation.isPending || isMutationRateLimited(mutation)}>Review reschedule</Button></DialogFooter>
+  </form>
+  <ReservationActionConfirmationDialog
+    open={Boolean(pendingInput)}
+    onOpenChange={(nextOpen) => { if (!nextOpen) setPendingInput(null); }}
+    title={`Reschedule ${reservation.reference_number}?`}
+    description="This records a new schedule and any related payment or credit. Review the result before continuing."
+    confirmLabel={mutationButtonLabel("Rescheduling…", "Confirm reschedule", mutation)}
+    pending={mutation.isPending}
+    disabled={isMutationRateLimited(mutation)}
+    onConfirm={confirm}
+  >
+    <div className="grid gap-2"><p className="font-semibold">Replacement schedule</p>{replacementDetails.map((slot) => <div key={`confirm-replacement-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>{slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{migratedAddOnDetails.map((slot) => <div key={`confirm-migrated-add-on-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>Existing add-on moved · {slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{addOnDetails.map((slot) => <div key={`confirm-add-on-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>New add-on · {slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={`confirm-equipment-${item.id}`} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-1 grid gap-2 border-t pt-3"><div className="flex justify-between gap-3"><span>Updated total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <div className="flex justify-between gap-3 font-semibold text-destructive"><span>Collect now</span><strong>{currency.format(amountToPay)}</strong></div> : resultingCredit > 0 ? <div className="flex justify-between gap-3 font-semibold text-primary"><span>Refundable credit</span><strong>{currency.format(resultingCredit)}</strong></div> : null}</div></div>
+  </ReservationActionConfirmationDialog></>;
 }
 
 export function RescheduleReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -358,6 +432,7 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
   const paymentMethodsQuery = usePublicPaymentMethods();
   const paymentMethods = paymentMethodsQuery.data ?? [];
   const [courtOpen, setCourtOpen] = useState(false);
+  const [pendingInput, setPendingInput] = useState<ReservationAddOnsInput | null>(null);
   const mutation = useAddReservationAddOns();
   const form = useForm<ReservationAddOnsValues>({
     resolver: zodResolver(reservationAddOnsSchema),
@@ -435,12 +510,19 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
       payment_reference_number: values.payment_reference_number?.trim() || undefined,
       payment_proof: proof && proof.size > 0 ? proof : undefined,
     };
-    mutation.mutate({ id: reservation.id, input }, { onSuccess: () => onOpenChange(false) });
+    setPendingInput(input);
   });
+  function confirm() {
+    if (!reservation || !pendingInput) return;
+    mutation.mutate(
+      { id: reservation.id, input: pendingInput },
+      { onSuccess: () => { setPendingInput(null); onOpenChange(false); }, onError: () => setPendingInput(null) },
+    );
+  }
   const scheduleError = form.formState.errors.ranges?.message ?? (form.formState.errors.ranges ? "Complete each selected court time." : undefined);
   const paymentChannelError = form.formState.errors.payment_channel?.message;
   const paymentMethodError = form.formState.errors.payment_method_id?.message;
-  return <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) setCourtOpen(false); onOpenChange(nextOpen); }}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-4"><DialogHeader><DialogTitle>Add these items to {reservation?.reference_number}?</DialogTitle><DialogDescription>Add available court time, players, or rental equipment to this reservation. Added court time is limited to the reservation date.</DialogDescription></DialogHeader>
+  return <><Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) setCourtOpen(false); onOpenChange(nextOpen); }}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-4"><DialogHeader><DialogTitle>Add these items to {reservation?.reference_number}?</DialogTitle><DialogDescription>Add available court time, players, or rental equipment to this reservation. Added court time is limited to the reservation date.</DialogDescription></DialogHeader>
     <section className="rounded-xl border"><button type="button" className="flex min-h-12 w-full items-center justify-between px-4 font-semibold" onClick={() => setCourtOpen(!courtOpen)}>Add court time?<FiChevronDown className={courtOpen ? "rotate-180" : ""} aria-hidden /></button>{courtOpen ? <div className="border-t p-4"><ScheduleFields date={date} setDate={() => undefined} dateLocked ranges={ranges} setRanges={(nextRanges) => form.setValue("ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} onRemoveRange={(index) => form.setValue("ranges", ranges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={scheduleError} /><Button type="button" variant="link" size="sm" className="mt-3 h-auto px-0" onClick={() => form.setValue("ranges", [...ranges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another court</Button></div> : null}</section>
     <section className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><h3 className="font-semibold">Add players</h3><p className="text-sm text-muted-foreground">{currency.format(options?.configuration?.additional_player_price ?? 0)} each</p></div><QuantityStepper value={players} decreaseDisabled={players === 0} increaseDisabled={false} decreaseLabel="Remove one additional player" increaseLabel="Add one additional player" onDecrease={() => form.setValue("additional_players", Math.max(0, players - 1), { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("additional_players", players + 1, { shouldDirty: true, shouldValidate: true })} /></section>
     <section className="rounded-xl border p-4"><h3 className="font-semibold">Rental equipment</h3><div className="mt-3 grid gap-3">{options?.equipment.map((item) => { const quantity = equipment[item.id] ?? 0; return <div key={item.id} className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0"><div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · {item.available_quantity === 0 ? "Unavailable for selected schedule" : `${item.available_quantity} available for your selected schedule`}</p></div><QuantityStepper value={quantity} decreaseDisabled={quantity === 0} increaseDisabled={quantity >= item.available_quantity} decreaseLabel={`Remove one ${item.name}`} increaseLabel={`Add one ${item.name}`} onDecrease={() => form.setValue("equipment", { ...equipment, [item.id]: Math.max(0, quantity - 1) }, { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("equipment", { ...equipment, [item.id]: quantity + 1 }, { shouldDirty: true, shouldValidate: true })} /></div>; })}</div></section>
@@ -477,12 +559,25 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
         <Field label={nonCashPayment ? "Payment proof" : "Payment proof (optional)"} required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field>
       </section> : <section className="rounded-xl border border-primary/35 bg-primary/8 p-4"><h3 className="font-semibold text-primary">Covered by available credit</h3><p className="mt-1 text-sm text-muted-foreground">No payment method, transaction number, or proof is required for these add-ons.</p></section>}
     </> : null}
-    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Cancel</Button>} /><Button type="submit" disabled={!hasInput || !paymentComplete || mutation.isPending || isMutationRateLimited(mutation)}>{mutationButtonLabel("Adding…", requiresPayment ? "Add and record payment" : "Add to reservation", mutation)}</Button></DialogFooter>
-  </form></DialogContent></Dialog>;
+    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Cancel</Button>} /><Button type="submit" disabled={!hasInput || !paymentComplete || mutation.isPending || isMutationRateLimited(mutation)}>Review add-ons</Button></DialogFooter>
+  </form></DialogContent></Dialog>
+  <ReservationActionConfirmationDialog
+    open={Boolean(pendingInput)}
+    onOpenChange={(nextOpen) => { if (!nextOpen) setPendingInput(null); }}
+    title={`Add items to ${reservation?.reference_number}?`}
+    description="These additions and any payment record cannot be edited from this reservation."
+    confirmLabel={mutationButtonLabel("Adding…", "Confirm add-ons", mutation)}
+    pending={mutation.isPending}
+    disabled={isMutationRateLimited(mutation)}
+    onConfirm={confirm}
+  >
+    <div className="grid gap-2">{selectedSlotDetails.map((slot) => <div key={`confirm-${slot.court_id}-${slot.start_hour}`} className="flex justify-between gap-3"><span>{slot.courtName} · {formatHourRange(slot.start_hour, slot.endHour)}</span><strong>{currency.format(slot.amount)}</strong></div>)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={`confirm-equipment-${item.id}`} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-1 grid gap-2 border-t pt-3">{creditApplied > 0 ? <div className="flex justify-between gap-3 text-primary"><span>Existing credit applied</span><strong>−{currency.format(creditApplied)}</strong></div> : null}<div className="flex justify-between gap-3"><span>Updated total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <><div className="flex justify-between gap-3 font-semibold text-primary"><span>Record payment now</span><strong>{currency.format(amountToPay)}</strong></div><div className="text-muted-foreground">Payment method: {pendingInput?.payment_channel === "CASH" ? "Cash" : selectedPaymentMethod?.name ?? "E-wallet or bank"}</div></> : <div className="font-semibold text-primary">No payment is required.</div>}</div></div>
+  </ReservationActionConfirmationDialog></>;
 }
 
 export function CompleteReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const mutation = useCompleteReservation();
+  const [pendingInput, setPendingInput] = useState<FormData | null>(null);
   const requiresPayment = (reservation?.amounts.outstanding ?? 0) > 0;
   const form = useForm<CompleteReservationValues>({
     resolver: zodResolver(completeReservationSchema(requiresPayment)),
@@ -501,9 +596,16 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
     if (values.payment_reference_number) input.set("payment_reference_number", values.payment_reference_number);
     const proof = values.payment_proof?.item(0);
     if (proof && proof.size > 0) input.set("payment_proof", proof);
-    mutation.mutate({ id: reservation.id, input }, { onSuccess: () => onOpenChange(false) });
+    setPendingInput(input);
   });
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Complete {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes service and records the final amount as business data.</DialogDescription></DialogHeader>
+  function confirm() {
+    if (!reservation || !pendingInput) return;
+    mutation.mutate(
+      { id: reservation.id, input: pendingInput },
+      { onSuccess: () => { setPendingInput(null); onOpenChange(false); }, onError: () => setPendingInput(null) },
+    );
+  }
+  return <><Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Complete {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes service and records the final amount as business data.</DialogDescription></DialogHeader>
     <div className="rounded-xl border p-4"><p className="text-sm text-muted-foreground">Final reservation total</p><p className="font-heading text-2xl font-extrabold">{currency.format(reservation?.amounts.final ?? 0)}</p>{reservation?.amounts.refundable_credit ? <p className="mt-2 text-sm font-semibold">Refundable credit: {currency.format(reservation.amounts.refundable_credit)}</p> : null}</div>
     {requiresPayment ? <><SelectWithLabel id="reservation-payment-channel" label="How was the additional amount collected?" required value={paymentChannel} error={form.formState.errors.payment_channel?.message} options={[{ value: "CASH", label: "Cash" }, { value: "EWALLET", label: "E-wallet" }, { value: "BANK", label: "Bank" }]} placeholder="Select payment channel" onValueChange={(value) => {
       const nextChannel = value as CompleteReservationValues["payment_channel"];
@@ -513,12 +615,25 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
         form.resetField("payment_proof", { defaultValue: undefined });
       }
     }} /><Field label="Transaction reference (optional)" error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} disabled={paymentChannel !== "EWALLET" && paymentChannel !== "BANK"} {...form.register("payment_reference_number")} /></Field><Field label="Payment proof (optional)" error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} disabled={paymentChannel !== "EWALLET" && paymentChannel !== "BANK"} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field></> : null}
-    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Not yet</Button>} /><Button type="submit" disabled={mutation.isPending || isMutationRateLimited(mutation)}>{mutationButtonLabel("Completing…", "Yes, complete reservation", mutation)}</Button></DialogFooter>
-  </form></DialogContent></Dialog>;
+    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Not yet</Button>} /><Button type="submit" disabled={mutation.isPending || isMutationRateLimited(mutation)}>Review completion</Button></DialogFooter>
+  </form></DialogContent></Dialog>
+  <ReservationActionConfirmationDialog
+    open={Boolean(pendingInput)}
+    onOpenChange={(nextOpen) => { if (!nextOpen) setPendingInput(null); }}
+    title={`Complete ${reservation?.reference_number}?`}
+    description="This finalizes the reservation and cannot be reversed."
+    confirmLabel={mutationButtonLabel("Completing…", "Complete reservation", mutation)}
+    pending={mutation.isPending}
+    disabled={isMutationRateLimited(mutation)}
+    onConfirm={confirm}
+  >
+    <dl className="grid gap-2"><div className="flex justify-between gap-3"><dt>Final reservation total</dt><dd className="font-bold">{currency.format(reservation?.amounts.final ?? 0)}</dd></div>{requiresPayment ? <div className="flex justify-between gap-3"><dt>Settlement collected</dt><dd className="font-bold">{currency.format(reservation?.amounts.outstanding ?? 0)} · {pendingInput?.get("payment_channel")?.toString() ?? "Not specified"}</dd></div> : <div className="text-muted-foreground">No additional settlement is required.</div>}</dl>
+  </ReservationActionConfirmationDialog></>;
 }
 
 export function CancelReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const mutation = useCancelReservation();
+  const [pendingValues, setPendingValues] = useState<z.output<typeof cancelReservationSchema> | null>(null);
   const form = useForm<CancelReservationValues, unknown, z.output<typeof cancelReservationSchema>>({
     resolver: zodResolver(cancelReservationSchema),
     defaultValues: { reason: "", refund_type: "FULL", refund_amount: undefined },
@@ -529,13 +644,17 @@ export function CancelReservationDialog({ reservation, open, onOpenChange }: { r
     if (open) form.reset({ reason: "", refund_type: "FULL", refund_amount: undefined });
   }, [form, open, reservation?.id]);
 
-  const submit = form.handleSubmit((values) => {
-    if (!reservation) return;
-    mutation.mutate({ id: reservation.id, input: { reason: values.reason, refund_type: values.refund_type, ...(values.refund_type === "CUSTOM" ? { refund_amount: values.refund_amount } : {}) } }, { onSuccess: () => onOpenChange(false) });
-  });
+  const submit = form.handleSubmit((values) => setPendingValues(values));
+  function confirm() {
+    if (!reservation || !pendingValues) return;
+    mutation.mutate(
+      { id: reservation.id, input: { reason: pendingValues.reason, refund_type: pendingValues.refund_type, ...(pendingValues.refund_type === "CUSTOM" ? { refund_amount: pendingValues.refund_amount } : {}) } },
+      { onSuccess: () => { setPendingValues(null); onOpenChange(false); }, onError: () => setPendingValues(null) },
+    );
+  }
   const reasonError = form.formState.errors.reason?.message;
   const refundAmountError = form.formState.errors.refund_amount?.message;
-  return (
+  return <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
         <form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5">
@@ -543,9 +662,22 @@ export function CancelReservationDialog({ reservation, open, onOpenChange }: { r
           <Field label="Cancellation reason" htmlFor="reservation-cancellation-reason" required error={reasonError}><Textarea id="reservation-cancellation-reason" aria-invalid={Boolean(reasonError)} aria-describedby={reasonError ? "reservation-cancellation-reason-error" : undefined} {...form.register("reason")} rows={5} /></Field>
           <SelectWithLabel id="reservation-refund" label="Refund" required value={refundType} error={form.formState.errors.refund_type?.message} options={[{ value: "FULL", label: `Full refund · ${currency.format(reservation?.amounts.paid ?? 0)}` }, { value: "CUSTOM", label: "Custom refund" }]} onValueChange={(value) => { if (value === "FULL" || value === "CUSTOM") form.setValue("refund_type", value, { shouldDirty: true, shouldValidate: true }); }} />
           {refundType === "CUSTOM" ? <Field label="Custom refund amount" htmlFor="reservation-custom-refund" required error={refundAmountError}><Input id="reservation-custom-refund" type="number" min="0" max={reservation?.amounts.paid} step="0.01" aria-invalid={Boolean(refundAmountError)} aria-describedby={refundAmountError ? "reservation-custom-refund-error" : undefined} {...form.register("refund_amount", { setValueAs: (value) => value === "" ? undefined : Number(value) })} /></Field> : null}
-          <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep reservation</Button>} /><Button type="submit" variant="destructive" disabled={mutation.isPending || isMutationRateLimited(mutation)}>{mutationButtonLabel("Cancelling…", "Yes, cancel and record refund", mutation)}</Button></DialogFooter>
+          <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep reservation</Button>} /><Button type="submit" variant="destructive" disabled={mutation.isPending || isMutationRateLimited(mutation)}>Review cancellation</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  );
+    <ReservationActionConfirmationDialog
+      open={Boolean(pendingValues)}
+      onOpenChange={(nextOpen) => { if (!nextOpen) setPendingValues(null); }}
+      title={`Cancel ${reservation?.reference_number}?`}
+      description="This cannot be reversed. The reservation will be finalized, refunded as shown, and its court times released."
+      confirmLabel={mutationButtonLabel("Cancelling…", "Cancel reservation", mutation)}
+      destructive
+      pending={mutation.isPending}
+      disabled={isMutationRateLimited(mutation)}
+      onConfirm={confirm}
+    >
+      <dl className="grid gap-2"><div className="flex justify-between gap-3"><dt>Refund</dt><dd className="font-bold">{currency.format(pendingValues?.refund_type === "FULL" ? reservation?.amounts.paid ?? 0 : pendingValues?.refund_amount ?? 0)}</dd></div><div><dt className="text-muted-foreground">Reason</dt><dd className="whitespace-pre-wrap font-medium">{pendingValues?.reason}</dd></div></dl>
+    </ReservationActionConfirmationDialog>
+  </>;
 }

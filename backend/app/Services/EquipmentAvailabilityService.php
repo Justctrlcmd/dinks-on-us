@@ -98,7 +98,7 @@ class EquipmentAvailabilityService
         }
         // Stable inventory rows serialize competing allocations, including when
         // there are no existing bookings to lock. Always acquire in ID order.
-        $items = RentalEquipment::query()->whereIn('id', $selection->keys())->orderBy('id')->lockForUpdate()->get();
+        $items = RentalEquipment::withTrashed()->whereIn('id', $selection->keys())->orderBy('id')->lockForUpdate()->get();
         $slots = $reservation->currentSlots()->get()->map(fn ($slot): array => [
             'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour, 'end_hour' => $slot->end_hour,
         ])->all();

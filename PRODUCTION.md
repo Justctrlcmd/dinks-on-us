@@ -21,6 +21,11 @@ Before deploying, record the Laravel and Next.js platforms, exact Node/PHP/MySQL
 
 Production requires HTTPS. Align `APP_URL`, `FRONTEND_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_URL`, `API_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, and CORS. Use `SESSION_SECURE_COOKIE=true`. Same-site subdomains are recommended; unrelated top-level domains are incompatible with Sanctum’s first-party SPA model without redesign. Verify proxy trust, cookie domain, CSRF requests, and logout in the deployed topology.
 
+Set `NEXT_PUBLIC_APP_URL` to the one canonical public HTTPS URL (with no
+trailing slash) before the frontend build. Next.js uses it for canonical links,
+Open Graph URLs, structured data, `robots.txt`, and `sitemap.xml`; it must not
+retain the local-development default in production.
+
 Set `TRUSTED_HOSTS` to the exact frontend/API hosts and set `TRUSTED_PROXIES`
 only to known proxy or load-balancer addresses. Enable
 `SECURITY_HSTS_ENABLED=true` on both services only after HTTPS and subdomain

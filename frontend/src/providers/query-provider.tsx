@@ -4,7 +4,6 @@ import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react
 import { useState } from "react";
 import { useToast } from "@/components/common/toast-provider";
 import { isApiError } from "@/lib/api";
-import { startRateLimitCooldown } from "@/lib/rate-limit-cooldown";
 
 function responseMessage(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
@@ -38,13 +37,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         const message = responseMessage(data);
         if (message) toast.success(message);
       },
-      onError: (error, _variables, _context, mutation) => {
+      onError: (error) => {
         const message = apiErrorMessage(error);
-
-        const rateLimitKey = mutation.options.meta?.rateLimitKey;
-        if (isApiError(error) && error.status === 429 && typeof rateLimitKey === "string" && error.retryAfterSeconds) {
-          startRateLimitCooldown(rateLimitKey, error.retryAfterSeconds);
-        }
 
         if (isApiError(error) && (error.status === 409 || error.status === 429)) {
           toast.warning(message);

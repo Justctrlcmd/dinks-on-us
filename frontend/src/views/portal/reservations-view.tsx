@@ -179,6 +179,10 @@ function ReservationActions({
         ) : null}
         {reservation.status === "ONGOING" ? (
           <>
+            <DropdownMenuItem disabled={disabled} onClick={() => onDialog("addons", reservation)}>
+              <FiRefreshCw aria-hidden />
+              Add-ons
+            </DropdownMenuItem>
             <DropdownMenuItem disabled={disabled} onClick={() => onDialog("complete", reservation)}>
               <FiCheckCircle aria-hidden />
               Complete

@@ -3,11 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { galleryKeys } from "@/config/query-keys";
 import { getGalleryImages, getGalleryTabs, getPublicGallery } from "@/services/gallery/gallery-service";
+import type { GalleryTab } from "@/types/gallery";
 
-export function usePublicGallery() {
+export function usePublicGallery(initialData?: GalleryTab[]) {
   return useQuery({
     queryKey: galleryKeys.public(),
     queryFn: ({ signal }) => getPublicGallery(signal).then((response) => response.data),
+    initialData,
     staleTime: 60_000,
   });
 }

@@ -8,9 +8,10 @@ import { PublicSiteFrame } from "@/components/public/public-site-frame";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/config/site";
 import { usePublicFaqs } from "@/hooks/queries/use-faqs";
+import type { Faq } from "@/types/faq";
 
-export function FaqView() {
-  const query = usePublicFaqs();
+export function FaqView({ initialFaqs }: { initialFaqs?: Faq[] }) {
+  const query = usePublicFaqs(initialFaqs);
 
   return (
     <PublicSiteFrame>

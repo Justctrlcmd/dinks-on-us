@@ -12,13 +12,13 @@ class ReservationMailDispatcher
 {
     public function dispatch(Reservation $reservation, string $event): void
     {
-        if (! in_array($event, ['verified', 'rejected', 'rescheduled'], true)
+        if (! in_array($event, ['verified', 'rejected', 'rescheduled', 'completed', 'cancelled', 'no_show'], true)
             || ! config('reservations.emails_enabled')) {
             return;
         }
 
         try {
-            Mail::to($reservation->customer_email)->send(new ReservationStatusMail($reservation->loadMissing('currentSlots.court', 'equipmentItems', 'adjustments', 'payments'), $event));
+            Mail::to($reservation->customer_email)->send(new ReservationStatusMail($reservation->loadMissing('currentSlots.court', 'equipmentItems', 'adjustments', 'payments', 'refunds'), $event));
         } catch (Throwable $exception) {
             Log::error('Reservation email delivery failed.', [
                 'reservation_id' => $reservation->id, 'event' => $event,

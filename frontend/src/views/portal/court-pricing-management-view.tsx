@@ -183,7 +183,9 @@ export function CourtPricingManagementView() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => { setEditingEquipment(item); setEquipmentFormOpen(true); }}>Edit</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        {item.is_active ? <DropdownMenuItem variant="destructive" onClick={() => setDeletingEquipment(item)}>Set inactive</DropdownMenuItem> : <DropdownMenuItem disabled={updateEquipmentMutation.isPending || isMutationRateLimited(updateEquipmentMutation)} onClick={() => void toggleEquipment(item)}>{mutationButtonLabel("Updating…", "Set active", updateEquipmentMutation)}</DropdownMenuItem>}
+                        <DropdownMenuItem disabled={updateEquipmentMutation.isPending || isMutationRateLimited(updateEquipmentMutation)} onClick={() => void toggleEquipment(item)}>{mutationButtonLabel("Updating…", item.is_active ? "Set inactive" : "Set active", updateEquipmentMutation)}</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => setDeletingEquipment(item)}>Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </li>
@@ -206,7 +208,7 @@ export function CourtPricingManagementView() {
       </Dialog>
 
       <Dialog open={Boolean(deletingEquipment)} onOpenChange={(open) => !open && !deleteEquipmentMutation.isPending && setDeletingEquipment(null)}>
-        <DialogContent><DialogHeader><DialogTitle>Set {deletingEquipment?.name} inactive?</DialogTitle><DialogDescription>This hides the item from all new reservation flows. Existing reservation snapshots remain available for history.</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteEquipmentMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteEquipmentMutation.isPending || isMutationRateLimited(deleteEquipmentMutation)} onClick={() => void deleteEquipment()}>{mutationButtonLabel("Updating…", "Set inactive", deleteEquipmentMutation)}</Button></DialogFooter></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>Delete {deletingEquipment?.name}?</DialogTitle><DialogDescription>This removes the item from the current equipment catalog and all new reservation flows. It is soft-deleted: existing reservations and History keep the recorded equipment name, price, and quantity.</DialogDescription></DialogHeader><DialogFooter><DialogClose render={<Button variant="outline" disabled={deleteEquipmentMutation.isPending} />}>Cancel</DialogClose><Button variant="destructive" disabled={deleteEquipmentMutation.isPending || isMutationRateLimited(deleteEquipmentMutation)} onClick={() => void deleteEquipment()}>{mutationButtonLabel("Deleting…", "Delete equipment", deleteEquipmentMutation)}</Button></DialogFooter></DialogContent>
       </Dialog>
     </div>
   );

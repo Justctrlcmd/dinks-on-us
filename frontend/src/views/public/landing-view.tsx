@@ -15,6 +15,7 @@ import { LandingGallerySection } from "@/components/public/landing-gallery-secti
 import { ScrollRevealSection } from "@/components/public/scroll-reveal-section";
 import { Button } from "@/components/ui/button";
 import { mockPublicSite } from "@/config/mock-public-site";
+import type { GalleryTab } from "@/types/gallery";
 
 const etiquetteIcons = [FiUserCheck, FiTarget, FiUsers, FiHeart, FiShield, FiSmile] as const;
 
@@ -53,7 +54,7 @@ function SectionHeading({
   );
 }
 
-export function LandingView() {
+export function LandingView({ initialGallery }: { initialGallery?: GalleryTab[] }) {
   return (
     <PublicSiteFrame>
       <main>
@@ -181,7 +182,7 @@ export function LandingView() {
                 </span>
               </Button>
             </div>
-            <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {mockPublicSite.reservation.steps.map((step, index) => (
                 <li
                   key={step.title}
@@ -225,7 +226,7 @@ export function LandingView() {
           </div>
         </ScrollRevealSection>
 
-        <LandingGallerySection />
+        <LandingGallerySection initialGallery={initialGallery} />
 
         <ScrollRevealSection id="location" className="bg-background py-20 sm:py-28">
           <div className="mx-auto grid max-w-[96rem] gap-6 px-6 sm:px-10 lg:grid-cols-[.82fr_1.18fr] lg:items-stretch lg:px-30">

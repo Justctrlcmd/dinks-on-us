@@ -3,11 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { faqKeys } from "@/config/query-keys";
 import { getManagementFaqs, getPublicFaqs } from "@/services/faq/faq-service";
+import type { Faq } from "@/types/faq";
 
-export function usePublicFaqs() {
+export function usePublicFaqs(initialData?: Faq[]) {
   return useQuery({
     queryKey: faqKeys.public(),
     queryFn: ({ signal }) => getPublicFaqs(signal).then((response) => response.data),
+    initialData,
     staleTime: 60_000,
   });
 }

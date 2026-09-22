@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { usePublicEvent } from "@/hooks/queries/use-events";
 import { isApiError } from "@/lib/api";
 import { formatDateOnly } from "@/lib/date";
+import type { EventRecord } from "@/types/event";
 
-export function EventDetailView({ slug }: { slug: string }) {
-  const query = usePublicEvent(slug);
+export function EventDetailView({ slug, initialEvent }: { slug: string; initialEvent?: EventRecord }) {
+  const query = usePublicEvent(slug, initialEvent);
   const missing = query.isError && isApiError(query.error) && query.error.status === 404;
 
   return (

@@ -1,7 +1,8 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationCheckout } from "@/components/public/reservation/reservation-checkout";
+import { NormalizedApiError } from "@/lib/api";
 import { RESERVATION_DRAFT_STORAGE_KEY } from "@/types/reservation";
 
 const mocks = vi.hoisted(() => {
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
   return {
     submitReservationMock: vi.fn(),
     toastErrorMock: vi.fn(),
+    reservationOptionsRefetchMock: vi.fn(),
     defaultPaymentMethods,
     paymentMethods: [...defaultPaymentMethods],
     reservationOptions: {
@@ -94,7 +96,7 @@ vi.mock("@/hooks/queries/use-court-pricing", () => ({
     isPending: false,
     isFetching: false,
     isError: false,
-    refetch: vi.fn(),
+    refetch: mocks.reservationOptionsRefetchMock,
   }),
 }));
 
@@ -105,6 +107,7 @@ vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
 beforeEach(() => {
   mocks.toastErrorMock.mockReset();
   mocks.submitReservationMock.mockReset();
+  mocks.reservationOptionsRefetchMock.mockReset();
   mocks.submitReservationMock.mockResolvedValue({ data: { id: 1, reference_number: "RSV-100", status: "PENDING" } });
   mocks.paymentMethods.splice(0, mocks.paymentMethods.length, ...mocks.defaultPaymentMethods);
   mocks.reservationOptions.slots[0].price = 500;
@@ -160,6 +163,12 @@ describe("ReservationCheckout", () => {
     expect(screen.getByRole("img", { name: "GCash payment QR code" })).toHaveAttribute("src", expect.stringContaining("gcash.png"));
     expect(screen.getByText("09123456789")).toBeInTheDocument();
     expect(screen.getByText("Dinks on Us", { selector: "dd" })).toBeInTheDocument();
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/Before paying, confirm the account name and number match in your wallet or bank app/);
+
+    await user.click(screen.getByRole("button", { name: "Hide payment safety reminder" }));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show payment safety reminder" }));
+    expect(screen.getByRole("tooltip")).toBeVisible();
 
     await user.click(screen.getByRole("combobox", { name: "E-wallet or Bank" }));
     await user.click(await screen.findByRole("option", { name: "BPI" }));
@@ -245,6 +254,31 @@ describe("ReservationCheckout", () => {
     expect(submittedInput.get("quoted_amount")).toBe("700.00");
     expect(await screen.findByText("If you do not see our email, please check your spam or junk folder.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Message Us on Facebook" })).toHaveAttribute("href", "https://www.facebook.com/dinksonus");
+  });
+
+  it("refreshes availability and closes confirmation when selected times were just booked", async () => {
+    const user = userEvent.setup();
+    mocks.submitReservationMock.mockRejectedValue(new NormalizedApiError({
+      status: 409,
+      code: "RESERVATION_SLOTS_UNAVAILABLE",
+      message: "Some of your selected times were just booked. Please choose another available time.",
+    }));
+    render(<ReservationCheckout />);
+
+    await user.type(screen.getByRole("textbox", { name: "Full name" }), "Mark Justin Sayson");
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
+    await user.type(screen.getByRole("textbox", { name: "Mobile number" }), "09123456789");
+    await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-12345");
+    const receiptInput = document.getElementById("payment-receipt");
+    expect(receiptInput).toBeInstanceOf(HTMLInputElement);
+    await user.upload(receiptInput as HTMLInputElement, new File(["receipt"], "receipt.png", { type: "image/png" }));
+    await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
+    await user.click(screen.getByRole("button", { name: "Submit reservation" }));
+    await user.click(screen.getByRole("button", { name: "Yes, submit reservation" }));
+
+    await waitFor(() => expect(mocks.reservationOptionsRefetchMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("heading", { name: "Is this email address correct?" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Full name" })).toHaveValue("Mark Justin Sayson");
   });
 
   it("refreshes configured prices and blocks a selection that became unavailable", () => {

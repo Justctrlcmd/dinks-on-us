@@ -9,9 +9,9 @@ import {
   FiCheckCircle,
   FiFileText,
   FiImage,
+  FiInfo,
   FiLock,
   FiShield,
-  FiSmartphone,
   FiUploadCloud,
 } from "react-icons/fi";
 import { applyApiErrors } from "@/forms/apply-api-errors";
@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { useSubmitReservation } from "@/hooks/mutations/use-reservation-mutations";
+import { isApiError } from "@/lib/api";
 import { formatHourRange } from "@/lib/time";
 import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PublicPaymentMethod } from "@/types/payment-method";
@@ -201,14 +202,32 @@ function ReservationSummary({ draft }: { draft: ReservationDraft }) {
 }
 
 function PaymentMethodDetails({ method }: { method: PublicPaymentMethod }) {
+  const [isSafetyReminderOpen, setIsSafetyReminderOpen] = useState(true);
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-primary/35 bg-background text-foreground">
-      <div className="flex items-center justify-between gap-3 bg-primary px-4 py-3 text-primary-foreground">
+    <div className="overflow-visible rounded-2xl border border-primary/35 bg-background text-foreground">
+      <div className="flex items-center justify-between gap-3 rounded-t-2xl bg-primary px-4 py-3 text-primary-foreground">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.14em] text-current/75">Pay with</p>
           <p className="font-heading text-xl font-extrabold">{method.name}</p>
         </div>
-        <FiSmartphone className="size-7" aria-hidden="true" />
+        <div className="relative z-10">
+          <button
+            type="button"
+            aria-label={isSafetyReminderOpen ? "Hide payment safety reminder" : "Show payment safety reminder"}
+            aria-expanded={isSafetyReminderOpen}
+            aria-describedby={isSafetyReminderOpen ? "payment-safety-reminder" : undefined}
+            onClick={() => setIsSafetyReminderOpen((open) => !open)}
+            className="grid size-11 shrink-0 place-items-center rounded-full text-primary-foreground transition-colors hover:bg-primary-foreground/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-foreground"
+          >
+            <FiInfo className="size-6" aria-hidden="true" />
+          </button>
+          {isSafetyReminderOpen ? (
+            <p id="payment-safety-reminder" role="tooltip" className="absolute top-full right-0 z-50 mt-3 w-64 rounded-lg bg-foreground px-3 py-2.5 text-left text-xs leading-relaxed text-background shadow-lg before:absolute before:-top-1.5 before:right-4 before:size-3 before:rotate-45 before:bg-foreground">
+              Before paying, confirm the account name and number match in your wallet or bank app. Don’t send payment if they differ.
+            </p>
+          ) : null}
+        </div>
       </div>
       <div className="grid justify-items-center gap-3 p-6 text-center">
         <div className="flex aspect-square w-full max-w-sm items-center justify-center rounded-xl border-4 border-primary bg-card p-2">
@@ -372,6 +391,13 @@ export function ReservationCheckout() {
       window.sessionStorage.removeItem(RESERVATION_DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
+      if (isApiError(error) && error.code === "RESERVATION_SLOTS_UNAVAILABLE") {
+        setEmailConfirmationValues(null);
+        setIdempotencyKey(null);
+        void optionsQuery.refetch();
+        return;
+      }
+
       setSubmitMessage(applyApiErrors(error, form.setError));
     }
   }
@@ -520,7 +546,7 @@ export function ReservationCheckout() {
           ) : paymentMethodsQuery.isPending ? (
             <div className="mt-5 h-72 animate-pulse rounded-2xl bg-muted" aria-label="Loading payment details" />
           ) : selectedPaymentMethod ? (
-            <div className="mt-5"><PaymentMethodDetails method={selectedPaymentMethod} /></div>
+            <div className="mt-5"><PaymentMethodDetails key={selectedPaymentMethod.id} method={selectedPaymentMethod} /></div>
           ) : (
             <p className="mt-4 rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">
               No payment method is currently available. Please contact Dinks on Us before submitting your reservation.

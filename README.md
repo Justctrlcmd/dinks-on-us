@@ -91,8 +91,6 @@ Backend:
 ```bash
 vendor/bin/pint
 php artisan test
-composer schemas:generate
-composer schemas:check
 ```
 
 Frontend:

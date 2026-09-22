@@ -8,9 +8,10 @@ import { ScrollRevealSection } from "@/components/public/scroll-reveal-section";
 import { mockPublicSite } from "@/config/mock-public-site";
 import { usePublicGallery } from "@/hooks/queries/use-gallery";
 import { cn } from "@/lib/utils";
+import type { GalleryTab } from "@/types/gallery";
 
-export function LandingGallerySection() {
-  const query = usePublicGallery();
+export function LandingGallerySection({ initialGallery }: { initialGallery?: GalleryTab[] }) {
+  const query = usePublicGallery(initialGallery);
   const [selectedTabId, setSelectedTabId] = useState<number | null>(null);
   const tabs = query.data ?? [];
   const activeTabId = tabs.some(({ id }) => id === selectedTabId) ? selectedTabId : tabs[0]?.id ?? null;

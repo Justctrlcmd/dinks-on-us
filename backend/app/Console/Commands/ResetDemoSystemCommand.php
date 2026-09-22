@@ -47,7 +47,6 @@ class ResetDemoSystemCommand extends Command
         'courts',
         'push_subscriptions',
         'sessions',
-        'password_reset_tokens',
         'role_modules',
         'users',
         'roles',

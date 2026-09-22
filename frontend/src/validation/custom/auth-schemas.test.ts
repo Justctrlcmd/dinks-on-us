@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loginSchema, registerSchema } from "./auth-schemas";
+import { loginSchema, updatePasswordSchema } from "./auth-schemas";
 
 describe("authentication schemas", () => {
   it("normalizes email without modifying passwords", () => {
@@ -9,7 +9,7 @@ describe("authentication schemas", () => {
   });
 
   it("rejects mismatched password confirmation", () => {
-    const result = registerSchema.safeParse({ name: "Jane", email: "jane@example.com", password: "password1", password_confirmation: "password2" });
+    const result = updatePasswordSchema.safeParse({ current_password: "current-password", password: "password1", password_confirmation: "password2" });
     expect(result.success).toBe(false);
   });
 });

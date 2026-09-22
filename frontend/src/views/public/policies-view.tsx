@@ -8,9 +8,10 @@ import { LoadingState } from "@/components/common/loading-state";
 import { PublicSiteFrame } from "@/components/public/public-site-frame";
 import { publicPolicies } from "@/config/public-policies";
 import { usePublicPolicies } from "@/hooks/queries/use-policies";
+import type { PolicySection } from "@/types/policy";
 
-export function PoliciesView() {
-  const query = usePublicPolicies();
+export function PoliciesView({ initialPolicies }: { initialPolicies?: PolicySection[] }) {
+  const query = usePublicPolicies(initialPolicies);
   const sections = query.data ?? [];
 
   return (

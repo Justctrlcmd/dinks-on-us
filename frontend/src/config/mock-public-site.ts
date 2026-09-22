@@ -45,19 +45,21 @@ export const mockPublicSite = {
   },
   reservation: {
     eyebrow: "How reservations work",
-    title: "Less planning. More playing.",
+    title: "Your reservation, step by step.",
     steps: [
-      { title: "Choose a date and time", description: "Pick an open date and select one or more available court time slots. All slots in one reservation use the same date." },
-      { title: "Add players / equipment", description: "Set your additional player count, optionally rent available equipment, and review the live total before continuing." },
-      { title: "Complete checkout", description: "Enter your contact details, choose an e-wallet or bank method, upload your receipt, add the reference number, and accept the policies." },
-      { title: "Wait for verification", description: "Your selected slots are held while staff verifies your payment. Once approved, your reservation is confirmed and ready for play." },
+      { title: "Pick your date", description: "Browse open dates and choose the day you want to play. Every court slot in one reservation must be on that same date." },
+      { title: "Select your court times", description: "Choose one or more available one-hour slots across the courts. Your selected schedule and court prices update as you go." },
+      { title: "Add players or equipment", description: "Add extra players if needed, then optionally reserve available rental equipment for your selected schedule." },
+      { title: "Review your reservation", description: "Check every court time, add-on, and the current total before continuing to checkout. Availability and pricing are refreshed before submission." },
+      { title: "Send payment details", description: "Enter your contact details, choose an e-wallet or bank method, then provide the transaction reference and a clear receipt image." },
+      { title: "Submit for staff review", description: "Accept the reservation policies and submit. Your selected court times are held while staff reviews your payment, and the result is sent by email." },
     ],
   },
   about: {
     eyebrow: "About Dinks on Us",
     title: "Made for the love of the rally.",
     description:
-      "Dinks on Us is a pickleball home in Bulacan where first-time players, regular crews, and everyone in between can share great court time.",
+      "Dinks on Us is a pickleball home in Bulacan where first-time players, regular crews, and everyone in between can share great court time. We built the space for easy rallies, friendly competition, and the kind of games that make people want to come back. Whether you are learning the basics or playing with your usual crew, our courts are here for movement, connection, and good energy.",
     statement: "Reserve a court. Bring your people. Build your community.",
   },
   gallery: {
