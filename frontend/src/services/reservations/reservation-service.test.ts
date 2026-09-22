@@ -23,6 +23,12 @@ describe("reservation service", () => {
     });
   });
 
+  it("loads private reservation proofs through the same-origin API proxy", async () => {
+    const { reservationProofUrl } = await import("./reservation-service");
+
+    expect(reservationProofUrl("/api/v1/management/reservations/42/proof")).toBe("/backend/api/v1/management/reservations/42/proof");
+  });
+
   it("serializes a walk-in as an authenticated multipart request", async () => {
     const { createWalkInReservation } = await import("./reservation-service");
     const proof = new File(["receipt"], "receipt.png", { type: "image/png" });

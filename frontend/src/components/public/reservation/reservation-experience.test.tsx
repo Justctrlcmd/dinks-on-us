@@ -263,11 +263,12 @@ describe("ReservationExperience", () => {
     });
   });
 
-  it("disables whole-operation closed dates without highlighting today", () => {
+  it("keeps today visibly selected while disabling whole-operation closed dates", () => {
     closedDatesMock.push("2026-08-26");
     render(<ReservationExperience />);
 
     expect(screen.getByRole("button", { name: "Wed 26, Closed" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Tue 25" })).not.toHaveClass("bg-primary");
+    expect(screen.getByRole("button", { name: "Tue 25, selected" })).toHaveClass("bg-primary");
+    expect(screen.getByRole("button", { name: "Tue 25, selected" })).toHaveTextContent("Selected");
   });
 });

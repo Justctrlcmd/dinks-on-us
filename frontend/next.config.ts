@@ -20,6 +20,17 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    const apiUrl = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL)?.replace(/\/$/, "");
+    if (!apiUrl) return [];
+
+    return [
+      {
+        source: "/backend/:path*",
+        destination: `${apiUrl}/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

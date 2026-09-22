@@ -7,6 +7,7 @@ describe("API helpers", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, message: "ok", code: null, data: { status: "ok" }, errors: null, meta: null }), { status: 200, headers: { "Content-Type": "application/json" } })));
     const { publicFetch } = await import("./api");
     await expect(publicFetch<{ status: string }>("/api/v1/health")).resolves.toMatchObject({ data: { status: "ok" } });
+    expect(fetch).toHaveBeenCalledWith("/backend/api/v1/health", expect.objectContaining({ credentials: "include" }));
   });
 
   it("normalizes field validation errors", async () => {

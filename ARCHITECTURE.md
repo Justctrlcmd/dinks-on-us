@@ -47,7 +47,7 @@ for portal data tables, and `CalendarDatePicker` for management date fields.
 Avoid parallel module-specific versions of an existing component unless the
 variation is intentionally documented.
 
-Services contain API calls only. Query/mutation hooks add caching and invalidation. Query keys are centralized and hierarchical. Components must not call raw `fetch`; browser requests use `lib/api.ts`. Server-only reads use `lib/server-api.ts`, forward relevant cookies only when needed, and explicitly choose cache behavior. Public content pages preload their indexable API data in Server Components and pass it into interactive client views as query `initialData`. Browser CSRF logic must never be imported into Server Components.
+Services contain API calls only. Query/mutation hooks add caching and invalidation. Query keys are centralized and hierarchical. Components must not call raw `fetch`; browser requests use `lib/api.ts` through the same-origin `/backend` Next.js rewrite, keeping Sanctum cookies first-party in installed web apps. Server-only reads use `lib/server-api.ts`, forward relevant cookies only when needed, and explicitly choose cache behavior. Public content pages preload their indexable API data in Server Components and pass it into interactive client views as query `initialData`. Browser CSRF logic must never be imported into Server Components.
 
 API mutation result messages are presented by the shared TanStack Query mutation cache through the global bottom-right Sonner toast provider. Forms must not duplicate success, error, warning, or informational results inline. Zod validation stays beside its control; API validation and other action results remain in toasts rather than being mapped back into dialog fields.
 

@@ -97,6 +97,5 @@ export const cancelReservation = (id: number, input: { reason: string; refund_ty
 export const completeReservation = (id: number, input: FormData) => postAction(id, "complete", input);
 
 export function reservationProofUrl(path: string): string {
-  const root = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
-  return `${root}${path}`;
+  return `/backend${path}`;
 }
