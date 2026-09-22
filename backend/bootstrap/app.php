@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -115,7 +115,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (ReservationConflictException $exception, Request $request) use ($apiFailure) {
             return $request->is('api/*')
-                ? $apiFailure($exception->getMessage(), 'RESERVATION_CONFLICT', 409)
+                ? $apiFailure($exception->getMessage(), $exception->apiCode, 409)
                 : null;
         });
 

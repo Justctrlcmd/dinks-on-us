@@ -20,6 +20,9 @@
                                 'verified' => 'Your reservation is verified',
                                 'rejected' => 'Your reservation was not approved',
                                 'rescheduled' => 'Your reservation has been rescheduled',
+                                'completed' => 'Your reservation is complete',
+                                'cancelled' => 'Your reservation has been cancelled',
+                                'no_show' => 'Your reservation was marked as a no-show',
                             ];
                             @endphp
                             <h1 style="margin:0 0 8px;font-size:24px">{{ $titles[$event] ?? 'Reservation update' }}</h1>
@@ -41,6 +44,16 @@
                             <p>Your reservation schedule has been updated. Please use the new court, date, and time
                                 shown below.</p>
                             @endif
+                            @if ($event === 'completed')
+                            <p>Your reservation is complete. The final amount below includes any recorded add-ons.</p>
+                            @endif
+                            @if ($event === 'cancelled')
+                            <p>Your reservation has been cancelled and the selected court times have been released.</p>
+                            <p><strong>Reason:</strong> {{ $reservation->cancellation_reason }}</p>
+                            @endif
+                            @if ($event === 'no_show')
+                            <p>Your reservation was marked as a no-show. Any amount already paid is retained and is not refundable.</p>
+                            @endif
                             @php
                             $courtTotal = (float) $reservation->currentSlots->sum('unit_amount');
                             $additionalPlayerAdjustments = $reservation->adjustments->where('type', 'ADDITIONAL_PLAYER');
@@ -51,35 +64,52 @@
                             $outstanding = max(0, (float) $reservation->final_amount - (float) $reservation->amount_paid);
                             $refundableCredit = max(0, (float) $reservation->refundable_credit);
                             $reschedulePayment = $reservation->payments->where('kind', 'RESCHEDULE')->sortByDesc('id')->first();
+                            $slotsByCourt = $reservation->currentSlots
+                                ->sortBy(fn ($slot) => sprintf('%s-%03d-%03d', $slot->date->format('Y-m-d'), $slot->court->court_number, $slot->start_hour))
+                                ->groupBy(fn ($slot) => $slot->date->format('Y-m-d').'-'.$slot->court_id);
                             @endphp
                             <h2 style="font-size:17px;margin-top:24px">Your reservation</h2>
-                            @foreach ($reservation->currentSlots as $slot)
+                            @foreach ($slotsByCourt as $slots)
                             @php
-                            $startTime = \Carbon\Carbon::createFromTime((int) $slot->start_hour)->format('g:i A');
-                            $endTime = \Carbon\Carbon::createFromTime((int) $slot->end_hour)->format('g:i A');
+                            $firstSlot = $slots->first();
+                            $slotCount = $slots->count();
+                            $courtGroupTotal = (float) $slots->sum('unit_amount');
                             @endphp
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
                                 style="margin:8px 0;background:#f7f3e9;border-radius:8px">
                                 <tr>
                                     <td style="padding:12px 14px 8px">
                                         <div style="font-size:12px;color:#6b7a86;text-transform:uppercase;letter-spacing:.08em">Court</div>
-                                        <strong style="font-size:16px">Court {{ $slot->court->court_number }}</strong>
+                                        <strong style="font-size:16px">Court {{ $firstSlot->court->court_number }}</strong>
                                     </td>
                                     <td align="right" style="padding:12px 14px 8px">
-                                        <div style="font-size:12px;color:#6b7a86;text-transform:uppercase;letter-spacing:.08em">Price</div>
-                                        <strong style="font-size:16px">₱{{ number_format((float) $slot->unit_amount, 2) }}</strong>
+                                        <div style="font-size:12px;color:#6b7a86;text-transform:uppercase;letter-spacing:.08em">{{ $slotCount === 1 ? 'Price' : 'Court total' }}</div>
+                                        <strong style="font-size:16px">₱{{ number_format($courtGroupTotal, 2) }}</strong>
                                     </td>
                                 </tr>
                                 <tr>
                                     <td colspan="2" style="padding:8px 14px;border-top:1px solid #e4dfd2">
                                         <div style="font-size:12px;color:#6b7a86;text-transform:uppercase;letter-spacing:.08em">Date</div>
-                                        <strong>{{ $slot->date->format('F j, Y') }}</strong>
+                                        <strong>{{ $firstSlot->date->format('F j, Y') }}</strong>
                                     </td>
                                 </tr>
                                 <tr>
                                     <td colspan="2" style="padding:8px 14px 12px">
-                                        <div style="font-size:12px;color:#6b7a86;text-transform:uppercase;letter-spacing:.08em">Time</div>
-                                        <strong>{{ $startTime }} – {{ $endTime }}</strong>
+                                        <div style="font-size:12px;color:#6b7a86;text-transform:uppercase;letter-spacing:.08em">{{ $slotCount === 1 ? 'Time' : "Time slots ({$slotCount})" }}</div>
+                                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:4px">
+                                            @foreach ($slots as $slot)
+                                            @php
+                                            $startTime = \Carbon\Carbon::createFromTime((int) $slot->start_hour)->format('g:i A');
+                                            $endTime = \Carbon\Carbon::createFromTime((int) $slot->end_hour)->format('g:i A');
+                                            @endphp
+                                            <tr>
+                                                <td style="padding:4px 0{{ $loop->last ? '' : ';border-bottom:1px solid #e4dfd2' }}"><strong>{{ $startTime }} – {{ $endTime }}</strong></td>
+                                                @if ($slotCount > 1)
+                                                <td align="right" style="padding:4px 0{{ $loop->last ? '' : ';border-bottom:1px solid #e4dfd2' }}">₱{{ number_format((float) $slot->unit_amount, 2) }}</td>
+                                                @endif
+                                            </tr>
+                                            @endforeach
+                                        </table>
                                     </td>
                                 </tr>
                             </table>
@@ -133,7 +163,7 @@
                                     <td align="right" style="padding:6px 0"><strong>₱{{ number_format((float) $reschedulePayment->amount, 2) }}</strong></td>
                                 </tr>
                                 @endif
-                                @if ($event === 'rescheduled')
+                                @if (in_array($event, ['rescheduled', 'completed'], true))
                                 <tr>
                                     <td style="padding:6px 0;color:#1e6f78"><strong>Payment status</strong></td>
                                     <td align="right" style="padding:6px 0;color:#1e6f78"><strong>Settled</strong></td>
@@ -144,9 +174,19 @@
                                     <td align="right" style="padding:6px 0;color:#a33a3a"><strong>₱{{ number_format($outstanding, 2) }}</strong></td>
                                 </tr>
                                 @endif
-                                @if ($refundableCredit > 0)
+                                @if ($event === 'cancelled')
                                 <tr>
-                                    <td style="padding:6px 0;color:#1e6f78"><strong>Refundable credit</strong></td>
+                                    <td style="padding:6px 0;color:#1e6f78"><strong>Refunded amount</strong></td>
+                                    <td align="right" style="padding:6px 0;color:#1e6f78"><strong>₱{{ number_format($refundableCredit, 2) }}</strong></td>
+                                </tr>
+                                @elseif ($event === 'no_show')
+                                <tr>
+                                    <td style="padding:6px 0;color:#a33a3a"><strong>Non-refundable amount retained</strong></td>
+                                    <td align="right" style="padding:6px 0;color:#a33a3a"><strong>₱{{ number_format((float) $reservation->amount_paid, 2) }}</strong></td>
+                                </tr>
+                                @elseif ($refundableCredit > 0)
+                                <tr>
+                                    <td style="padding:6px 0;color:#1e6f78"><strong>{{ $event === 'completed' ? 'Refund due' : 'Refundable credit' }}</strong></td>
                                     <td align="right" style="padding:6px 0;color:#1e6f78"><strong>₱{{ number_format($refundableCredit, 2) }}</strong></td>
                                 </tr>
                                 @endif

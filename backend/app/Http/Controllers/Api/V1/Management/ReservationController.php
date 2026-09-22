@@ -96,25 +96,32 @@ class ReservationController extends Controller
         return $this->actionResponse($request, $service->addOns($reservation, $request->user(), $request->validated(), $request->file('payment_proof')), 'Reservation add-ons recorded.');
     }
 
-    public function complete(CompleteReservationRequest $request, Reservation $reservation, ReservationService $service): JsonResponse
+    public function complete(CompleteReservationRequest $request, Reservation $reservation, ReservationService $service, ReservationMailDispatcher $mail): JsonResponse
     {
-        return $this->actionResponse($request, $service->complete(
+        $updated = $service->complete(
             $reservation, $request->user(), $request->validated('payment_channel'),
             $request->validated('payment_reference_number'), $request->file('payment_proof'),
-        ), 'Reservation completed and payment recorded.');
+        );
+        $mail->dispatch($updated, 'completed');
+
+        return $this->actionResponse($request, $updated, 'Reservation completed and payment recorded.');
     }
 
-    public function noShow(Request $request, Reservation $reservation, ReservationService $service): JsonResponse
+    public function noShow(Request $request, Reservation $reservation, ReservationService $service, ReservationMailDispatcher $mail): JsonResponse
     {
-        return $this->actionResponse($request, $service->noShow($reservation, $request->user()), 'Reservation marked as no-show.');
+        $updated = $service->noShow($reservation, $request->user());
+        $mail->dispatch($updated, 'no_show');
+
+        return $this->actionResponse($request, $updated, 'Reservation marked as no-show.');
     }
 
-    public function cancel(CancelReservationRequest $request, Reservation $reservation, ReservationService $service): JsonResponse
+    public function cancel(CancelReservationRequest $request, Reservation $reservation, ReservationService $service, ReservationMailDispatcher $mail): JsonResponse
     {
         $updated = $service->cancel(
             $reservation, $request->user(), $request->validated('reason'), $request->validated('refund_type'),
             $request->validated('refund_amount') === null ? null : (float) $request->validated('refund_amount'),
         );
+        $mail->dispatch($updated, 'cancelled');
 
         return $this->actionResponse($request, $updated, 'Reservation cancelled and refund recorded.');
     }

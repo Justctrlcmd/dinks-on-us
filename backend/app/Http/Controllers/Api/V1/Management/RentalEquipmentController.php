@@ -42,9 +42,9 @@ class RentalEquipmentController extends Controller
 
     public function destroy(Request $request, RentalEquipment $rentalEquipment, SecurityAuditService $audit): JsonResponse
     {
-        $rentalEquipment->update(['is_active' => false]);
+        $rentalEquipment->delete();
         $audit->record('RENTAL_EQUIPMENT_REMOVED', $request, $request->user(), $rentalEquipment, module: 'MANAGEMENT_COURT_PRICING', targetLabel: $rentalEquipment->name);
 
-        return $this->respondSuccess(null, 'Rental equipment removed.');
+        return $this->respondSuccess(null, 'Rental equipment deleted. Historical reservation records remain available.');
     }
 }

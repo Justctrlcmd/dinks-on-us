@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -78,11 +77,6 @@ class AppServiceProvider extends ServiceProvider
             )->by($limiter.'|'.$this->requestIdentity($request)));
         }
 
-        ResetPassword::createUrlUsing(function (User $user, string $token): string {
-            $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
-
-            return $frontendUrl.'/reset-password?token='.urlencode($token).'&email='.urlencode($user->email);
-        });
     }
 
     private function requestIdentity(Request $request): string

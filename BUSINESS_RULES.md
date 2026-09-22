@@ -153,6 +153,12 @@ If even one selected slot has become unavailable:
 
 The reservation should succeed only when all requested slots can be reserved together.
 
+When a selected court time is taken after the customer reaches checkout, the
+public flow must show a clear availability warning, refresh the current schedule,
+and require the customer to choose an available replacement before submitting
+again. Customer form details remain in place while the customer updates the
+schedule.
+
 The public client must refresh reservation options and submit its displayed total
 as `quoted_amount`. The backend recalculates court, player, and equipment charges
 inside the transaction. If the quote changed, the request fails with `409
@@ -441,7 +447,7 @@ Rates must be configurable by the Manager.
 
 Pricing should not be permanently hard-coded into the system.
 
-One global court configuration defines the operating hours, players included per court, additional-player price, and weekday/weekend rate periods for every existing and future court. Individual courts do not override these shared rules. Rentable equipment is a separately managed catalog with its own reservation-wide unit price and total quantity. Inactive courts or rental equipment must not be offered in the public reservation flow.
+One global court configuration defines the operating hours, players included per court, additional-player price, and weekday/weekend rate periods for every existing and future court. Individual courts do not override these shared rules. Rentable equipment is a separately managed catalog with its own reservation-wide unit price and total quantity. Inactive courts or rental equipment must not be offered in the public reservation flow. Deleting rental equipment is a soft deletion: it removes the item from the current catalog and new selections while preserving the item snapshots already recorded on reservations and in History.
 
 A shared rate period defines:
 
@@ -795,7 +801,7 @@ Current temporary business assumption:
 
 A cancelled reservation becomes a finalized History record.
 
-Cancellation is an approved force-majeure action performed only by the Manager. The Manager chooses a full refund or a custom refund that cannot exceed the amount already collected. The system records the refund due but does not transfer funds automatically.
+Cancellation is an approved force-majeure action performed only by the Manager. The Manager chooses a full refund or a custom refund that cannot exceed the amount already collected. The Manager first settles the refund outside the system, then records the cancellation; the system stores that cancellation refund as completed but does not transfer funds automatically.
 
 ---
 
@@ -850,9 +856,12 @@ Current expected notification events:
 
 The reschedule email shows the newly active court, date, time, and prices. It
 describes any refundable credit or additional payment as already settled during
-the reschedule. Public online submission, cancellation, completion, add-ons, and
-other reservation changes do not send customer emails. Walk-in creation is an
-immediate verified event and sends the verification email when enabled.
+the reschedule. Cancellation, completion, and no-show actions also send customer
+emails when enabled: cancellation confirms the refunded amount, completion shows
+the final updated total including recorded add-ons, and no-show confirms that an
+amount already paid is non-refundable. Public online submission and add-ons do
+not send customer emails. Walk-in creation is an immediate verified event and
+sends the verification email when enabled.
 
 ---
 

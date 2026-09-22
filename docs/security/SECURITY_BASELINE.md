@@ -78,7 +78,6 @@ Run these from a clean checkout using the intended release environment:
 ```text
 cd backend
 composer audit --locked --no-interaction
-composer schemas:check
 vendor/bin/pint --test
 php artisan test
 php artisan security:check --production

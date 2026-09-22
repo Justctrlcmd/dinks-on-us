@@ -909,9 +909,12 @@ Current customer email events:
 
 The reschedule email contains the newly active reservation schedule and describes
 any refundable credit or additional payment as already settled during the
-reschedule. Public online submission, cancellation, completion, add-ons, and
-other reservation changes do not send customer emails. Walk-in creation is
-immediately verified and sends the verification email when enabled.
+reschedule. Cancellation, completion, and no-show actions also send customer
+emails when enabled: cancellation confirms the refunded amount, completion shows
+the final updated total including recorded add-ons, and no-show confirms that an
+amount already paid is non-refundable. Public online submission and add-ons do
+not send customer emails. Walk-in creation is immediately verified and sends the
+verification email when enabled.
 
 ---
 

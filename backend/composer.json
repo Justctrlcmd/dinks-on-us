@@ -19,8 +19,7 @@
         "laravel/pint": "^1.27",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
-        "phpunit/phpunit": "^12.5.12",
-        "romegasoftware/laravel-schema-generator": "^1.0"
+        "phpunit/phpunit": "^12.5.12"
     },
     "autoload": {
         "psr-4": {
@@ -35,11 +34,6 @@
         }
     },
     "scripts": {
-        "schemas:generate": [
-            "@php artisan schema:generate",
-            "@php scripts/add-schema-header.php"
-        ],
-        "schemas:check": "@php scripts/check-schema-drift.php",
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"

@@ -85,7 +85,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Ball', 'price' => 30, 'total_quantity' => 20],
             ['name' => 'Titan Machine', 'price' => 500, 'total_quantity' => 1],
         ] as $item) {
-            RentalEquipment::query()->firstOrCreate(['name' => $item['name']], [...$item, 'is_active' => true]);
+            RentalEquipment::withTrashed()->firstOrCreate(['name' => $item['name']], [...$item, 'is_active' => true]);
         }
     }
 }

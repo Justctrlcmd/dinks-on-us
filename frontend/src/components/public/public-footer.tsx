@@ -35,13 +35,15 @@ export function PublicFooter() {
             >
               <FaFacebookF className="size-4" aria-hidden="true" />
             </a>
-            <span
-              aria-label="Instagram link coming soon"
-              title="Instagram link coming soon"
-              className="flex size-9 items-center justify-center rounded-full border border-white/10 text-white/35 dark:border-[#d5d0c4] dark:text-[#9ba5a6]"
+            <a
+              href={siteConfig.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Dinks on Us on Instagram"
+              className="flex size-9 items-center justify-center rounded-full border border-white/20 text-white/85 transition-colors hover:border-white/50 hover:text-white dark:border-[#b9c0c1] dark:text-[#213547] dark:hover:border-[#213547] dark:hover:text-brand-surface"
             >
               <FaInstagram className="size-4" aria-hidden="true" />
-            </span>
+            </a>
           </div>
         </div>
         <div>

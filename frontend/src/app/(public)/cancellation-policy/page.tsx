@@ -1,8 +1,5 @@
-import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-
-export const metadata: Metadata = { title: "Cancellation Policy" };
+import { permanentRedirect } from "next/navigation";
 
 export default function Page() {
-  redirect("/policies/cancellation-policy");
+  permanentRedirect("/policies/cancellation-policy");
 }

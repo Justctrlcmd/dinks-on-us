@@ -207,7 +207,9 @@ class ReservationManagementTest extends TestCase
             ->assertJsonPath('data.reserved_slots.0.start_hour', 9);
 
         $this->post('/api/v1/public/reservations', $this->submissionPayload())
-            ->assertConflict()->assertJsonPath('code', 'RESERVATION_CONFLICT');
+            ->assertConflict()
+            ->assertJsonPath('code', 'RESERVATION_SLOTS_UNAVAILABLE')
+            ->assertJsonPath('message', 'Some of your selected times were just booked. Please choose another available time.');
         $this->assertDatabaseCount('reservations', 1);
         Mail::assertNothingSent();
     }
@@ -260,7 +262,7 @@ class ReservationManagementTest extends TestCase
         }
     }
 
-    public function test_only_verification_rejection_and_rescheduling_send_customer_emails(): void
+    public function test_customer_emails_are_sent_for_verification_rejection_rescheduling_and_cancellation(): void
     {
         config(['reservations.emails_enabled' => true]);
 
@@ -322,10 +324,27 @@ class ReservationManagementTest extends TestCase
                 'reason' => 'Approved force majeure', 'refund_type' => 'FULL',
             ])
             ->assertOk();
-        Mail::assertSent(ReservationStatusMail::class, 2);
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail) use ($verified): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'cancelled'
+                && $mail->hasTo('juan@example.com')
+                && $mail->envelope()->subject === "Reservation Cancelled — {$verified['reference_number']}"
+                && str_contains($html, 'Your reservation has been cancelled')
+                && str_contains($html, 'Approved force majeure')
+                && str_contains($html, 'Refunded amount')
+                && str_contains($html, '₱600.00');
+        });
+        Mail::assertSent(ReservationStatusMail::class, 3);
+        $this->assertDatabaseHas('reservation_refunds', [
+            'reservation_id' => $verified['id'],
+            'type' => 'CANCELLATION',
+            'status' => 'COMPLETED',
+            'amount' => 600,
+        ]);
 
         $rejected = $this->submit(10);
-        Mail::assertSent(ReservationStatusMail::class, 2);
+        Mail::assertSent(ReservationStatusMail::class, 3);
 
         $this->actingAs($this->manager)
             ->postJson("/api/v1/management/reservations/{$rejected['id']}/reject", [
@@ -343,7 +362,91 @@ class ReservationManagementTest extends TestCase
                 && str_contains($html, 'Invalid Payment Proof')
                 && str_contains($html, 'Receipt cannot be read.');
         });
-        Mail::assertSent(ReservationStatusMail::class, 3);
+        Mail::assertSent(ReservationStatusMail::class, 4);
+    }
+
+    public function test_reservation_status_email_groups_multiple_slots_for_one_court(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+
+        $payload = $this->submissionPayload(9);
+        $secondCourt = Court::query()->create(['court_number' => 2, 'is_active' => true]);
+        $payload['slots'] = [
+            ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9],
+            ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 10],
+            ['court_id' => $secondCourt->id, 'date' => $this->date, 'start_hour' => 9],
+        ];
+        $payload['quoted_amount'] = 1600;
+        $reservation = $this->post('/api/v1/public/reservations', $payload)->assertCreated()->json('data');
+
+        $this->actingAs($this->manager)
+            ->postJson("/api/v1/management/reservations/{$reservation['id']}/verify")
+            ->assertOk();
+
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'verified'
+                && substr_count($html, '>Court 1</strong>') === 1
+                && substr_count($html, '>Court 2</strong>') === 1
+                && str_contains($html, '>Time slots (2)</div>')
+                && str_contains($html, '9:00 AM – 10:00 AM')
+                && str_contains($html, '10:00 AM – 11:00 AM')
+                && str_contains($html, '>Court total</div>')
+                && str_contains($html, '₱1,000.00')
+                && str_contains($html, '₱1,500.00');
+        });
+    }
+
+    public function test_completion_email_includes_recorded_add_ons_and_no_show_email_confirms_payment_is_non_refundable(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+
+        $completed = $this->submit(9);
+        $equipment = RentalEquipment::query()->create(['name' => 'Ball', 'price' => 30, 'total_quantity' => 20, 'is_active' => true]);
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$completed['id']}/verify")->assertOk();
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$completed['id']}/start")->assertOk();
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$completed['id']}/add-ons", [
+            'additional_players' => 2,
+            'equipment' => [['id' => $equipment->id, 'quantity' => 1]],
+            'payment_channel' => 'CASH',
+        ])->assertOk()->assertJsonPath('data.amounts.final', 830);
+        Mail::assertSent(ReservationStatusMail::class, 1);
+
+        $this->actingAs($this->manager)->post("/api/v1/management/reservations/{$completed['id']}/complete")
+            ->assertOk()->assertJsonPath('data.status', 'COMPLETED');
+
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail) use ($completed): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'completed'
+                && $mail->hasTo('juan@example.com')
+                && $mail->envelope()->subject === "Reservation Completed — {$completed['reference_number']}"
+                && str_contains($html, 'Your reservation is complete')
+                && str_contains($html, 'includes any recorded add-ons')
+                && str_contains($html, '₱830.00')
+                && str_contains($html, 'Payment status')
+                && str_contains($html, 'Settled');
+        });
+        Mail::assertSent(ReservationStatusMail::class, 2);
+
+        $noShow = $this->submit(10);
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$noShow['id']}/verify")->assertOk();
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$noShow['id']}/no-show")->assertOk()
+            ->assertJsonPath('data.status', 'NO_SHOW');
+
+        Mail::assertSent(ReservationStatusMail::class, function (ReservationStatusMail $mail) use ($noShow): bool {
+            $html = $mail->render();
+
+            return $mail->event === 'no_show'
+                && $mail->hasTo('juan@example.com')
+                && $mail->envelope()->subject === "Reservation No-show — {$noShow['reference_number']}"
+                && str_contains($html, 'marked as a no-show')
+                && str_contains($html, 'retained and is not refundable')
+                && str_contains($html, 'Non-refundable amount retained')
+                && str_contains($html, '₱600.00');
+        });
+        Mail::assertSent(ReservationStatusMail::class, 4);
     }
 
     public function test_rescheduled_email_labels_the_collected_balance_as_additional_payment_and_settled(): void
@@ -485,7 +588,7 @@ class ReservationManagementTest extends TestCase
         $this->actingAs($this->manager)
             ->postJson('/api/v1/management/reservations/walk-in', $this->walkInPayload(14))
             ->assertConflict()
-            ->assertJsonPath('code', 'RESERVATION_CONFLICT');
+            ->assertJsonPath('code', 'RESERVATION_SLOTS_UNAVAILABLE');
         $this->assertDatabaseCount('reservations', 1);
     }
 

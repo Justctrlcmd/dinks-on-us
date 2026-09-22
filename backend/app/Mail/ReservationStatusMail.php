@@ -21,6 +21,9 @@ class ReservationStatusMail extends Mailable
             'verified' => 'Reservation Verified',
             'rejected' => 'Reservation Not Approved',
             'rescheduled' => 'Reservation Rescheduled',
+            'completed' => 'Reservation Completed',
+            'cancelled' => 'Reservation Cancelled',
+            'no_show' => 'Reservation No-show',
         ];
 
         return new Envelope(subject: ($subjects[$this->event] ?? 'Reservation Update')." — {$this->reservation->reference_number}");

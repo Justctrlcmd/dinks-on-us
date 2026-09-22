@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\RentalEquipment;
+use App\Models\Reservation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -120,7 +122,7 @@ class CourtPricingManagementTest extends TestCase
         $this->assertDatabaseCount('courts', 7);
     }
 
-    public function test_rental_equipment_can_be_created_updated_and_removed(): void
+    public function test_rental_equipment_can_be_created_updated_and_soft_deleted_without_removing_reservation_snapshots(): void
     {
         $user = User::factory()->create();
 
@@ -155,13 +157,42 @@ class CourtPricingManagementTest extends TestCase
             'is_active' => true,
         ])->assertOk()->assertJsonPath('data.is_active', true);
 
+        $reservation = Reservation::query()->create([
+            'reference_number' => 'EQUIPMENT-SNAPSHOT-1',
+            'booking_date' => '2030-09-12',
+            'customer_name' => 'Equipment History',
+            'customer_email' => 'history@example.com',
+            'customer_contact_number' => '09171234567',
+            'status' => Reservation::STATUS_COMPLETED,
+            'original_amount' => 150,
+            'final_amount' => 150,
+            'amount_paid' => 150,
+        ]);
+        $reservation->equipmentItems()->create([
+            'rental_equipment_id' => $equipment['id'],
+            'name' => 'Training Paddle',
+            'quantity' => 1,
+            'unit_amount' => 150,
+            'kind' => 'ORIGINAL',
+        ]);
+
         $this->actingAs($user)->deleteJson("/api/v1/management/rental-equipment/{$equipment['id']}")
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('message', 'Rental equipment deleted. Historical reservation records remain available.');
+
+        $this->assertSoftDeleted('rental_equipment', ['id' => $equipment['id']]);
 
         $this->actingAs($user)->getJson('/api/v1/management/rental-equipment')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.is_active', false);
+            ->assertJsonCount(0, 'data');
+
+        $this->assertDatabaseHas('reservation_equipment_items', [
+            'reservation_id' => $reservation->id,
+            'rental_equipment_id' => $equipment['id'],
+            'name' => 'Training Paddle',
+            'unit_amount' => 150,
+        ]);
+        $this->assertNotNull(RentalEquipment::withTrashed()->find($equipment['id'])?->deleted_at);
     }
 
     public function test_inactive_equipment_is_visible_to_management_but_hidden_from_reservation_options(): void

@@ -1,8 +1,5 @@
-import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-
-export const metadata: Metadata = { title: "Reschedule Policy" };
+import { permanentRedirect } from "next/navigation";
 
 export default function Page() {
-  redirect("/policies/reschedule-policy");
+  permanentRedirect("/policies/reschedule-policy");
 }

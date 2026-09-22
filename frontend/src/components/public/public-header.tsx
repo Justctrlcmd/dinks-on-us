@@ -57,8 +57,25 @@ function MobileNavigation({ onHero, pathname }: { onHero: boolean; pathname: str
             </Link>
           );
         })}
+        <Link href="/login" className="rounded-xl px-4 py-2.5 text-white/80 hover:bg-white/10 hover:text-white">
+          Admin
+        </Link>
       </nav>
     </details>
+  );
+}
+
+function ReclubLink() {
+  return (
+    <a
+      href="https://reclub.co/clubs/@dinks-on-us-kqnnyb"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Visit Dinks on Us on Reclub"
+      className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#f4bf46] p-2 shadow-sm transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+    >
+      <Image src="/images/reclub-icon.png" alt="" width={28} height={28} className="size-7 object-contain" aria-hidden="true" />
+    </a>
   );
 }
 
@@ -108,7 +125,8 @@ export function PublicHeader() {
         </nav>
         <div className="flex items-center gap-2 sm:gap-3">
           <ThemeToggle className={cn("size-10 rounded-full border backdrop-blur-md", onHero ? "border-white/25 bg-black/15 text-white hover:bg-white/15 hover:text-white" : "border-border bg-card/80 text-foreground hover:bg-muted hover:text-foreground")} />
-          <Button size="lg" nativeButton={false} className="h-10 rounded-full border border-white/70 bg-white px-3 text-[0.8rem] font-bold text-brand-surface shadow-sm hover:bg-white/90 sm:px-5 sm:text-sm" render={<Link href="/login" />}>
+          <ReclubLink />
+          <Button size="lg" nativeButton={false} className="hidden h-10 rounded-full border border-white/70 bg-white px-3 text-[0.8rem] font-bold text-brand-surface shadow-sm hover:bg-white/90 lg:inline-flex lg:px-5 lg:text-sm" render={<Link href="/login" />}>
             Admin
             <span className="ml-1 flex size-6 items-center justify-center rounded-full bg-brand-surface text-white"><FiArrowUpRight className="size-3.5" aria-hidden="true" /></span>
           </Button>

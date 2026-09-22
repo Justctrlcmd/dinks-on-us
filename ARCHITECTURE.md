@@ -47,7 +47,7 @@ for portal data tables, and `CalendarDatePicker` for management date fields.
 Avoid parallel module-specific versions of an existing component unless the
 variation is intentionally documented.
 
-Services contain API calls only. Query/mutation hooks add caching and invalidation. Query keys are centralized and hierarchical. Components must not call raw `fetch`; browser requests use `lib/api.ts`. Server-only reads use `lib/server-api.ts`, forward relevant cookies, and explicitly choose cache behavior. Browser CSRF logic must never be imported into Server Components.
+Services contain API calls only. Query/mutation hooks add caching and invalidation. Query keys are centralized and hierarchical. Components must not call raw `fetch`; browser requests use `lib/api.ts`. Server-only reads use `lib/server-api.ts`, forward relevant cookies only when needed, and explicitly choose cache behavior. Public content pages preload their indexable API data in Server Components and pass it into interactive client views as query `initialData`. Browser CSRF logic must never be imported into Server Components.
 
 API mutation result messages are presented by the shared TanStack Query mutation cache through the global bottom-right Sonner toast provider. Forms must not duplicate success, error, warning, or informational results inline. Zod validation stays beside its control; API validation and other action results remain in toasts rather than being mapped back into dialog fields.
 
@@ -64,9 +64,15 @@ Next.js rendering and the browser. Security headers are also configured for all
 frontend routes. Keep external resource origins narrow when a deployment adds a
 provider; do not weaken the policy globally for one component.
 
-## Validation and generated schemas
+Public SEO uses the App Router metadata APIs, a canonical URL from
+`NEXT_PUBLIC_APP_URL`, generated Open Graph images, `robots.ts`, and
+`sitemap.ts`. Public pages require distinct titles, descriptions, and canonicals;
+login, verification, checkout, and portal routes must be `noindex`. Structured
+data is limited to verified business details that also appear visibly on the site.
 
-Laravel FormRequests remain authoritative. Compatible password-free schemas may be generated into `frontend/src/validation/generated`; generated files are overwritten and never hand-edited. Custom schemas live in `validation/custom`. The current generator trims generic strings, so password-bearing requests deliberately use handwritten schemas. Run the schema drift check after FormRequest changes.
+## Validation schemas
+
+Laravel FormRequests remain authoritative. Client-side Zod schemas live in `frontend/src/validation/custom` and provide immediate feedback only; they must stay aligned with their corresponding FormRequests. Password-bearing schemas remain handwritten so passwords are never trimmed or otherwise transformed.
 
 ## Dates, lists, and names
 

@@ -75,7 +75,6 @@ class ResetDemoSystemCommandTest extends TestCase
         Faq::query()->create(['question' => 'Demo?', 'answer' => 'Yes.', 'display_order' => 1]);
         DB::table('audit_logs')->insert(['action' => 'DEMO_ACTION', 'created_at' => now(), 'updated_at' => now()]);
         DB::table('sessions')->insert(['id' => 'demo-session', 'user_id' => $user->id, 'payload' => 'payload', 'last_activity' => now()->timestamp]);
-        DB::table('password_reset_tokens')->insert(['email' => $user->email, 'token' => 'token', 'created_at' => now()]);
         Storage::disk('local')->put('reservation-payment-proofs/demo.webp', 'proof');
         Storage::disk('public')->put('events/demo.webp', 'event');
         Storage::disk('public')->put('gallery/demo.webp', 'gallery');
@@ -97,7 +96,7 @@ class ResetDemoSystemCommandTest extends TestCase
         $this->assertTrue($manager->role->is_full_access);
         $this->assertSame(1, Role::query()->count());
 
-        foreach (['courts', 'events', 'faqs', 'gallery_images', 'gallery_tabs', 'payment_methods', 'audit_logs', 'sessions', 'password_reset_tokens', 'policy_sections'] as $table) {
+        foreach (['courts', 'events', 'faqs', 'gallery_images', 'gallery_tabs', 'payment_methods', 'audit_logs', 'sessions', 'policy_sections'] as $table) {
             $this->assertSame(0, DB::table($table)->count(), "{$table} should be empty after reset.");
         }
 

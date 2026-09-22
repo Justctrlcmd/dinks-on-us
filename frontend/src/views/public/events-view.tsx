@@ -10,10 +10,11 @@ import { Pagination } from "@/components/common/pagination";
 import { PublicSiteFrame } from "@/components/public/public-site-frame";
 import { usePublicEvents } from "@/hooks/queries/use-events";
 import { formatDateOnly } from "@/lib/date";
+import type { PaginatedEvents } from "@/types/event";
 
-export function EventsView() {
+export function EventsView({ initialEvents }: { initialEvents?: PaginatedEvents }) {
   const [page, setPage] = useState(1);
-  const query = usePublicEvents(page);
+  const query = usePublicEvents(page, initialEvents);
 
   return (
     <PublicSiteFrame>
