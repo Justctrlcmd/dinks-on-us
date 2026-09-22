@@ -26,6 +26,10 @@ import {
 } from "@/validation/custom/court-pricing-schema";
 
 const allHours = Array.from({ length: 24 }, (_, hour) => hour);
+const advanceBookingDayOptions = Array.from({ length: 365 }, (_, index) => {
+  const days = index + 1;
+  return { value: String(days), label: `${days} ${days === 1 ? "day" : "days"}` };
+});
 
 function initialValues(configuration: CourtConfiguration | null): CourtConfigurationValues {
   return configuration ?? {
@@ -33,6 +37,7 @@ function initialValues(configuration: CourtConfiguration | null): CourtConfigura
     closing_hour: 24,
     included_players_per_court: 4,
     additional_player_price: 100,
+    advance_booking_days: 30,
     weekday_rates: [],
     weekend_rates: [],
   };
@@ -178,6 +183,7 @@ export function CourtConfigurationFormDialog({
 
   const openingHour = useWatch({ control: form.control, name: "opening_hour" });
   const closingHour = useWatch({ control: form.control, name: "closing_hour" });
+  const advanceBookingDays = useWatch({ control: form.control, name: "advance_booking_days" });
   const submit = form.handleSubmit(async (values) => {
     try {
       await mutation.mutateAsync(values);
@@ -236,6 +242,17 @@ export function CourtConfigurationFormDialog({
               inputMode="decimal"
               {...form.register("additional_player_price", { valueAsNumber: true })}
               error={form.formState.errors.additional_player_price?.message}
+            />
+            <SelectWithLabel
+              id="advance-booking-days"
+              label="Maximum advance booking days"
+              description="Customers can reserve from today through this many calendar days ahead."
+              required
+              value={String(advanceBookingDays)}
+              options={advanceBookingDayOptions}
+              className="sm:col-span-2"
+              onValueChange={(value) => { if (value) form.setValue("advance_booking_days", Number(value), { shouldDirty: true, shouldValidate: true }); }}
+              error={form.formState.errors.advance_booking_days?.message}
             />
           </div>
         </form>

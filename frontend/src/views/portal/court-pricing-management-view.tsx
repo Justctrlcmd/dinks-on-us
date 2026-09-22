@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FiClock, FiMoreHorizontal, FiPlus, FiSettings, FiTrash2 } from "react-icons/fi";
+import { FiCalendar, FiClock, FiMoreHorizontal, FiPlus, FiSettings, FiTrash2 } from "react-icons/fi";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
@@ -58,10 +58,11 @@ function ConfigurationSummary({ configuration, onConfigure }: { configuration: C
           <EmptyState title="Court rules are not configured yet." description="Set operating hours, rates, and player pricing before accepting reservations." action={<Button onClick={onConfigure}><FiSettings aria-hidden="true" />Configure courts</Button>} />
         ) : (
           <div className="grid gap-3 sm:gap-4">
-            <dl className="grid gap-2 sm:grid-cols-3 sm:gap-3">
+            <dl className="grid gap-2 lg:grid-cols-2 lg:gap-3">
               <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2.5"><dt className="text-[0.65rem] font-bold uppercase tracking-[.12em] text-muted-foreground">Operating hours</dt><dd className="mt-1 font-heading text-sm font-bold sm:text-base">{formatHourRange(configuration.opening_hour, configuration.closing_hour)}</dd></div>
               <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2.5"><dt className="text-[0.65rem] font-bold uppercase tracking-[.12em] text-muted-foreground">Players included</dt><dd className="mt-1 font-heading text-sm font-bold sm:text-base">{configuration.included_players_per_court} per court</dd></div>
               <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2.5"><dt className="text-[0.65rem] font-bold uppercase tracking-[.12em] text-muted-foreground">Additional player</dt><dd className="mt-1 font-heading text-sm font-bold sm:text-base">{currency.format(configuration.additional_player_price)} each</dd></div>
+              <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2.5"><dt className="flex items-center gap-1 text-[0.65rem] font-bold uppercase tracking-[.12em] text-muted-foreground"><FiCalendar aria-hidden="true" />Online booking window</dt><dd className="mt-1 font-heading text-sm font-bold sm:text-base">{configuration.advance_booking_days} days ahead</dd></div>
             </dl>
             <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
               <RateSummary title="Weekday · Mon–Thu" periods={configuration.weekday_rates} />

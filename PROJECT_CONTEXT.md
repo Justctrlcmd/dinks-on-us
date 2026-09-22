@@ -18,6 +18,7 @@ Current operating decisions include:
 
 * Weekday pricing applies Monday through Thursday; weekend pricing applies Friday through Sunday.
 * Public checkout supports multiple court/time selections on one date and submits the displayed `quoted_amount` for server-side stale-price detection.
+* The Manager-configured public booking window defaults to 30 calendar days ahead, inclusive, and is enforced by both availability previews and final online submission.
 * Pending, Verified, and Ongoing reservations occupy court and time-based equipment availability.
 * Manager-created team accounts cannot open Profile or change their own identity or password; the Manager controls those credentials through Team & Access.
 * Rescheduling is Manager-only, keeps the original base-slot count, preserves history, migrates existing court-time add-ons to the new date, and settles the resulting balance or credit immediately.

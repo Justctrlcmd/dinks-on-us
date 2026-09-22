@@ -57,6 +57,8 @@ class ReservationOptionsController extends Controller
             'configuration' => $snapshot['configuration'] ? CourtConfigurationResource::make($snapshot['configuration'])->resolve($request) : null,
             'courts' => CourtResource::collection($snapshot['courts'])->resolve($request),
             'slots' => $snapshot['slots'],
+            'is_outside_booking_window' => $snapshot['is_outside_booking_window'],
+            'booking_window_end' => $snapshot['booking_window_end'],
             'is_date_closed' => $snapshot['is_date_closed'],
             'unavailable_slots' => $snapshot['unavailable_slots'],
             'reserved_slots' => $snapshot['reserved_slots'],

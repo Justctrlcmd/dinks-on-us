@@ -116,6 +116,19 @@ class ReservationManagementTest extends TestCase
         $this->post('/api/v1/public/reservations', $input)->assertCreated();
     }
 
+    public function test_public_reservations_cannot_bypass_the_advance_booking_window(): void
+    {
+        $payload = $this->submissionPayload();
+        $payload['slots'][0]['date'] = now('Asia/Manila')->addDays(31)->toDateString();
+
+        $this->post('/api/v1/public/reservations', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['slots.0.date']);
+
+        $this->assertDatabaseEmpty('reservations');
+        $this->assertSame([], Storage::disk('local')->allFiles('payment-proofs'));
+    }
+
     public function test_final_reservation_pricing_uses_the_friday_weekend_rate(): void
     {
         $configuration = CourtConfiguration::query()->firstOrFail();

@@ -462,6 +462,15 @@ Reservation dates, elapsed-slot rules, closure dates, and report day boundaries
 use `BUSINESS_TIMEZONE`, which defaults to `Asia/Manila`. Today is valid for
 public, walk-in, reschedule, and closure inputs; only past dates are rejected.
 
+The Manager configures the public online advance booking window in whole days.
+The default is 30 days: a player may submit a new online reservation from today
+through 30 calendar days ahead, inclusive. The setting accepts 1 through 365
+days.
+The public calendar and availability preview must not offer dates outside this
+window, and final public submission must revalidate it server-side. Changing
+the window never changes existing reservations and does not restrict walk-ins,
+staff reschedules, or closure management.
+
 The configured player count is the number included per court. Each additional player is charged once for the whole reservation. Equipment is also charged once per selected unit for the whole reservation.
 
 Pending, Verified, and Ongoing reservations hold rental equipment during each

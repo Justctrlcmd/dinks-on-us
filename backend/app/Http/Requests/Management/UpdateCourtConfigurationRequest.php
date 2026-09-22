@@ -15,6 +15,7 @@ class UpdateCourtConfigurationRequest extends FormRequest
             'closing_hour' => ['required', 'integer', 'between:1,24', 'gt:opening_hour'],
             'included_players_per_court' => ['required', 'integer', 'between:1,100'],
             'additional_player_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'advance_booking_days' => ['required', 'integer', 'between:1,365'],
             'weekday_rates' => ['required', 'array', 'min:1', 'max:24'],
             'weekday_rates.*.start_hour' => ['required', 'integer', 'between:0,23'],
             'weekday_rates.*.end_hour' => ['required', 'integer', 'between:1,24'],

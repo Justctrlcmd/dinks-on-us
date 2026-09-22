@@ -81,6 +81,7 @@ class DatabaseSeederTest extends TestCase
         $this->assertSame(24, $configuration->closing_hour);
         $this->assertSame(4, $configuration->included_players_per_court);
         $this->assertSame('100.00', $configuration->additional_player_price);
+        $this->assertSame(30, $configuration->advance_booking_days);
         foreach ([
             ['day_type' => 'weekday', 'start_hour' => 7, 'end_hour' => 17, 'price' => 500, 'display_order' => 1],
             ['day_type' => 'weekday', 'start_hour' => 17, 'end_hour' => 24, 'price' => 600, 'display_order' => 2],

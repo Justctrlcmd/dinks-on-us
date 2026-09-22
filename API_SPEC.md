@@ -397,10 +397,13 @@ Example:
       "opening_hour": 7,
       "closing_hour": 24,
       "included_players_per_court": 4,
-      "additional_player_price": 100
+      "additional_player_price": 100,
+      "advance_booking_days": 30
     },
     "courts": [{ "id": 1, "name": "Court 1" }],
     "slots": [{ "start_hour": 7, "end_hour": 8, "price": 500 }],
+    "is_outside_booking_window": false,
+    "booking_window_end": "2026-09-24",
     "unavailable_slots": [{ "court_id": 1, "start_hour": 7 }],
     "reserved_slots": [{ "court_id": 1, "start_hour": 7 }],
     "past_slots": [],
@@ -415,6 +418,10 @@ Example:
   }
 }
 ```
+
+When the requested date is after the configured public booking window,
+`is_outside_booking_window` is true and `slots` is empty. `booking_window_end`
+identifies the last online-bookable date.
 
 ---
 
@@ -1700,6 +1707,7 @@ Example payload:
   "closing_hour": 24,
   "included_players_per_court": 4,
   "additional_player_price": 100,
+  "advance_booking_days": 30,
   "weekday_rates": [
     { "start_hour": 7, "end_hour": 17, "price": 500 },
     { "start_hour": 17, "end_hour": 24, "price": 600 }

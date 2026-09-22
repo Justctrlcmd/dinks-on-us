@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => {
     reservationOptions: {
       date: "2026-08-13",
       configuration: {
-        id: 1, opening_hour: 7, closing_hour: 22, included_players_per_court: 4, additional_player_price: 100,
+        id: 1, opening_hour: 7, closing_hour: 22, included_players_per_court: 4, additional_player_price: 100, advance_booking_days: 30,
         weekday_rates: [], weekend_rates: [], created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z",
       },
       courts: [{ id: 1, court_number: 1, name: "Court 1", created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" }],

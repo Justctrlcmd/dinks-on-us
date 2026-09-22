@@ -16,6 +16,7 @@ class CourtConfigurationResource extends JsonResource
             'closing_hour' => $this->closing_hour,
             'included_players_per_court' => $this->included_players_per_court,
             'additional_player_price' => (float) $this->additional_player_price,
+            'advance_booking_days' => $this->advance_booking_days,
             'weekday_rates' => RatePeriodResource::collection($this->ratePeriods->where('day_type', 'weekday')->values())->resolve($request),
             'weekend_rates' => RatePeriodResource::collection($this->ratePeriods->where('day_type', 'weekend')->values())->resolve($request),
             'created_at' => $this->created_at?->toISOString(),

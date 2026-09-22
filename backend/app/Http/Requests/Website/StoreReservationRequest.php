@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Website;
 
 use App\Http\Requests\Concerns\NormalizesInput;
+use App\Models\CourtConfiguration;
 use App\Support\BusinessClock;
 use App\Support\Security\ImageUploadRules;
 use Illuminate\Foundation\Http\FormRequest;
@@ -56,6 +57,12 @@ class StoreReservationRequest extends FormRequest
             $dates = collect($this->input('slots'))->pluck('date')->unique();
             if ($dates->count() !== 1) {
                 $validator->errors()->add('slots', 'All selected slots must use the same booking date.');
+            }
+
+            $date = $dates->first();
+            $configuration = CourtConfiguration::query()->find(1);
+            if ($configuration && is_string($date) && ! $configuration->allowsPublicBookingDate($date)) {
+                $validator->errors()->add('slots.0.date', "Online reservations are available through {$configuration->publicBookingWindowEnd()}.");
             }
 
             $keys = collect($this->input('slots'))->map(fn (array $slot): string => "{$slot['court_id']}-{$slot['date']}-{$slot['start_hour']}");
