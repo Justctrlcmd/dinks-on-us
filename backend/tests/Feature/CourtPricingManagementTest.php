@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\RentalEquipment;
 use App\Models\Reservation;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,6 +20,7 @@ class CourtPricingManagementTest extends TestCase
             'closing_hour' => 24,
             'included_players_per_court' => 4,
             'additional_player_price' => 100,
+            'advance_booking_days' => 30,
             'weekday_rates' => [
                 ['start_hour' => 7, 'end_hour' => 17, 'price' => 500],
                 ['start_hour' => 17, 'end_hour' => 24, 'price' => 600],
@@ -39,6 +41,7 @@ class CourtPricingManagementTest extends TestCase
             ->assertJsonPath('data.opening_hour', 7)
             ->assertJsonPath('data.closing_hour', 24)
             ->assertJsonPath('data.included_players_per_court', 4)
+            ->assertJsonPath('data.advance_booking_days', 30)
             ->assertJsonPath('data.weekday_rates.1.price', 600)
             ->assertJsonPath('data.weekend_rates.0.price', 700);
 
@@ -59,6 +62,23 @@ class CourtPricingManagementTest extends TestCase
             ->assertJsonValidationErrors(['weekday_rates.1.start_hour']);
 
         $this->assertDatabaseEmpty('court_configurations');
+    }
+
+    public function test_advance_booking_days_must_be_within_the_supported_window(): void
+    {
+        $payload = $this->configurationPayload();
+        $payload['advance_booking_days'] = 366;
+
+        $this->actingAs(User::factory()->create())
+            ->putJson('/api/v1/management/court-configuration', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['advance_booking_days']);
+
+        $payload['advance_booking_days'] = 0;
+        $this->actingAs(User::factory()->create())
+            ->putJson('/api/v1/management/court-configuration', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['advance_booking_days']);
     }
 
     public function test_the_lowest_inactive_court_is_reactivated_before_a_new_number_is_assigned(): void
@@ -215,7 +235,9 @@ class CourtPricingManagementTest extends TestCase
             ->assertJsonPath('data.0.id', $equipment['id'])
             ->assertJsonPath('data.0.is_active', false);
 
-        $this->getJson('/api/v1/public/reservation-options?date=2030-09-12')
+        $date = now('Asia/Manila')->addDay()->toDateString();
+
+        $this->getJson("/api/v1/public/reservation-options?date={$date}")
             ->assertOk()
             ->assertJsonCount(0, 'data.equipment');
     }
@@ -231,7 +253,9 @@ class CourtPricingManagementTest extends TestCase
             'total_quantity' => 12,
         ])->assertCreated();
 
-        $this->getJson('/api/v1/public/reservation-options?date=2026-08-29')
+        $date = $this->nextDateForDayOfWeek(5);
+
+        $this->getJson("/api/v1/public/reservation-options?date={$date}")
             ->assertOk()
             ->assertJsonPath('data.courts.0.name', 'Court 1')
             ->assertJsonPath('data.slots.0.price', 700)
@@ -246,16 +270,34 @@ class CourtPricingManagementTest extends TestCase
         $this->actingAs($user)->putJson('/api/v1/management/court-configuration', $this->configurationPayload())->assertOk();
         $this->actingAs($user)->postJson('/api/v1/management/courts')->assertCreated();
 
-        foreach ([
-            ['date' => '2030-09-02', 'price' => 500], // Monday
-            ['date' => '2030-09-05', 'price' => 500], // Thursday
-            ['date' => '2030-09-06', 'price' => 700], // Friday
-            ['date' => '2030-09-08', 'price' => 700], // Sunday
-        ] as $case) {
-            $this->getJson("/api/v1/public/reservation-options?date={$case['date']}")
+        foreach ([1 => 500, 4 => 500, 5 => 700, 7 => 700] as $dayOfWeek => $price) {
+            $date = $this->nextDateForDayOfWeek($dayOfWeek);
+            $this->getJson("/api/v1/public/reservation-options?date={$date}")
                 ->assertOk()
-                ->assertJsonPath('data.slots.0.price', $case['price']);
+                ->assertJsonPath('data.slots.0.price', $price);
         }
+    }
+
+    public function test_public_options_do_not_offer_slots_after_the_advance_booking_window(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->putJson('/api/v1/management/court-configuration', $this->configurationPayload())->assertOk();
+        $this->actingAs($user)->postJson('/api/v1/management/courts')->assertCreated();
+        $date = now('Asia/Manila')->addDays(31)->toDateString();
+
+        $this->getJson("/api/v1/public/reservation-options?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.is_outside_booking_window', true)
+            ->assertJsonPath('data.booking_window_end', now('Asia/Manila')->addDays(30)->toDateString())
+            ->assertJsonCount(0, 'data.slots');
+    }
+
+    private function nextDateForDayOfWeek(int $dayOfWeek): string
+    {
+        $today = CarbonImmutable::now('Asia/Manila')->startOfDay();
+        $daysUntil = ($dayOfWeek - $today->dayOfWeekIso + 7) % 7;
+
+        return $today->addDays($daysUntil)->toDateString();
     }
 
     public function test_management_court_pricing_routes_require_authentication(): void

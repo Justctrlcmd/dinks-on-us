@@ -63,6 +63,7 @@ class DatabaseSeeder extends Seeder
                 'closing_hour' => 24,
                 'included_players_per_court' => 4,
                 'additional_player_price' => 100,
+                'advance_booking_days' => 30,
                 'updated_by_user_id' => $manager->id,
             ])->save();
         }

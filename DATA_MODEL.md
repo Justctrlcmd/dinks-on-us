@@ -352,12 +352,18 @@ opening_hour
 closing_hour
 included_players_per_court
 additional_player_price
+advance_booking_days
 updated_by_user_id
 created_at
 updated_at
 ```
 
 `opening_hour` uses `0` through `23`. `closing_hour` uses `1` through `24`, allowing `24` to represent midnight as the ending boundary.
+
+`advance_booking_days` is the inclusive public online booking window measured
+from the current `BUSINESS_TIMEZONE` calendar date. Values range from `1`
+through `365`; `30` permits today through 30 calendar days ahead. It applies to
+new public reservations only, not existing reservations or staff workflows.
 
 ---
 

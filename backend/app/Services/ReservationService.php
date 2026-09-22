@@ -54,6 +54,9 @@ class ReservationService
                 if (! $configuration) {
                     throw ValidationException::withMessages(['slots' => ['Court pricing has not been configured.']]);
                 }
+                if (! $configuration->allowsPublicBookingDate($date)) {
+                    throw ValidationException::withMessages(['slots' => ["Online reservations are available through {$configuration->publicBookingWindowEnd()}."]]);
+                }
 
                 $courtIds = collect($slots)->pluck('court_id')->unique()->sort()->values();
                 $courts = Court::query()->active()->whereIn('id', $courtIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');

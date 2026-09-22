@@ -36,6 +36,7 @@ class CourtConfigurationController extends Controller
                     'closing_hour',
                     'included_players_per_court',
                     'additional_player_price',
+                    'advance_booking_days',
                 ]),
                 'updated_by_user_id' => $request->user()?->id,
             ])->save();

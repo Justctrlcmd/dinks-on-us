@@ -26,38 +26,41 @@ function slotKey(slot: Pick<ReservationSlot, "date" | "courtId" | "startHour">) 
   return `${slot.date}-${slot.courtId}-${slot.startHour}`;
 }
 
-function firstOpenDate(start: string, min: string, closedDates: ReadonlySet<string>): string {
+function firstOpenDate(start: string, min: string, closedDates: ReadonlySet<string>, max?: string): string {
   let date = start < min ? min : start;
-  for (let day = 0; day < 3660; day += 1) {
+  for (let day = 0; day < 3660 && (!max || date <= max); day += 1) {
     if (!closedDates.has(date)) return date;
     date = addDays(date, 1);
   }
-  return start < min ? min : start;
+  return max ?? (start < min ? min : start);
 }
 
-function WeekSelector({ selectedDate, weekStart, today, closedDates, availableCount, lockedDate, onSelectDate, onChangeWeek }: { selectedDate: string; weekStart: string; today: string; closedDates: ReadonlySet<string>; availableCount: number; lockedDate?: string; onSelectDate: (date: string) => void; onChangeWeek: (amount: number) => void }) {
+function WeekSelector({ selectedDate, weekStart, today, maxBookingDate, closedDates, availableCount, lockedDate, onSelectDate, onChangeWeek }: { selectedDate: string; weekStart: string; today: string; maxBookingDate?: string; closedDates: ReadonlySet<string>; availableCount: number; lockedDate?: string; onSelectDate: (date: string) => void; onChangeWeek: (amount: number) => void }) {
   const dates = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   const weekEnd = dates.at(-1) ?? weekStart;
+  const finalBookingWeek = maxBookingDate ? weekStartFor(maxBookingDate) : undefined;
   return (
     <section className="rounded-2xl border border-border bg-card p-3 sm:p-6" aria-labelledby="weekly-availability-title">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 text-xs font-bold uppercase tracking-[.16em] text-energy">Choose your date</div>
         <div className="flex shrink-0 items-center gap-1">
-          <CalendarDatePicker iconOnly value={selectedDate} min={today} disabledDates={closedDates} disabled={Boolean(lockedDate)} onChange={onSelectDate} />
+          <CalendarDatePicker iconOnly value={selectedDate} min={today} max={maxBookingDate} disabledDates={closedDates} disabled={Boolean(lockedDate)} onChange={onSelectDate} />
           <Button type="button" variant="outline" size="icon-sm" aria-label="Previous week" disabled={Boolean(lockedDate) || weekStart <= weekStartFor(today)} onClick={() => onChangeWeek(-7)}><FiChevronLeft aria-hidden="true" /></Button>
-          <Button type="button" variant="outline" size="icon-sm" aria-label="Next week" disabled={Boolean(lockedDate)} onClick={() => onChangeWeek(7)}><FiChevronRight aria-hidden="true" /></Button>
+          <Button type="button" variant="outline" size="icon-sm" aria-label="Next week" disabled={Boolean(lockedDate) || Boolean(finalBookingWeek && weekStart >= finalBookingWeek)} onClick={() => onChangeWeek(7)}><FiChevronRight aria-hidden="true" /></Button>
         </div>
       </div>
       <div className="flex items-baseline justify-between gap-3"><h2 id="weekly-availability-title" className="font-heading text-lg font-extrabold tracking-[-.035em] sm:text-xl">Weekly availability</h2><span className="shrink-0 text-xs font-semibold text-muted-foreground sm:text-sm">{shortDate.format(parseDateOnly(weekStart))}–{shortDate.format(parseDateOnly(weekEnd))}</span></div>
+      {maxBookingDate ? <p className="mt-1 text-xs text-muted-foreground">Online bookings are available through {longDate.format(parseDateOnly(maxBookingDate))}.</p> : null}
       <div className="mt-3 grid grid-cols-7 gap-1.5 sm:mt-5 sm:gap-2">
         {dates.map((date) => {
           const parsed = parseDateOnly(date);
           const isPast = date < today;
+          const isAfterBookingWindow = Boolean(maxBookingDate && date > maxBookingDate);
           const isClosed = closedDates.has(date);
           const selected = date === selectedDate;
           const locked = Boolean(lockedDate && date !== lockedDate);
-          return <button key={date} type="button" disabled={isPast || isClosed || locked} aria-label={`${weekday.format(parsed)} ${parsed.getDate()}${isClosed ? ", Closed" : locked ? ", unavailable while another date is selected" : ""}`} aria-pressed={selected} onClick={() => onSelectDate(date)} className={cn("min-w-0 rounded-lg border px-1 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed sm:min-h-28 sm:rounded-xl sm:px-3 sm:py-3", selected && date !== today && "border-primary bg-primary text-primary-foreground shadow-sm", (!selected || date === today) && !isPast && !isClosed && !locked && "border-border bg-background hover:border-primary/55 hover:bg-muted", (isPast || locked) && "border-border/60 bg-muted/45 text-muted-foreground opacity-55", isClosed && "border-destructive/35 bg-destructive/10 text-destructive")}>
-            <span className="block text-[0.58rem] font-bold uppercase tracking-[.08em] opacity-75 sm:text-xs sm:tracking-[.14em]">{weekday.format(parsed)}</span><span className="mt-0.5 block font-heading text-lg font-extrabold sm:mt-1 sm:text-2xl">{parsed.getDate()}</span><span className="mt-1 hidden text-xs font-bold sm:block">{isClosed ? "Closed" : isPast ? "Past" : locked ? "Other date selected" : selected ? `${availableCount} available` : "View slots"}</span>
+          return <button key={date} type="button" disabled={isPast || isAfterBookingWindow || isClosed || locked} aria-label={`${weekday.format(parsed)} ${parsed.getDate()}${isAfterBookingWindow ? ", outside online booking window" : isClosed ? ", Closed" : locked ? ", unavailable while another date is selected" : ""}`} aria-pressed={selected} onClick={() => onSelectDate(date)} className={cn("min-w-0 rounded-lg border px-1 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed sm:min-h-28 sm:rounded-xl sm:px-3 sm:py-3", selected && date !== today && "border-primary bg-primary text-primary-foreground shadow-sm", (!selected || date === today) && !isPast && !isAfterBookingWindow && !isClosed && !locked && "border-border bg-background hover:border-primary/55 hover:bg-muted", (isPast || isAfterBookingWindow || locked) && "border-border/60 bg-muted/45 text-muted-foreground opacity-55", isClosed && "border-destructive/35 bg-destructive/10 text-destructive")}>
+            <span className="block text-[0.58rem] font-bold uppercase tracking-[.08em] opacity-75 sm:text-xs sm:tracking-[.14em]">{weekday.format(parsed)}</span><span className="mt-0.5 block font-heading text-lg font-extrabold sm:mt-1 sm:text-2xl">{parsed.getDate()}</span><span className="mt-1 hidden text-xs font-bold sm:block">{isAfterBookingWindow ? "Unavailable" : isClosed ? "Closed" : isPast ? "Past" : locked ? "Other date selected" : selected ? `${availableCount} available` : "View slots"}</span>
           </button>;
         })}
       </div>
@@ -88,7 +91,7 @@ function Availability({ date, options, loading, error, selectedSlots, onToggle, 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 sm:p-6" aria-labelledby="court-times-title">
       <div className="flex flex-col items-start gap-1.5 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-[.2em] text-energy">Choose your time</p><h2 id="court-times-title" className="mt-1 truncate font-heading text-xl font-extrabold tracking-[-.035em] sm:text-2xl">{longDate.format(parseDateOnly(date))}</h2></div><p className="text-[.68rem] font-semibold text-muted-foreground sm:shrink-0 sm:whitespace-nowrap sm:text-xs">Prices shown per court, per hour</p></div>
-      {loading ? <p className="py-10 text-center text-sm text-muted-foreground">Loading court availability…</p> : error ? <div className="grid justify-items-center gap-3 py-10 text-center"><p className="text-sm text-muted-foreground">Court availability could not be loaded.</p><Button variant="outline" onClick={onRetry}>Try again</Button></div> : !options?.configuration || options.courts.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">Court availability has not been configured yet.</p> : (
+      {loading ? <p className="py-10 text-center text-sm text-muted-foreground">Loading court availability…</p> : error ? <div className="grid justify-items-center gap-3 py-10 text-center"><p className="text-sm text-muted-foreground">Court availability could not be loaded.</p><Button variant="outline" onClick={onRetry}>Try again</Button></div> : options?.is_outside_booking_window ? <p role="status" className="mt-5 rounded-xl border border-primary/25 bg-primary/10 px-4 py-3 text-sm font-medium text-foreground">Online bookings are available through {options.booking_window_end ? longDate.format(parseDateOnly(options.booking_window_end)) : "the current booking window"}. Choose an earlier date to see available times.</p> : !options?.configuration || options.courts.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">Court availability has not been configured yet.</p> : (
         <>
           {options.is_date_closed ? <p role="status" className="mt-5 rounded-xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm font-medium text-foreground">The entire operation is closed for this date. All court times are unavailable.</p> : null}
           <div className="mt-5 hidden overflow-x-auto md:block"><table className="w-full min-w-[42rem] table-fixed border-separate border-spacing-y-1" aria-label={`Court availability for ${longDate.format(parseDateOnly(date))}`}><thead><tr><th scope="col" className="w-40 px-2 pb-2 text-left text-xs font-bold uppercase tracking-[.16em] text-muted-foreground">Time</th>{options.courts.map((court) => <th key={court.id} scope="col" className="px-1 pb-2 text-center"><span className="flex min-h-12 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 px-3 font-heading text-base font-extrabold uppercase tracking-[.1em] text-primary">{court.name}</span></th>)}</tr></thead><tbody>{rows.map(({ hour, slots }) => <tr key={hour}><th scope="row" className="whitespace-nowrap px-2 text-left text-xs font-semibold text-muted-foreground xl:text-sm">{formatHourRange(hour, hour + 1)}</th>{slots.map((slot) => <td key={slotKey(slot)} className="px-1"><SlotButton slot={slot} selected={selectedKeys.has(slotKey(slot))} onToggle={onToggle} /></td>)}</tr>)}</tbody></table></div>
@@ -144,10 +147,14 @@ export function ReservationExperience() {
   const [equipmentQuantities, setEquipmentQuantities] = useState<Record<number, number>>({});
   const closedDatesQuery = useReservationClosedDates();
   const closedDates = useMemo(() => new Set(closedDatesQuery.data ?? []), [closedDatesQuery.data]);
-  const effectiveSelectedDate = closedDates.has(selectedDate) ? firstOpenDate(addDays(selectedDate, 1), today, closedDates) : selectedDate;
-  const effectiveWeekStart = closedDates.has(selectedDate) ? weekStartFor(effectiveSelectedDate) : weekStart;
+  const initialOptionsQuery = useReservationOptions(selectedDate, selectedSlots.map((slot) => slot.startHour));
+  const bookingWindowEnd = initialOptionsQuery.data?.booking_window_end ?? undefined;
+  const selectedDateWithinWindow = !bookingWindowEnd || selectedDate <= bookingWindowEnd;
+  const selectableDate = selectedDateWithinWindow ? selectedDate : bookingWindowEnd ?? selectedDate;
+  const effectiveSelectedDate = closedDates.has(selectableDate) ? firstOpenDate(addDays(selectableDate, 1), today, closedDates, bookingWindowEnd) : selectableDate;
+  const effectiveWeekStart = closedDates.has(selectableDate) || !selectedDateWithinWindow ? weekStartFor(effectiveSelectedDate) : weekStart;
 
-  const effectiveSelectedSlots = useMemo(() => selectedSlots.filter((slot) => !closedDates.has(slot.date)), [closedDates, selectedSlots]);
+  const effectiveSelectedSlots = useMemo(() => selectedSlots.filter((slot) => !closedDates.has(slot.date) && (!bookingWindowEnd || slot.date <= bookingWindowEnd)), [bookingWindowEnd, closedDates, selectedSlots]);
 
   const optionsQuery = useReservationOptions(effectiveSelectedDate, effectiveSelectedSlots.map((slot) => slot.startHour));
   const options = useMemo(() => optionsQuery.data ? {
@@ -175,11 +182,11 @@ export function ReservationExperience() {
   const availableCount = Math.max(0, (options?.slots.length ?? 0) * (options?.courts.length ?? 0) - (options?.unavailable_slots.length ?? 0));
 
   function toggleSlot(slot: ReservationSlot) {
-    const nextSlots = selectedSlots.some((selected) => slotKey(selected) === slotKey(slot))
-      ? selectedSlots.filter((selected) => slotKey(selected) !== slotKey(slot))
-      : selectedSlots.length > 0 && selectedSlots[0].date !== slot.date
-        ? selectedSlots
-        : [...selectedSlots, slot];
+    const nextSlots = effectiveSelectedSlots.some((selected) => slotKey(selected) === slotKey(slot))
+      ? effectiveSelectedSlots.filter((selected) => slotKey(selected) !== slotKey(slot))
+      : effectiveSelectedSlots.length > 0 && effectiveSelectedSlots[0].date !== slot.date
+        ? effectiveSelectedSlots
+        : [...effectiveSelectedSlots, slot];
     setSelectedSlots(nextSlots);
     if (optionsQuery.data) {
       const nextEquipment = equipmentForSchedule(optionsQuery.data, nextSlots.map((selected) => selected.startHour));
@@ -200,6 +207,7 @@ export function ReservationExperience() {
   }
 
   function selectDate(date: string) {
+    if (bookingWindowEnd && date > bookingWindowEnd) return;
     setSelectedDate(date);
     setWeekStart(weekStartFor(date));
   }
@@ -220,7 +228,7 @@ export function ReservationExperience() {
   return <div className={cn("mx-auto max-w-[76rem] px-6 pb-16 sm:px-10", effectiveSelectedSlots.length > 0 && "pb-56 lg:pb-40")}>
     <ReservationPolicyBanner titleId="reserve-title" headingLevel="h1" />
     <div className="mt-5 grid gap-5">
-      <WeekSelector selectedDate={effectiveSelectedDate} weekStart={effectiveWeekStart} today={today} closedDates={closedDates} availableCount={availableCount} lockedDate={effectiveSelectedSlots[0]?.date} onSelectDate={selectDate} onChangeWeek={(amount) => { const nextDate = firstOpenDate(addDays(effectiveWeekStart, amount), today, closedDates); setWeekStart(weekStartFor(nextDate)); setSelectedDate(nextDate); }} />
+      <WeekSelector selectedDate={effectiveSelectedDate} weekStart={effectiveWeekStart} today={today} maxBookingDate={bookingWindowEnd} closedDates={closedDates} availableCount={availableCount} lockedDate={effectiveSelectedSlots[0]?.date} onSelectDate={selectDate} onChangeWeek={(amount) => { const nextDate = firstOpenDate(addDays(effectiveWeekStart, amount), today, closedDates, bookingWindowEnd); setWeekStart(weekStartFor(nextDate)); setSelectedDate(nextDate); }} />
       <Availability date={effectiveSelectedDate} options={options} loading={optionsQuery.isPending} error={optionsQuery.isError} selectedSlots={effectiveSelectedSlots} onToggle={toggleSlot} onRetry={() => void optionsQuery.refetch()} />
       {hasUnavailableSelection ? <p role="alert" className="rounded-xl border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm font-medium">A selected time is no longer available. Remove the highlighted selection before continuing.</p> : null}
       {options?.configuration ? <AdditionalPlayers included={options.configuration.included_players_per_court} price={options.configuration.additional_player_price} quantity={additionalPlayers} disabled={effectiveSelectedSlots.length === 0} onChange={(amount) => setAdditionalPlayers((current) => Math.max(0, current + amount))} /> : null}

@@ -20,6 +20,7 @@ const { closedDatesMock, policySectionsMock, pushMock, reservationOptionsMock } 
       closing_hour: 9,
       included_players_per_court: 4,
       additional_player_price: 100,
+      advance_booking_days: 30,
       weekday_rates: [{ id: 1, start_hour: 7, end_hour: 9, price: 500 }],
       weekend_rates: [{ id: 2, start_hour: 7, end_hour: 9, price: 600 }],
       created_at: "2026-08-25T00:00:00.000Z",
@@ -27,6 +28,8 @@ const { closedDatesMock, policySectionsMock, pushMock, reservationOptionsMock } 
     },
     courts: [{ id: 1, court_number: 1, name: "Court 1", created_at: "2026-08-25T00:00:00.000Z", updated_at: "2026-08-25T00:00:00.000Z" }],
     slots: [{ start_hour: 7, end_hour: 8, price: 500 }, { start_hour: 8, end_hour: 9, price: 500 }],
+    is_outside_booking_window: false,
+    booking_window_end: "2026-09-24",
     is_date_closed: false,
     unavailable_slots: [] as { court_id: number; start_hour: number }[],
     reserved_slots: [] as { court_id: number; start_hour: number }[],
@@ -64,6 +67,8 @@ afterEach(() => {
   pushMock.mockClear();
   window.sessionStorage.clear();
   reservationOptionsMock.is_date_closed = false;
+  reservationOptionsMock.is_outside_booking_window = false;
+  reservationOptionsMock.booking_window_end = "2026-09-24";
   reservationOptionsMock.unavailable_slots.length = 0;
   reservationOptionsMock.reserved_slots.length = 0;
   reservationOptionsMock.past_slots.length = 0;
@@ -194,6 +199,16 @@ describe("ReservationExperience", () => {
 
     expect(screen.getByRole("button", { name: /Mon.*31/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "Monday, August 31, 2026" })).toBeInTheDocument();
+  });
+
+  it("does not allow public date selection after the configured booking window", async () => {
+    const user = userEvent.setup();
+    render(<ReservationExperience />);
+
+    expect(screen.getByText("Online bookings are available through Thursday, September 24, 2026.")).toBeInTheDocument();
+    for (let week = 0; week < 4; week += 1) await user.click(screen.getByRole("button", { name: "Next week" }));
+    expect(screen.getByRole("button", { name: "Fri 25, outside online booking window" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled();
   });
 
   it("preserves the selection and opens checkout", async () => {

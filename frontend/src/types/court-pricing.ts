@@ -11,6 +11,7 @@ export type CourtConfiguration = {
   closing_hour: number;
   included_players_per_court: number;
   additional_player_price: number;
+  advance_booking_days: number;
   weekday_rates: RatePeriod[];
   weekend_rates: RatePeriod[];
   created_at: string;
@@ -58,6 +59,8 @@ export type ReservationOptions = {
   configuration: CourtConfiguration | null;
   courts: Court[];
   slots: ReservationOptionSlot[];
+  is_outside_booking_window: boolean;
+  booking_window_end: string | null;
   is_date_closed: boolean;
   unavailable_slots: { court_id: number; start_hour: number }[];
   reserved_slots: { court_id: number; start_hour: number }[];

@@ -11,6 +11,7 @@ export const courtConfigurationSchema = z.object({
   closing_hour: z.number().int().min(1).max(24),
   included_players_per_court: z.number().int().min(1, "At least one player must be included.").max(100),
   additional_player_price: z.number().min(0, "Enter a price of zero or more."),
+  advance_booking_days: z.number().int().min(1, "Choose at least one day.").max(365, "Keep the booking window within 365 days."),
   weekday_rates: z.array(ratePeriodSchema).min(1),
   weekend_rates: z.array(ratePeriodSchema).min(1),
 }).superRefine((values, context) => {

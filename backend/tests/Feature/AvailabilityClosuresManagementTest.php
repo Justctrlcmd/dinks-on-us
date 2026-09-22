@@ -32,6 +32,7 @@ class AvailabilityClosuresManagementTest extends TestCase
             'closing_hour' => 24,
             'included_players_per_court' => 4,
             'additional_player_price' => 100,
+            'advance_booking_days' => 30,
             'weekday_rates' => [['start_hour' => 7, 'end_hour' => 24, 'price' => 500]],
             'weekend_rates' => [['start_hour' => 7, 'end_hour' => 24, 'price' => 600]],
         ])->assertOk();

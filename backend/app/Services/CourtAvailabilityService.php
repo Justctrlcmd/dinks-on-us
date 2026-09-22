@@ -18,6 +18,8 @@ class CourtAvailabilityService
      *   configuration: CourtConfiguration|null,
      *   courts: Collection<int, Court>,
      *   slots: list<array{start_hour: int, end_hour: int, price: float}>,
+     *   is_outside_booking_window: bool,
+     *   booking_window_end: string|null,
      *   is_date_closed: bool,
      *   unavailable_slots: list<array{court_id: int, start_hour: int}>,
      *   closed_slots: list<array{court_id: int, start_hour: int}>,
@@ -31,6 +33,7 @@ class CourtAvailabilityService
         $parsedDate = CarbonImmutable::createFromFormat('Y-m-d', $date);
         $configuration = CourtConfiguration::query()->with('ratePeriods')->find(1);
         $courts = Court::query()->active()->orderBy('court_number')->get();
+        $isOutsideBookingWindow = $configuration && $configuration->isAfterPublicBookingWindow($date);
         $closures = AvailabilityClosure::query()
             ->active()
             ->whereDate('date', $date)
@@ -38,7 +41,7 @@ class CourtAvailabilityService
             ->get();
 
         $slots = [];
-        if ($configuration) {
+        if ($configuration && ! $isOutsideBookingWindow) {
             $dayType = CourtConfiguration::dayTypeForDate($parsedDate);
             $rates = $configuration->ratePeriods->where('day_type', $dayType);
 
@@ -122,6 +125,8 @@ class CourtAvailabilityService
             'configuration' => $configuration,
             'courts' => $courts,
             'slots' => $slots,
+            'is_outside_booking_window' => $isOutsideBookingWindow,
+            'booking_window_end' => $configuration?->publicBookingWindowEnd(),
             'is_date_closed' => $isDateClosed,
             'unavailable_slots' => collect($unavailableSlots)
                 ->unique(fn (array $slot): string => $this->slotKey($slot['court_id'], $slot['start_hour']))
