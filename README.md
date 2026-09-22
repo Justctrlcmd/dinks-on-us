@@ -64,7 +64,7 @@ npm run dev
 
 ## Authentication and access
 
-Laravel Sanctum owns browser sessions and CSRF protection. Public registration and password recovery routes are disabled. Management accounts are created through Team & Access and each team account receives one role. The Manager has full access and may update their own profile and password. Team accounts have no Profile page or self-service credential endpoints; an authorized Manager edits their identity, activation state, role, and password.
+Laravel Sanctum owns browser sessions and CSRF protection. Browser API traffic passes through the Next.js `/backend` rewrite, so CSRF and session cookies remain first-party when the site is installed as an app. Set the server-only `API_URL` for that rewrite. Public registration and password recovery routes are disabled. Management accounts are created through Team & Access and each team account receives one role. The Manager has full access and may update their own profile and password. Team accounts have no Profile page or self-service credential endpoints; an authorized Manager edits their identity, activation state, role, and password.
 
 ## Resetting a demo system
 

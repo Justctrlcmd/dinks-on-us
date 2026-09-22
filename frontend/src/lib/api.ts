@@ -1,6 +1,8 @@
 import type { ApiError, ApiResponse } from "@/types/api";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+// Browser API calls deliberately use the Next.js reverse-proxy path. This keeps
+// Sanctum's CSRF and session cookies first-party for installed web apps.
+const apiPathPrefix = "/backend";
 let csrfRequest: Promise<void> | null = null;
 
 export class NormalizedApiError extends Error implements ApiError {
@@ -37,8 +39,7 @@ function networkError(cause: unknown): NormalizedApiError {
 }
 
 function getApiUrl(path: string): string {
-  if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured.");
-  return `${apiUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  return `${apiPathPrefix}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 function retryAfterSeconds(value: string | null): number | undefined {
