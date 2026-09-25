@@ -30,11 +30,13 @@ reservations.
 
 ### Logo use
 
-The supplied Dinks on Us mark is the visual reference for the product. Place
-the full mark on dark teal or navy brand surfaces whenever its light version is
-used. On light surfaces, use a high-contrast one-colour navy/teal version once
-an approved asset is available. Do not recreate, stretch, crop, recolour, or
-place the mark over busy imagery.
+`frontend/public/images/dinks-brand.png` is the approved brand mark for public,
+authentication, and staff interfaces, as well as browser, installed-app, and
+notification icons. Display the transparent artwork in page headers and
+authentication without an added image background or padding. Generate
+platform-required icon sizes from this source; installed-app icons use Warm
+Sand behind the mark, while the browser-tab favicon stays transparent. Do not
+stretch, crop, recolour, or place the mark over busy imagery.
 
 Subtle court arcs, circles, or motion lines may be used as large background
 details in branded hero and authentication surfaces. They must remain

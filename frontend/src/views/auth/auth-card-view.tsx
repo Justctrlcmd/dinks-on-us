@@ -31,16 +31,13 @@ export function AuthCardView({ title, description, children, showBackToHome = fa
               aria-label={`${siteConfig.name} home`}
             >
               <Image
-                src="/images/dinks-on-us-logo.png"
+                src="/images/dinks-brand.png"
                 alt=""
-                width={68}
-                height={43}
-                className="h-auto w-15 rounded-lg object-contain"
+                width={60}
+                height={60}
+                className="size-15 rounded-lg object-contain"
                 aria-hidden="true"
               />
-              <span className="mt-2 font-heading text-xl font-extrabold tracking-[-0.04em] text-foreground">
-                {siteConfig.name}
-              </span>
             </Link>
           </div>
           <CardTitle className="mt-5 font-heading text-2xl font-extrabold tracking-[-0.04em] sm:text-3xl">

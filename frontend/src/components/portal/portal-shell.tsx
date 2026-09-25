@@ -48,7 +48,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
                   aria-label="Expand sidebar"
                 >
                   <Image
-                    src="/images/dinks-on-us-logo.png"
+                    src="/images/dinks-brand.png"
                     alt=""
                     width={36}
                     height={36}
@@ -64,7 +64,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           <div className="flex h-11 items-center justify-between gap-2 pl-1">
             <Link href="/portal" className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-sidebar-ring">
               <Image
-                src="/images/dinks-on-us-logo.png"
+                src="/images/dinks-brand.png"
                 alt=""
                 width={36}
                 height={36}
@@ -105,7 +105,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           <SheetContent side="left" className="w-72 bg-sidebar text-sidebar-foreground">
             <SheetHeader className="border-b border-sidebar-border">
               <SheetTitle className="flex items-center gap-2.5 text-sidebar-foreground">
-                <Image src="/images/dinks-on-us-logo.png" alt="" width={36} height={36} className="size-9 rounded-lg object-contain" />
+                <Image src="/images/dinks-brand.png" alt="" width={36} height={36} className="size-9 rounded-lg object-contain" />
                 {siteConfig.name}
               </SheetTitle>
             </SheetHeader>
@@ -118,7 +118,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           </SheetContent>
         </Sheet>
         <Link href="/portal" className="flex items-center gap-2 font-heading font-semibold">
-          <Image src="/images/dinks-on-us-logo.png" alt="" width={30} height={30} className="size-7 rounded-md object-contain" />
+          <Image src="/images/dinks-brand.png" alt="" width={30} height={30} className="size-7 rounded-md object-contain" />
           {siteConfig.name}
         </Link>
         <div className="flex items-center gap-1">
