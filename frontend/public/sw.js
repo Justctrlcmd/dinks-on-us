@@ -26,8 +26,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     await self.registration.showNotification(title, {
       body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: "/dinks-icon-192.png",
+      badge: "/dinks-icon-192.png",
       tag,
       renotify: true,
       data: { url },

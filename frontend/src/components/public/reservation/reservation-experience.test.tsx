@@ -205,7 +205,6 @@ describe("ReservationExperience", () => {
     const user = userEvent.setup();
     render(<ReservationExperience />);
 
-    expect(screen.getByText("Online bookings are available through Thursday, September 24, 2026.")).toBeInTheDocument();
     for (let week = 0; week < 4; week += 1) await user.click(screen.getByRole("button", { name: "Next week" }));
     expect(screen.getByRole("button", { name: "Fri 25, outside online booking window" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled();

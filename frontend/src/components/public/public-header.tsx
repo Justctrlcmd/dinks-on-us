@@ -26,10 +26,10 @@ function Brand({ onHero }: { onHero: boolean }) {
       aria-label={`${siteConfig.name} home`}
     >
       <Image
-        src="/images/dinks-on-us-logo.png"
+        src="/images/dinks-brand.png"
         alt=""
         width={56}
-        height={35}
+        height={56}
         sizes="(min-width: 640px) 56px, 48px"
         className="h-auto w-12 shrink-0 object-contain sm:w-14"
         aria-hidden="true"

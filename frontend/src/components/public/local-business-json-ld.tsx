@@ -9,7 +9,7 @@ export async function LocalBusinessJsonLd() {
     name: siteConfig.name,
     description: siteConfig.description,
     url: siteConfig.url,
-    logo: `${siteConfig.url}/images/dinks-on-us-logo.png`,
+    logo: `${siteConfig.url}/images/dinks-brand.png`,
     image: `${siteConfig.url}/images/dinks-hero.png`,
     telephone: siteConfig.phone,
     email: siteConfig.email,
