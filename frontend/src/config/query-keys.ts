@@ -38,7 +38,7 @@ export const courtPricingKeys = {
   all: ["court-pricing"] as const,
   management: () => [...courtPricingKeys.all, "management"] as const,
   closedDates: () => [...courtPricingKeys.all, "closed-dates"] as const,
-  reservationOptions: (date: string, hours: number[] = []) => [...courtPricingKeys.all, "reservation-options", date, hours] as const,
+  reservationOptions: (date: string, hours: number[] = [], scope: "public" | "management" = "public") => [...courtPricingKeys.all, "reservation-options", scope, date, hours] as const,
 };
 
 export const availabilityClosureKeys = {

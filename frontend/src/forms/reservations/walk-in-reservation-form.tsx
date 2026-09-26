@@ -63,7 +63,7 @@ export function WalkInReservationForm() {
   const paymentChannel = useWatch({ control: form.control, name: "payment_channel" });
   const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
   const selectedSlots = useMemo(() => expandReservationRanges(date, ranges), [date, ranges]);
-  const optionsQuery = useReservationOptions(date, selectedSlots.map((slot) => slot.start_hour));
+  const optionsQuery = useReservationOptions(date, selectedSlots.map((slot) => slot.start_hour), "management");
 
   const paymentMethods = paymentMethodsQuery.data ?? [];
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;

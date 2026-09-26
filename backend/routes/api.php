@@ -85,6 +85,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
             });
 
             Route::middleware('module:RESERVATION')->group(function (): void {
+                Route::get('/reservation-options', [ReservationOptionsController::class, 'management'])->name('reservation-options.show');
                 Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store'])->middleware('throttle:20,1')->name('push-subscriptions.store');
                 Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy'])->middleware('throttle:20,1')->name('push-subscriptions.destroy');
                 Route::get('/reservations/pending-summary', [ManagementReservationController::class, 'pendingSummary'])->name('reservations.pending-summary');

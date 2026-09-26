@@ -129,6 +129,29 @@ class ReservationManagementTest extends TestCase
         $this->assertSame([], Storage::disk('local')->allFiles('payment-proofs'));
     }
 
+    public function test_walk_in_options_and_submission_allow_dates_after_the_public_booking_window(): void
+    {
+        $date = now('Asia/Manila')->addDays(31)->toDateString();
+
+        $this->getJson("/api/v1/management/reservation-options?date={$date}")->assertUnauthorized();
+        $this->getJson("/api/v1/public/reservation-options?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.is_outside_booking_window', true)
+            ->assertJsonCount(0, 'data.slots');
+
+        $this->actingAs($this->manager)
+            ->getJson("/api/v1/management/reservation-options?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('data.is_outside_booking_window', true)
+            ->assertJsonPath('data.slots.0.start_hour', 7);
+
+        $payload = $this->walkInPayload();
+        $payload['slots'][0]['date'] = $date;
+        $this->postJson('/api/v1/management/reservations/walk-in', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.booking_date', $date);
+    }
+
     public function test_final_reservation_pricing_uses_the_friday_weekend_rate(): void
     {
         $configuration = CourtConfiguration::query()->firstOrFail();

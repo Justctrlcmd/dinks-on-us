@@ -423,6 +423,12 @@ When the requested date is after the configured public booking window,
 `is_outside_booking_window` is true and `slots` is empty. `booking_window_end`
 identifies the last online-bookable date.
 
+Staff reservation forms use `GET /api/v1/management/reservation-options` with
+the same `date` and optional `hours[]` parameters and response shape. It requires
+reservation-module access and returns configured time slots beyond the public
+booking window for walk-ins, reschedules, and add-ons. The response still reports
+`is_outside_booking_window` so the online limit remains visible as metadata.
+
 ---
 
 # 17. Public Pricing Authority

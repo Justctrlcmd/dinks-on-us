@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { courtPricingKeys } from "@/config/query-keys";
-import { getCourtPricingManagement, getReservationClosedDates, getReservationOptions } from "@/services/court-pricing/court-pricing-service";
+import { getCourtPricingManagement, getManagementReservationOptions, getReservationClosedDates, getReservationOptions } from "@/services/court-pricing/court-pricing-service";
 
 export function useCourtPricingManagement() {
   return useQuery({
@@ -11,11 +11,11 @@ export function useCourtPricingManagement() {
   });
 }
 
-export function useReservationOptions(date: string, hours: number[] = []) {
+export function useReservationOptions(date: string, hours: number[] = [], scope: "public" | "management" = "public") {
   const selectedHours = [...new Set(hours)].sort((left, right) => left - right);
   return useQuery({
-    queryKey: courtPricingKeys.reservationOptions(date, selectedHours),
-    queryFn: ({ signal }) => getReservationOptions(date, signal, selectedHours).then((response) => response.data),
+    queryKey: courtPricingKeys.reservationOptions(date, selectedHours, scope),
+    queryFn: ({ signal }) => (scope === "management" ? getManagementReservationOptions : getReservationOptions)(date, signal, selectedHours).then((response) => response.data),
     placeholderData: (previous) => previous?.date === date ? previous : undefined,
     staleTime: 0,
     refetchInterval: 30_000,

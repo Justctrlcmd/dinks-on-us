@@ -117,6 +117,7 @@ export function ReservationScheduleFields({
   disableClosedDates = true,
   showDate = true,
   maxSelectedSlots,
+  optionsScope = "management",
   idPrefix = "reservation",
   onRemoveRange,
   error,
@@ -130,11 +131,12 @@ export function ReservationScheduleFields({
   disableClosedDates?: boolean;
   showDate?: boolean;
   maxSelectedSlots?: number;
+  optionsScope?: "public" | "management";
   idPrefix?: string;
   onRemoveRange?: (index: number) => void;
   error?: string;
 }) {
-  const optionsQuery = useReservationOptions(date);
+  const optionsQuery = useReservationOptions(date, [], optionsScope);
   const closedDatesQuery = useReservationClosedDates();
   const options = optionsQuery.data;
   const unavailable = new Set((options?.unavailable_slots ?? []).map((slot) => `${slot.court_id}-${slot.start_hour}`));

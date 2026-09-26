@@ -28,7 +28,7 @@ class CourtAvailabilityService
      *   reservations_by_slot: array<string, Reservation>
      * }
      */
-    public function forDate(string $date): array
+    public function forDate(string $date, bool $enforcePublicBookingWindow = true): array
     {
         $parsedDate = CarbonImmutable::createFromFormat('Y-m-d', $date);
         $configuration = CourtConfiguration::query()->with('ratePeriods')->find(1);
@@ -41,7 +41,7 @@ class CourtAvailabilityService
             ->get();
 
         $slots = [];
-        if ($configuration && ! $isOutsideBookingWindow) {
+        if ($configuration && (! $enforcePublicBookingWindow || ! $isOutsideBookingWindow)) {
             $dayType = CourtConfiguration::dayTypeForDate($parsedDate);
             $rates = $configuration->ratePeriods->where('day_type', $dayType);
 
