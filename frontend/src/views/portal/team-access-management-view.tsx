@@ -151,7 +151,7 @@ function TeamMemberCard({ member, currentUserId, onEdit, onReset, onDeactivate, 
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Access</dt>
-          <dd><span className="rounded-full border px-2 py-1 text-xs font-medium">{member.access.name}</span></dd>
+          <dd className="font-medium">{member.access.name}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Status</dt>
@@ -309,7 +309,7 @@ export function TeamAccessManagementView() {
                   <td className="px-4 py-3 font-medium">{member.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{member.email}</td>
                   <td className="px-4 py-3 font-mono text-xs">{member.contact_number}</td>
-                  <td className="px-4 py-3"><span className="rounded-full border px-2 py-1 text-xs font-medium">{member.access.name}</span></td>
+                  <td className="px-4 py-3 font-medium">{member.access.name}</td>
                   <td className="px-4 py-3"><span className={member.is_active ? "inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary" : "inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground"}><span aria-hidden="true" className={member.is_active ? "size-1.5 rounded-full bg-primary" : "size-1.5 rounded-full bg-muted-foreground"} />{member.is_active ? "Active" : "Inactive"}</span></td>
                   <td className="px-4 py-3 text-muted-foreground">{member.last_login_at ? formatDateTime(member.last_login_at) : "Never"}</td>
                   <td className="px-4 py-3 text-right"><TeamActions member={member} currentUserId={currentUser.data?.id} onEdit={openEditTeam} onReset={setResettingMember} onDeactivate={setDeactivatingMember} onActivate={(item) => void activateMember(item)} onDelete={openDeleteMember} activating={activateMutation.isPending || isMutationRateLimited(activateMutation)} activationLabel={mutationButtonLabel("Reactivating…", "Reactivate", activateMutation)} /></td>

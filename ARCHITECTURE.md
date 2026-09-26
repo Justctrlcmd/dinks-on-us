@@ -154,6 +154,10 @@ and blocking statuses; existing equipment and reservation-slot indexes are reuse
 A conflict rolls back slots, allocations, prices, and payment records together.
 Staff-assisted bookings use the existing walk-in flow; no separate booking source
 or inventory table has been introduced.
+Public reservation options omit slots beyond the configured online booking window.
+The reservation-module management options endpoint uses the same availability
+service and returns those slots for walk-ins, reschedules, and add-ons, which are
+not subject to that online limit.
 
 Rescheduling moves every current court slot to the reservation's single new
 booking date. Base slots use the submitted replacement selection; existing court

@@ -296,7 +296,7 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
   const selectedAddOnSlots = useMemo(() => expandRanges(date, addOnRanges), [date, addOnRanges]);
   const preservedAddOnSlots = (detail.slots ?? []).filter((slot) => slot.kind === "ADD_ON");
   const optionHours = [...preservedAddOnSlots, ...selectedSlots, ...selectedAddOnSlots].map((slot) => slot.start_hour);
-  const rawOptions = useReservationOptions(date, optionHours).data;
+  const rawOptions = useReservationOptions(date, optionHours, "management").data;
   const options = useMemo(() => {
     if (!rawOptions) return undefined;
     const currentSlots = new Set((detail.slots ?? []).map((slot) => `${slot.date}-${slot.start_hour}`));
@@ -454,7 +454,7 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
     }
   }, [form, open, reservation?.id]);
   const selectedSlots = useMemo(() => expandRanges(date, ranges), [date, ranges]);
-  const rawOptions = useReservationOptions(date, [...(detail?.slots ?? []).map((slot) => slot.start_hour), ...selectedSlots.map((slot) => slot.start_hour)]).data;
+  const rawOptions = useReservationOptions(date, [...(detail?.slots ?? []).map((slot) => slot.start_hour), ...selectedSlots.map((slot) => slot.start_hour)], "management").data;
   const options = useMemo(() => {
     if (!rawOptions) return undefined;
     const currentHours = new Set((detail?.slots ?? []).map((slot) => slot.start_hour));

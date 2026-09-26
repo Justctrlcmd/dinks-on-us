@@ -40,12 +40,22 @@ class ReservationOptionsController extends Controller
 
     public function __invoke(Request $request, CourtAvailabilityService $availability, EquipmentAvailabilityService $equipmentAvailability): JsonResponse
     {
+        return $this->options($request, $availability, $equipmentAvailability, true);
+    }
+
+    public function management(Request $request, CourtAvailabilityService $availability, EquipmentAvailabilityService $equipmentAvailability): JsonResponse
+    {
+        return $this->options($request, $availability, $equipmentAvailability, false);
+    }
+
+    private function options(Request $request, CourtAvailabilityService $availability, EquipmentAvailabilityService $equipmentAvailability, bool $enforcePublicBookingWindow): JsonResponse
+    {
         $validated = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
             'hours' => ['sometimes', 'array', 'max:24'],
             'hours.*' => ['required', 'integer', 'between:0,23', 'distinct'],
         ]);
-        $snapshot = $availability->forDate($validated['date']);
+        $snapshot = $availability->forDate($validated['date'], $enforcePublicBookingWindow);
         $equipment = RentalEquipment::query()->active()->orderBy('name')->orderBy('id')->get();
 
         $equipmentSlots = array_map(fn (array $slot): array => [...$slot, 'date' => $validated['date']], $snapshot['slots']);

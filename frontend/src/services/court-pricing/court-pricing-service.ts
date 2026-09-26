@@ -62,5 +62,11 @@ export const getReservationOptions = (date: string, signal?: AbortSignal, hours:
   return publicFetch<ReservationOptions>(`/api/v1/public/reservation-options?${query}`, { signal });
 };
 
+export const getManagementReservationOptions = (date: string, signal?: AbortSignal, hours: number[] = []) => {
+  const query = new URLSearchParams({ date });
+  hours.forEach((hour) => query.append("hours[]", String(hour)));
+  return authFetch<ReservationOptions>(`/api/v1/management/reservation-options?${query}`, { signal });
+};
+
 export const getReservationClosedDates = (signal?: AbortSignal) =>
   publicFetch<ReservationClosedDates>("/api/v1/public/closed-dates", { signal });
