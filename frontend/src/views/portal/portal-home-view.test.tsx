@@ -1,7 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dashboardQuery, useDashboardMock } = vi.hoisted(() => ({
+const { dashboardQuery, useDashboardMock, userQuery, verifyMutation, rejectMutation } = vi.hoisted(() => ({
+  userQuery: { data: { role: { is_full_access: true }, modules: ["DASHBOARD"] } },
+  verifyMutation: { mutate: vi.fn(), isPending: false, rateLimitCooldown: { isCoolingDown: false, label: "" } },
+  rejectMutation: { mutate: vi.fn(), isPending: false },
   useDashboardMock: vi.fn(),
   dashboardQuery: {
     data: {
@@ -42,19 +45,35 @@ const { dashboardQuery, useDashboardMock } = vi.hoisted(() => ({
 
 vi.mock("@/hooks/queries/use-dashboard", () => ({
   useDashboard: (...args: unknown[]) => useDashboardMock(...args),
+  useDashboardReservation: (id: number | null) => ({ data: id ? {
+    id, reference_number: `RF-${id}`, source: "ONLINE", booking_date: "2026-08-27",
+    customer: { name: "Sample Player", email: "player@example.com", contact_number: "09123456789" },
+    status: id === 101 ? "PENDING" : "VERIFIED", display_status: id === 101 ? "PENDING" : "VERIFIED",
+    amounts: { original: 500, adjustments: 0, final: 500, paid: 0, outstanding: 500, refundable_credit: 0 },
+    additional_players: { original_quantity: 0, unit_amount: 100 }, slots: [], equipment: [], payments: [],
+  } : undefined, isPending: false }),
 }));
-vi.mock("@/forms/reservations/reservation-dialogs", () => ({
-  ReservationDetailDialog: ({ open, reservationId, source }: { open: boolean; reservationId?: number | null; source: string }) =>
-    open ? <div>{source} detail for {reservationId}</div> : null,
+vi.mock("@/hooks/queries/use-current-user", () => ({ useCurrentUser: () => userQuery }));
+vi.mock("@/hooks/queries/use-reservations", () => ({ useReservation: () => ({ data: undefined, isPending: false }) }));
+vi.mock("@/hooks/queries/use-history", () => ({ useHistoryReservation: () => ({ data: undefined, isPending: false }) }));
+vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
+  useVerifyReservation: () => verifyMutation,
+  useRejectReservation: () => rejectMutation,
 }));
 
 import { PortalHomeView } from "@/views/portal/portal-home-view";
 
 describe("PortalHomeView", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-27T03:00:00.000Z"));
     useDashboardMock.mockReturnValue(dashboardQuery);
+    userQuery.data.role.is_full_access = true;
+    userQuery.data.modules = ["DASHBOARD"];
+    verifyMutation.isPending = false;
+    verifyMutation.rateLimitCooldown.isCoolingDown = false;
+    verifyMutation.mutate.mockReset();
+    rejectMutation.mutate.mockReset();
   });
 
   afterEach(() => {
@@ -85,12 +104,15 @@ describe("PortalHomeView", () => {
     screen.getAllByRole("button", { name: /Court 1, 1:00 PM.*Closed/ }).forEach((slot) => expect(slot).toBeDisabled());
   });
 
-  it("opens the read-only dashboard detail for an occupied slot", () => {
+  it("opens the dashboard detail with pending actions for a Manager", () => {
     render(<PortalHomeView />);
 
     fireEvent.click(screen.getAllByRole("button", { name: /View pending reservation RF-101/ })[0]);
 
-    expect(screen.getByText("dashboard detail for 101")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Reservation details" })).toBeInTheDocument();
+    expect(screen.getByText("RF-101 · PENDING")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Verify" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 
   it("moves the selected date with week navigation", () => {
@@ -104,4 +126,55 @@ describe("PortalHomeView", () => {
 
     expect(useDashboardMock).toHaveBeenLastCalledWith("2026-08-24", "2026-08-24");
   });
+  it("keeps Dashboard-only staff views read-only", () => {
+    userQuery.data.role.is_full_access = false;
+    render(<PortalHomeView />);
+    fireEvent.click(screen.getAllByRole("button", { name: /View pending reservation RF-101/ })[0]);
+    expect(screen.getByRole("heading", { name: "Reservation details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+  });
+
+  it("lets staff with Reservation access review verification before sending the existing mutation", () => {
+    userQuery.data.role.is_full_access = false;
+    userQuery.data.modules = ["DASHBOARD", "RESERVATION"];
+    render(<PortalHomeView />);
+    fireEvent.click(screen.getAllByRole("button", { name: /View pending reservation RF-101/ })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    expect(screen.getByRole("heading", { name: "Verify this reservation?" })).toBeInTheDocument();
+    expect(verifyMutation.mutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Yes, verify" }));
+    expect(verifyMutation.mutate).toHaveBeenCalledWith(101, expect.objectContaining({ onSuccess: expect.any(Function) }));
+  });
+
+  it("uses the existing rejection form and requires its final confirmation", async () => {
+    render(<PortalHomeView />);
+    fireEvent.click(screen.getAllByRole("button", { name: /View pending reservation RF-101/ })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+    const formDialog = screen.getByRole("heading", { name: "Reject RF-101?" }).closest('[role="dialog"]') as HTMLElement;
+    fireEvent.change(within(formDialog).getByRole("textbox", { name: "Reason" }), { target: { value: "Payment proof does not match." } });
+    fireEvent.click(within(formDialog).getByRole("button", { name: "Review rejection" }));
+    const confirm = await screen.findByRole("button", { name: "Reject reservation" });
+    expect(rejectMutation.mutate).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(rejectMutation.mutate).toHaveBeenCalledWith({ id: 101, concern: "INVALID_PAYMENT_PROOF", reason: "Payment proof does not match." }, expect.any(Object)));
+  });
+
+  it("shows no payment-review actions for a verified booking", () => {
+    render(<PortalHomeView />);
+    fireEvent.click(screen.getAllByRole("button", { name: /View verified reservation RF-102/ })[0]);
+    expect(screen.getByText("RF-102 · VERIFIED")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+  });
+
+  it("blocks repeat verification while pending or rate-limited", () => {
+    render(<PortalHomeView />);
+    fireEvent.click(screen.getAllByRole("button", { name: /View pending reservation RF-101/ })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    verifyMutation.rateLimitCooldown.isCoolingDown = true;
+    fireEvent.click(screen.getByRole("button", { name: "Yes, verify" }));
+    expect(verifyMutation.mutate).not.toHaveBeenCalled();
+  });
+
 });

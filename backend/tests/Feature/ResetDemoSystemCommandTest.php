@@ -75,6 +75,8 @@ class ResetDemoSystemCommandTest extends TestCase
         Faq::query()->create(['question' => 'Demo?', 'answer' => 'Yes.', 'display_order' => 1]);
         DB::table('audit_logs')->insert(['action' => 'DEMO_ACTION', 'created_at' => now(), 'updated_at' => now()]);
         DB::table('sessions')->insert(['id' => 'demo-session', 'user_id' => $user->id, 'payload' => 'payload', 'last_activity' => now()->timestamp]);
+        DB::table('jobs')->insert(['queue' => 'push', 'payload' => '{}', 'attempts' => 0, 'available_at' => now()->timestamp, 'created_at' => now()->timestamp]);
+        DB::table('failed_jobs')->insert(['uuid' => 'test-failed-job', 'connection' => 'database', 'queue' => 'push', 'payload' => '{}', 'exception' => 'Test failure']);
         Storage::disk('local')->put('reservation-payment-proofs/demo.webp', 'proof');
         Storage::disk('public')->put('events/demo.webp', 'event');
         Storage::disk('public')->put('gallery/demo.webp', 'gallery');
@@ -96,7 +98,7 @@ class ResetDemoSystemCommandTest extends TestCase
         $this->assertTrue($manager->role->is_full_access);
         $this->assertSame(1, Role::query()->count());
 
-        foreach (['courts', 'events', 'faqs', 'gallery_images', 'gallery_tabs', 'payment_methods', 'audit_logs', 'sessions', 'policy_sections'] as $table) {
+        foreach (['courts', 'events', 'faqs', 'gallery_images', 'gallery_tabs', 'payment_methods', 'audit_logs', 'sessions', 'policy_sections', 'jobs', 'failed_jobs'] as $table) {
             $this->assertSame(0, DB::table($table)->count(), "{$table} should be empty after reset.");
         }
 
@@ -147,7 +149,7 @@ class ResetDemoSystemCommandTest extends TestCase
         $this->assertSame(1, User::query()->count());
     }
 
-    public function test_production_reset_recreates_the_configured_default_manager_credentials(): void
+    public function test_production_reset_rejects_repository_default_credentials_before_removing_data(): void
     {
         $this->app['env'] = 'production';
         $this->app->instance(MaintenanceMode::class, Mockery::mock(MaintenanceMode::class, ['active' => true]));
@@ -160,15 +162,32 @@ class ResetDemoSystemCommandTest extends TestCase
             'password' => 'DinksManager2026!',
         ]);
 
+        $existing = User::factory()->create();
+
         $this->artisan('system:reset-demo --force')
             ->expectsQuestion('Type WIPE DINKS ON US PRODUCTION to continue', 'WIPE DINKS ON US PRODUCTION')
-            ->expectsOutputToContain('Reset complete')
-            ->assertExitCode(0);
+            ->expectsOutputToContain('Configure Manager credentials')
+            ->assertExitCode(1);
 
         $this->assertSame(1, User::query()->count());
-        $manager = User::query()->sole();
-        $this->assertSame('manager@dinksonus.test', $manager->email);
-        $this->assertTrue(Hash::check('DinksManager2026!', $manager->password));
+        $this->assertTrue(User::query()->sole()->is($existing));
+    }
+
+    public function test_guarded_production_reset_accepts_private_configured_credentials(): void
+    {
+        $this->app['env'] = 'production';
+        $this->app->instance(MaintenanceMode::class, Mockery::mock(MaintenanceMode::class, ['active' => true]));
+        Storage::fake('local');
+        Storage::fake('public');
+        config(['manager.default.email' => 'manager@example.com', 'manager.default.password' => 'PrivateTestPassword!']);
+        User::factory()->create();
+
+        $this->artisan('system:reset-demo --force')
+            ->expectsQuestion('Type WIPE DINKS ON US PRODUCTION to continue', 'WIPE DINKS ON US PRODUCTION')
+            ->expectsOutputToContain('Reset complete')->assertSuccessful();
+
+        $this->assertSame('manager@example.com', User::query()->sole()->email);
+        $this->assertTrue(Hash::check('PrivateTestPassword!', User::query()->sole()->password));
     }
 
     public function test_file_cleanup_failure_aborts_before_database_wipe(): void

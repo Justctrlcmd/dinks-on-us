@@ -1,9 +1,11 @@
 <?php
 
 use App\Exceptions\ReservationConflictException;
+use App\Exceptions\ReservationEmailVerificationException;
 use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\RequireModuleAccess;
+use App\Http\Middleware\TrustConfiguredProxies;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -11,6 +13,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -24,23 +27,15 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        $middleware->trimStrings(except: ['checkout_key', 'code']);
         $middleware->api(append: [AddSecurityHeaders::class]);
 
-        $trustedProxies = array_values(array_filter(array_map(
-            static fn (string $value): string => trim($value),
-            explode(',', (string) env('TRUSTED_PROXIES', '')),
-        )));
-        if ($trustedProxies !== []) {
-            $middleware->trustProxies(at: $trustedProxies);
-        }
-
-        $trustedHosts = array_values(array_filter(array_map(
-            static fn (string $value): string => trim($value),
-            explode(',', (string) env('TRUSTED_HOSTS', '')),
-        )));
-        if ($trustedHosts !== []) {
-            $middleware->trustHosts(at: $trustedHosts, subdomains: false);
-        }
+        // Resolve cached configuration when the middleware runs, after bootstrap.
+        $middleware->replace(TrustProxies::class, TrustConfiguredProxies::class);
+        $middleware->trustHosts(at: static fn (): array => array_map(
+            static fn (string $host): string => '^'.preg_quote($host, '/').'$',
+            config('security.trusted_hosts', []),
+        ), subdomains: false);
 
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
@@ -111,6 +106,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 429,
                 headers: ['Retry-After' => (string) $retryAfter],
             );
+        });
+
+        $exceptions->render(function (ReservationEmailVerificationException $exception, Request $request) use ($apiFailure) {
+            return $request->is('api/*')
+                ? $apiFailure($exception->getMessage(), $exception->apiCode, $exception->status, headers: $exception->retryAfter ? ['Retry-After' => (string) $exception->retryAfter] : [])
+                : null;
         });
 
         $exceptions->render(function (ReservationConflictException $exception, Request $request) use ($apiFailure) {

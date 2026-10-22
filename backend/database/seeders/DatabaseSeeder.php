@@ -7,6 +7,7 @@ use App\Models\CourtConfiguration;
 use App\Models\RentalEquipment;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\ManagerCredentials;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -26,6 +27,8 @@ class DatabaseSeeder extends Seeder
         if (! app()->environment(['local', 'testing', 'production'])) {
             return;
         }
+
+        ManagerCredentials::configured(app()->isProduction());
 
         $managerRole = Role::query()->updateOrCreate(
             ['slug' => 'manager'],

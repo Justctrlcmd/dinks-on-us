@@ -17,12 +17,40 @@ class LoginController extends Controller
 
     public function __invoke(LoginRequest $request, SecurityAuditService $audit): JsonResponse
     {
+        $user = Auth::guard('web')->user();
+        if ($user) {
+            if (! $user->is_active) {
+                Auth::guard('web')->logout();
+                if ($request->hasSession()) {
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                }
+
+                return $this->respondFailure(
+                    'This account is inactive. Ask an authorized team member to reactivate it.',
+                    'ACCOUNT_INACTIVE',
+                    403,
+                );
+            }
+
+            $user->load('role.modules');
+
+            return $this->respondSuccess(
+                UserResource::make($user)->resolve($request),
+                'You are already signed in.',
+            );
+        }
+
         $credentials = [
             ...$request->safe()->only(['email', 'password']),
             'is_active' => true,
         ];
 
         if (! Auth::guard('web')->attempt($credentials, $request->boolean('remember'))) {
+            $audit->record(AuditLog::LOGIN_FAILED, $request, details: [
+                'account_fingerprint' => hash_hmac('sha256', (string) $request->validated('email'), (string) config('app.key')),
+            ], module: 'SECURITY', targetLabel: 'Account session');
+
             return $this->respondFailure(
                 'The email or password is incorrect.',
                 'INVALID_CREDENTIALS',

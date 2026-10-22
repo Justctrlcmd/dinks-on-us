@@ -4,11 +4,15 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class SessionSecurityService
 {
     public function invalidate(User $user, ?string $exceptSessionId = null): void
     {
+        // Deleted sessions must not be restored by an old remember-me cookie.
+        $user->forceFill(['remember_token' => Str::random(60)])->saveQuietly();
+
         if (config('session.driver') !== 'database') {
             return;
         }
@@ -25,12 +29,16 @@ class SessionSecurityService
     /** @param iterable<int, int|string> $userIds */
     public function invalidateUsers(iterable $userIds): void
     {
-        if (config('session.driver') !== 'database') {
+        $ids = collect($userIds)->map(static fn ($id): int => (int) $id)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
             return;
         }
 
-        $ids = collect($userIds)->map(static fn ($id): int => (int) $id)->filter()->unique()->values();
-        if ($ids->isEmpty()) {
+        User::query()->whereIn('id', $ids)->eachById(function (User $user): void {
+            $user->forceFill(['remember_token' => Str::random(60)])->saveQuietly();
+        });
+
+        if (config('session.driver') !== 'database') {
             return;
         }
 

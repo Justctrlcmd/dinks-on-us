@@ -26,6 +26,13 @@ API responses always contain `success`, `message`, `code`, `data`, `errors`, and
 
 Sanctum uses first-party SPA session cookies, CSRF protection, stateful domains, CORS credentials, and the `web` guard. The frontend and API must share a top-level domain in production. Public registration and password recovery are disabled; authenticated management accounts are provisioned by the system and belong to one role. The system Manager role is seeded for local development and is the highest operational role defined by the business rules.
 
+The login page refreshes the current-session query before showing credentials and
+replaces `/login` with `/portal` for an active session. The login API remains JSON
+for both guests and existing sessions; it must not use Laravel's HTML-redirecting
+`guest` middleware. Repeated login submissions return the active session's user
+without switching accounts or repeating login side effects. Inactive sessions
+are logged out and rejected; guests still require validated credentials.
+
 Security controls are layered rather than controller-specific. Named rate
 limiters cover public, authenticated, login, submission, upload, report,
 private-file, and destructive traffic. Password rules are centralized at an
@@ -34,6 +41,12 @@ access changes require current-password confirmation, invalidate affected
 database sessions, and emit safe audit records. MFA is intentionally outside the
 current project scope. The detailed boundary is documented in
 `docs/security/SECURITY_BASELINE.md` and `docs/security/THREAT_MODEL.md`.
+
+Session revocation also rotates remember-me tokens, including bulk role changes,
+so deleting database sessions cannot be bypassed by restoring an older remembered
+login. Login failures produce credential-free audit events. Hostnames are exact
+allowlisted values; host/proxy middleware reads cached configuration after
+bootstrap, and only configured proxies may supply client-IP/scheme headers.
 
 ## Frontend
 
@@ -53,20 +66,39 @@ API mutation result messages are presented by the shared TanStack Query mutation
 
 `authFetch` dispatches `auth:unauthorized` and normalizes 401, 403, 404, 409, 422, 429, 500, network failures, and 204 responses. Do not duplicate query data in a client store. Zustand is intentionally absent.
 
+Login/logout cancels in-flight reads and clears the query and mutation caches
+before retaining the new current user. A 401 clears private caches and hides portal
+content while redirecting to login. CSRF initialization is shared only while in
+flight; an existing token cookie is reused, and a 419 renews the token and retries
+the same submission once. Network failures are not automatically replayed.
+
 The root `PwaProvider` registers the push-only service worker and invalidates
 reservation queries when a push arrives. The service worker never caches
 private API responses and notification clicks are constrained to the app origin.
 Device subscriptions are persisted through authenticated
-management endpoints, and push delivery is a post-commit side effect.
+management endpoints, and push delivery is a post-commit side effect on the
+durable `push` queue. Endpoint validation restricts outbound requests to supported
+browser push providers, rechecks saved endpoints, and disables redirects.
+Each device has independent retries; a transient failure must not permanently
+exclude the device. Reservation status emails use encrypted jobs on the `mail`
+queue with an event-time reservation snapshot. Both queues need a worker when
+enabled; OTP delivery remains synchronous.
 
-The frontend proxy creates a per-request CSP nonce and sends the same policy to
-Next.js rendering and the browser. Security headers are also configured for all
-frontend routes. Keep external resource origins narrow when a deployment adds a
-provider; do not weaken the policy globally for one component.
+The frontend proxy at `frontend/src/proxy.ts` lives beside `src/app` so Next.js
+discovers it. It creates a per-request CSP nonce and sends the same policy to
+Next.js rendering and the browser. The root layout passes the nonce to the theme
+provider so its initialization script is permitted by the policy. Images may load
+from the configured public API origin (`NEXT_PUBLIC_API_URL`, falling back to
+`API_URL`) to support uploads when the API uses a different origin. Security
+headers are also configured for all frontend routes. Keep external resource
+origins narrow when a deployment adds a provider; do not weaken the policy
+globally for one component.
 
 Public SEO uses the App Router metadata APIs, a canonical URL from
 `NEXT_PUBLIC_APP_URL`, generated Open Graph images, `robots.ts`, and
-`sitemap.ts`. Public pages require distinct titles, descriptions, and canonicals;
+`sitemap.ts`. Browser tab titles are always exactly `Dinks on Us`, without a
+page-name template or suffix. Public pages retain distinct descriptions,
+canonicals, and social-preview titles;
 login, verification, checkout, and portal routes must be `noindex`. Structured
 data is limited to verified business details that also appear visibly on the site.
 
@@ -83,6 +115,15 @@ Thursday and `weekend_rates` for Friday through Sunday. The shared day-type rule
 is applied by both court availability previews and final reservation pricing.
 
 Future collection endpoints default to `per_page=10`, allow 10/25/50/100, and cap at 100. Search/filter/sort values require module-specific allowlists; never pass unrestricted sort columns to `orderBy`.
+
+The operational reservation list sorts on the server before pagination using
+`BusinessClock`: unresolved elapsed bookings first, oldest date and end time
+first, then current court slots, followed by the next upcoming slots. Only current
+schedule slots count, including add-ons; finalized records stay in History. The
+open table refreshes every minute and on window focus so ordering follows the
+business clock without a manual reload.
+If finalizing a booking removes the current page, the Reservations view returns
+to the last available page after receiving the updated pagination metadata.
 
 Laravel classes use PascalCase, methods camelCase, tables plural snake_case, columns and foreign keys snake_case. Next.js files use kebab-case, components PascalCase, and hooks `useX`. Use SCREAMING_SNAKE_CASE only for true primitives.
 
@@ -110,6 +151,52 @@ decodes and re-encodes a bounded WebP under a generated UUID path. Original
 filenames and image bytes are never served as trusted content.
 
 Prohibited patterns include raw exception messages, localStorage authentication, arbitrary HTML rendering, scattered `toLocaleString`, scattered fetch calls, duplicated server caches, giant configurable controls, premature business roles, and hard-coded deployment assumptions.
+
+Public checkout stores only the last successfully submitted customer's name,
+email, and mobile number in browser localStorage for later prefill. This is
+untrusted convenience data, not authentication or server state; checkout
+validation and server submission remain authoritative. Customers can clear the
+saved details in checkout. Payment data and reservation drafts are not stored
+with these contact details.
+
+## Guest checkout email verification
+
+Public checkout verifies inbox access in the customer-information section before
+unlocking payment instructions and proof fields. Guest players never become
+management users. The browser holds a cryptographically random checkout key only
+in memory; the backend stores its SHA-256 digest and binds it to the normalized
+email. It is a narrow checkout capability, not an authenticated account session.
+OTP codes use keyed HMAC digests, expire after 10 minutes, allow at most five
+incorrect attempts, and are replaced on resend after a 60-second cooldown. Named
+limiters also bound email/IP sending and checkout/IP verification traffic.
+
+A successful code check grants 30 minutes to submit that checkout. Submission
+validates the grant before storing proof and locks/rechecks it in the existing
+reservation transaction. It records `customer_email_verified_at` separately from
+staff payment approval and consumes the grant only on a successful reservation.
+Rollback keeps verification usable. Interrupted checkout submissions expose a retry
+action even when refreshed availability shows those slots as reserved, so a lost
+response can recover the original booking. Committed idempotent retries must present the
+original checkout key and email; they remain recoverable after grant expiry.
+
+Frontend verification uses a focused service and rate-limited mutation hook.
+Changing email requires verification again, preserving entered payment evidence.
+Refreshing the page starts another verification; saved contact details never
+contain codes, checkout keys, or verified state. Availability/pricing refresh after
+verification, and final submission remains the only court/equipment hold.
+
+OTP email is synchronous and mandatory, independent of optional reservation-status
+notifications. Real delivery must be configured outside local/test environments;
+non-delivering log/array transports, including fallbacks, are rejected safely.
+The verification row/cooldown commits before sending; SMTP runs outside database
+locks, with a bounded timeout and conditional invalidation on failure. No
+verification scheduler, player account, or new reservation status is introduced.
+
+Booking and closure checks use locking current reads after court locks so MySQL
+REPEATABLE READ snapshots cannot hide a committed closure or slot lock. Court-time
+closures acquire configuration before courts, matching booking lock order.
+Reports reject ranges longer than 366 inclusive days. Manual proof cleanup rejects
+more than 1,000 eligible records before inspecting or deleting files.
 
 ## Rental equipment availability
 

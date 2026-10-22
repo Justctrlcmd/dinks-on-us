@@ -23,13 +23,15 @@ class ReservationController extends Controller
             : null;
         if ($existing) {
             return $this->respondSuccess(
-                ReservationResource::make($service->detail($existing))->resolve($request),
+                ReservationResource::make($service->submit($request->safe()->except('payment_proof'), $request->file('payment_proof'), $idempotencyKey))->resolve($request),
                 'This reservation was already submitted.',
             );
         }
 
         $reservation = $service->submit($request->safe()->except('payment_proof'), $request->file('payment_proof'), $idempotencyKey);
-        SendNewReservationPush::dispatch($reservation->id)->afterResponse();
+        if (config('push.enabled')) {
+            SendNewReservationPush::dispatch($reservation->id)->afterCommit();
+        }
 
         return $this->respondSuccess(
             ReservationResource::make($reservation)->resolve($request),

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'reference_number', 'idempotency_key', 'source', 'booking_date', 'customer_name', 'customer_email',
-    'customer_contact_number', 'status', 'is_rescheduled', 'reschedule_count',
+    'customer_contact_number', 'customer_email_verified_at', 'status', 'is_rescheduled', 'reschedule_count',
     'original_additional_players', 'additional_player_unit_amount', 'original_amount',
     'adjustment_amount', 'final_amount', 'amount_paid', 'refundable_credit',
     'rejection_concern', 'rejection_reason', 'cancellation_reason', 'policy_snapshot',
@@ -86,7 +86,7 @@ class Reservation extends Model
     protected function casts(): array
     {
         return [
-            'booking_date' => 'date:Y-m-d', 'is_rescheduled' => 'boolean', 'reschedule_count' => 'integer',
+            'booking_date' => 'date:Y-m-d', 'customer_email_verified_at' => 'datetime', 'is_rescheduled' => 'boolean', 'reschedule_count' => 'integer',
             'original_additional_players' => 'integer', 'additional_player_unit_amount' => 'decimal:2',
             'original_amount' => 'decimal:2', 'adjustment_amount' => 'decimal:2', 'final_amount' => 'decimal:2',
             'amount_paid' => 'decimal:2', 'refundable_credit' => 'decimal:2', 'policy_snapshot' => 'array',

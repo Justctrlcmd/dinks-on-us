@@ -16,6 +16,7 @@ import { useDeletePaymentProofs } from "@/hooks/mutations/use-payment-proof-rete
 import { usePaymentProofCleanupActivity, usePaymentProofCleanupPreview } from "@/hooks/queries/use-payment-proof-retention";
 import { formatDateOnly, formatDateTime, todayInTimeZone } from "@/lib/date";
 import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
+import { isApiError } from "@/lib/api";
 import type { PaymentProofCleanupActivity, PaymentProofCleanupPreview, PaymentProofCleanupRange } from "@/types/payment-proof-retention";
 
 const statusLabels: Record<string, string> = {
@@ -160,7 +161,7 @@ export function PaymentProofRetentionManagementView() {
           </div>
 
           {previewRange && previewQuery.isPending ? <LoadingState message="Calculating payment proof storage…" /> : null}
-          {previewRange && previewQuery.isError ? <ErrorState title="The cleanup preview could not be loaded." description="Try previewing this booking-date range again." onRetry={() => void previewQuery.refetch()} /> : null}
+          {previewRange && previewQuery.isError ? <ErrorState title="The cleanup preview could not be loaded." description={isApiError(previewQuery.error) ? Object.values(previewQuery.error.errors ?? {}).flat()[0] ?? previewQuery.error.message : "Try previewing this booking-date range again."} onRetry={() => void previewQuery.refetch()} /> : null}
           {preview && previewRange ? (
             preview.proof_count === 0 ? <EmptyState title="No payment proofs match this range." description="No finalized reservation proof images are available for the selected booking dates." /> : (
               <div className="grid gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">

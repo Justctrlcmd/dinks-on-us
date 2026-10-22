@@ -537,6 +537,39 @@ Therefore, every slot must be validated again during actual reservation submissi
 
 ---
 
+## 21.1 Guest reservation email verification
+
+`POST /api/v1/public/reservation-email/send` accepts `customer_email` and
+`checkout_key` (a cryptographically random 32–100 character checkout capability,
+using letters, digits, `.`, `_`, `~`, or `-`). Email normalization matches public
+submission. The key remains only in browser memory. Success returns `email`,
+`code_expires_at`, and `resend_available_at` in the standard envelope. Code emails
+are mandatory, independent of `RESERVATION_EMAILS_ENABLED`.
+
+`POST /api/v1/public/reservation-email/verify` accepts the same fields and `code`
+(a six-digit string, retaining leading zeros). Success returns `email`,
+`verified_at`, and `verification_expires_at`. Codes expire in 10 minutes, permit
+five incorrect attempts, and are single-use. Resend replaces the code after 60
+seconds. A verified checkout may submit for 30 minutes. Both endpoints use named
+rate limiters; `429` includes `Retry-After`. Code failures use safe `422` codes
+`EMAIL_CODE_INVALID`, `EMAIL_CODE_EXPIRED`, or `EMAIL_CODE_ATTEMPTS_EXCEEDED`.
+Delivery failure is `503 EMAIL_DELIVERY_UNAVAILABLE` with no provider details.
+
+Verification creates no player account, reservation, payment, or availability
+lock. The frontend refreshes availability/pricing before unlocking payment.
+Changing email requires reverification and preserves entered payment evidence.
+Refreshing the page starts another challenge. Walk-ins do not require this flow.
+
+Final public submission requires `checkout_key` and the verified email. Missing
+or invalid verification returns `422 EMAIL_VERIFICATION_REQUIRED` before proof
+storage (a missing key itself is an ordinary validation failure). The transaction
+locks and rechecks the grant, records `customer_email_verified_at`, and consumes
+verification only on commit. Conflicts/rollback preserve the grant. Committed
+idempotent retries require the original checkout key and email and remain valid
+after expiry; another checkout cannot retrieve the result using that key alone.
+
+---
+
 # 22. Public Reservation Submission
 
 ```http
@@ -557,6 +590,7 @@ Conceptual payload:
 
 ```json
 {
+  "checkout_key": "<random-checkout-capability>",
   "customer_name": "Juan Dela Cruz",
   "customer_email": "juan@example.com",
   "customer_contact_number": "09123456789",
@@ -784,7 +818,7 @@ Example:
 
 Successful public reservation submission does not send a customer email. The API response and on-screen confirmation communicate that the reservation is pending payment review.
 
-The customer receives an email only after Staff or Management verifies, rejects, or reschedules the reservation. Delivery occurs when `RESERVATION_EMAILS_ENABLED` is true.
+The pre-payment verification code is a separate mandatory email. Reservation-status email delivery occurs when `RESERVATION_EMAILS_ENABLED` is true.
 
 Email failure must not roll back or otherwise change the committed reservation result. The reservation transaction and email delivery are separate responsibilities.
 
@@ -861,6 +895,14 @@ server-side delivery and must be protected by database-at-rest controls. DELETE
 accepts the endpoint and removes it for the current account. Subscription
 registration is safe to repeat.
 
+Endpoints must be HTTPS URLs on supported Google, Mozilla, Apple or Windows
+push-service hosts, with no userinfo, alternate port or fragment. Encryption
+keys must decode to a 65-byte uncompressed public key and a 16-byte auth secret.
+Invalid subscriptions receive the normal `422 VALIDATION_FAILED` response.
+Saved endpoints are rechecked before sending. Delivery runs on the durable
+`push` queue with separate retries per device; provider expiry removes the
+subscription and transient failures do not permanently disable it.
+
 ---
 
 # 32. Management Authentication APIs
@@ -893,6 +935,14 @@ Payload:
 ```
 
 Successful response should include the authenticated user's identity and accessible modules.
+
+With an existing active session, this endpoint returns HTTP 200 and the current
+user in the standard JSON envelope, without checking submitted credentials,
+switching accounts, or writing another login event. Inactive existing sessions
+are logged out and receive HTTP 403 with `ACCOUNT_INACTIVE`. Guest requests still
+require valid email/password input and receive HTTP 422 for invalid credentials.
+The frontend checks the current session on `/login` and sends signed-in users to
+`/portal`; the API never redirects a login request to an HTML page.
 
 Example:
 
@@ -976,7 +1026,7 @@ Requires:
 DASHBOARD
 ```
 
-Returns the same read-only reservation detail shape used by the reservation View dialog for operational and final reservation records (`PENDING`, `VERIFIED`, `ONGOING`, `COMPLETED`, `CANCELLED`, `REJECTED`, and `NO_SHOW`). This lets a Dashboard-only Staff role inspect an occupied slot without granting reservation-management actions.
+Returns the same read-only reservation detail shape used by the reservation View dialog for operational and final reservation records (`PENDING`, `VERIFIED`, `ONGOING`, `COMPLETED`, `CANCELLED`, `REJECTED`, and `NO_SHOW`). This lets a Dashboard-only Staff role inspect an occupied slot without granting reservation-management actions. For a Pending booking, the Dashboard UI offers Verify and Reject only to users with Reservation module access or full Manager access. These actions reuse the existing Reservation endpoints and their authorization; the dashboard detail endpoint remains read-only.
 
 Payment proof files referenced by this response use the protected route:
 
@@ -1008,6 +1058,14 @@ per_page=10
 ```
 
 The list contains operational records only. `status` accepts `PENDING`, `VERIFIED`, the derived `RESCHEDULED` marker, and `ONGOING`. Final `COMPLETED`, `REJECTED`, `CANCELLED`, and `NO_SHOW` records are available through History instead. Results are limited to 10 per page.
+
+Ordering uses the business timezone and is applied before pagination: unresolved
+reservations whose current slots have all ended come first, oldest booking date
+and end time first, so Staff can handle overdue records. Bookings with a court
+slot happening now follow, then upcoming reservations by their next actual current
+slot, earliest first. Add-on slots participate; replaced schedule history and gaps
+between nonconsecutive hours do not. Matching schedules use submission time and
+ID, newest first, as deterministic tie-breakers. Finalized records remain in History.
 
 Search should support important values such as:
 
@@ -1781,6 +1839,11 @@ settlement payments attached to them. Preview totals include only managed proof
 files that still physically exist. Payments with a `NULL` path or an already
 missing/deleted file are omitted from all preview counts.
 
+Preview and deletion accept at most 1,000 eligible proof-bearing records per
+request. A larger range returns `422 VALIDATION_FAILED` before file inspection
+or deletion; choose a smaller booking-date range. This limit counts candidates,
+including missing physical files, to bound storage calls as well as memory.
+
 The response exposes aggregate scope only:
 
 ```json
@@ -2131,6 +2194,10 @@ Manager controls their identity and password through Team & Access.
 ---
 
 # 78. Reports Overview
+
+All report endpoints limit `from`–`to` to 366 inclusive days. Larger ranges
+return `422 VALIDATION_FAILED` with a `to` validation message; request shorter
+ranges for longer reporting periods.
 
 Requires:
 
@@ -2724,6 +2791,8 @@ GET  /api/v1/public/faqs
 GET  /api/v1/public/events
 GET  /api/v1/public/events/{slug}
 
+POST /api/v1/public/reservation-email/send
+POST /api/v1/public/reservation-email/verify
 POST /api/v1/public/reservations
 ```
 

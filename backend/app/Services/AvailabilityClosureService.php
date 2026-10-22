@@ -24,6 +24,7 @@ class AvailabilityClosureService
                 ->whereDate('date', $date)
                 ->orderBy('court_id')
                 ->orderBy('start_hour')
+                ->lockForUpdate()
                 ->first();
             if ($activeReservation) {
                 $courtNumber = $courts->get($activeReservation->court_id)?->court_number ?? $activeReservation->court_id;
@@ -64,14 +65,15 @@ class AvailabilityClosureService
     public function blockCourtTimes(User $user, int $courtId, string $date, array $periods, string $reason): AvailabilityClosure
     {
         return DB::transaction(function () use ($user, $courtId, $date, $periods, $reason): AvailabilityClosure {
-            $court = Court::query()->active()->lockForUpdate()->find($courtId);
-            if (! $court) {
-                throw ValidationException::withMessages(['court_id' => ['Choose an active court.']]);
-            }
-
             $configuration = CourtConfiguration::query()->lockForUpdate()->find(1);
             if (! $configuration) {
                 throw ValidationException::withMessages(['periods' => ['Configure court operating hours before blocking time ranges.']]);
+            }
+
+            // Match booking lock order: configuration, then courts.
+            $court = Court::query()->active()->lockForUpdate()->find($courtId);
+            if (! $court) {
+                throw ValidationException::withMessages(['court_id' => ['Choose an active court.']]);
             }
 
             foreach ($periods as $index => $period) {
@@ -87,6 +89,7 @@ class AvailabilityClosureService
                     ->where('start_hour', '>=', $period['start_hour'])
                     ->where('start_hour', '<', $period['end_hour'])
                     ->orderBy('start_hour')
+                    ->lockForUpdate()
                     ->first();
                 if ($activeReservation) {
                     throw ValidationException::withMessages(["periods.{$index}.start_hour" => [sprintf(
@@ -100,7 +103,7 @@ class AvailabilityClosureService
 
             $closuresForDate = AvailabilityClosure::query()
                 ->whereDate('date', $date)
-                ->with('periods')
+                ->with(['periods' => fn ($query) => $query->lockForUpdate()])
                 ->lockForUpdate()
                 ->get();
 

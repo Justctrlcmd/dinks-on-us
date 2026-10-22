@@ -6,9 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryProvider } from "@/providers/query-provider";
 import { PwaProvider } from "@/providers/pwa-provider";
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider nonce={nonce} attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <ToastProvider><QueryProvider><PwaProvider><TooltipProvider>{children}</TooltipProvider></PwaProvider></QueryProvider></ToastProvider>
     </ThemeProvider>
   );

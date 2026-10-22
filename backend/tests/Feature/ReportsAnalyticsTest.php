@@ -26,6 +26,12 @@ class ReportsAnalyticsTest extends TestCase
     /** @var array<string, Reservation> */
     private array $reservations = [];
 
+    public function test_reports_reject_unbounded_date_ranges(): void
+    {
+        $this->actingAs($this->reportsUser)->getJson('/api/v1/management/reports/overview?from=2000-01-01&to=2026-08-27')
+            ->assertUnprocessable()->assertJsonValidationErrors('to');
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

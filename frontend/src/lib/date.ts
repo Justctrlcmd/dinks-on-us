@@ -10,6 +10,10 @@ export function formatDateOnly(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(parseDateOnly(value));
 }
 
+export function formatShortDateOnly(value: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(parseDateOnly(value));
+}
+
 export function parseDateOnly(value: string): Date {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);

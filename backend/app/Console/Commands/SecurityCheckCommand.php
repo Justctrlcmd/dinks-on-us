@@ -2,7 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\User;
+use App\Services\ReservationEmailVerificationService;
+use App\Support\ManagerCredentials;
 use Illuminate\Console\Command;
+use RuntimeException;
 
 class SecurityCheckCommand extends Command
 {
@@ -24,6 +28,35 @@ class SecurityCheckCommand extends Command
         }
 
         if ($production) {
+            try {
+                ManagerCredentials::configured(true);
+            } catch (RuntimeException $exception) {
+                $failures[] = $exception->getMessage();
+            }
+            $knownPasswordInUse = false;
+            User::query()->where('is_active', true)->select(['id', 'password'])->chunkById(100, function ($users) use (&$knownPasswordInUse): bool {
+                foreach ($users as $user) {
+                    // Native verification also handles legacy bcrypt when the
+                    // configured Laravel hasher has already become strict.
+                    if (password_verify('DinksManager2026!', $user->password)) {
+                        $knownPasswordInUse = true;
+
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+            $this->require($failures, ! $knownPasswordInUse, 'An active account still uses the repository development password. Change it before production use.');
+            $this->require($failures, (int) config('mail.mailers.smtp.timeout') > 0 && (int) config('mail.mailers.smtp.timeout') <= 30, 'MAIL_TIMEOUT must be between 1 and 30 seconds.');
+            if (config('push.enabled')) {
+                $this->require($failures, in_array(config('push.queue_connection'), ['database', 'redis'], true), 'PUSH_QUEUE_CONNECTION must use a durable database or redis queue.');
+                $this->require($failures, filled(config('push.public_key')) && filled(config('push.private_key')), 'Push VAPID keys must be configured when push is enabled.');
+            }
+            if (config('reservations.emails_enabled')) {
+                $this->require($failures, in_array(config('reservations.mail_queue_connection'), ['database', 'redis'], true), 'RESERVATION_MAIL_QUEUE_CONNECTION must use a durable database or redis queue.');
+            }
+            $this->require($failures, app(ReservationEmailVerificationService::class)->deliveryConfigured(), 'MAIL_MAILER must deliver reservation verification codes; log/array transports and non-delivering fallbacks are not allowed.');
             $this->require($failures, config('app.debug') === false, 'APP_DEBUG must be false.');
             $this->require($failures, is_string(config('app.key')) && config('app.key') !== '', 'APP_KEY must be configured.');
             $this->require($failures, str_starts_with((string) config('app.url'), 'https://'), 'APP_URL must use HTTPS.');
@@ -34,6 +67,7 @@ class SecurityCheckCommand extends Command
             $this->require($failures, ! in_array('*', config('cors.allowed_origins', []), true), 'CORS must not allow every origin.');
             $this->require($failures, config('session.driver') === 'database', 'SESSION_DRIVER must be database so privileged changes can revoke sessions.');
             $this->require($failures, config('security.trusted_hosts', []) !== [], 'TRUSTED_HOSTS must list the production hosts.');
+            $this->require($failures, ! array_intersect(['*', '**', '0.0.0.0/0', '::/0', 'REMOTE_ADDR'], config('security.trusted_proxies', [])), 'TRUSTED_PROXIES must not trust every client.');
 
             if (config('security.trusted_proxies', []) === []) {
                 $warnings[] = 'TRUSTED_PROXIES is empty. Configure it when TLS terminates at a known proxy or load balancer.';

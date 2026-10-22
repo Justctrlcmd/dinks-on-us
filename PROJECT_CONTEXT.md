@@ -425,6 +425,13 @@ Physical court occupancy
 
 Players do **not** have accounts.
 
+Online checkout requires email inbox verification in the customer-information
+section before payment instructions and proof fields unlock. The code is valid
+for 10 minutes; verified checkout access lasts 30 minutes and is consumed by a
+successful booking. Changing email requires reverification and preserves entered
+payment evidence. Email verification is separate from manual payment approval,
+does not hold slots, and is not required for staff-assisted walk-ins.
+
 The customer reservation flow is:
 
 ```text
@@ -904,6 +911,7 @@ The implementation should preserve these business effects even if the internal a
 
 Current customer email events:
 
+* Pre-payment email verification code (mandatory, independent of status-email settings)
 * Verified
 * Rejected
 * Rescheduled

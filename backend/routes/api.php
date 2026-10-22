@@ -7,8 +7,8 @@ use App\Http\Controllers\Api\V1\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\HealthController;
-use App\Http\Controllers\Api\V1\Management\AvailabilityClosureController;
 use App\Http\Controllers\Api\V1\Management\ActionLogController;
+use App\Http\Controllers\Api\V1\Management\AvailabilityClosureController;
 use App\Http\Controllers\Api\V1\Management\CourtConfigurationController;
 use App\Http\Controllers\Api\V1\Management\CourtController;
 use App\Http\Controllers\Api\V1\Management\DashboardController;
@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\V1\Website\GalleryController as PublicGalleryContro
 use App\Http\Controllers\Api\V1\Website\PaymentMethodController as PublicPaymentMethodController;
 use App\Http\Controllers\Api\V1\Website\PolicyController as PublicPolicyController;
 use App\Http\Controllers\Api\V1\Website\ReservationController as PublicReservationController;
+use App\Http\Controllers\Api\V1\Website\ReservationEmailVerificationController;
 use App\Http\Controllers\Api\V1\Website\ReservationOptionsController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,13 +53,15 @@ Route::prefix('v1')->middleware('throttle:api')->group(function (): void {
         Route::get('/public/closed-dates', [ReservationOptionsController::class, 'closedDates'])->name('public.closed-dates.index');
         Route::get('/public/reservation-options', ReservationOptionsController::class)->name('public.reservation-options.show');
     });
+    Route::post('/public/reservation-email/send', [ReservationEmailVerificationController::class, 'send'])
+        ->middleware('throttle:reservation-email-send')->name('public.reservation-email.send');
+    Route::post('/public/reservation-email/verify', [ReservationEmailVerificationController::class, 'verify'])
+        ->middleware('throttle:reservation-email-verify')->name('public.reservation-email.verify');
     Route::post('/public/reservations', [PublicReservationController::class, 'store'])
         ->middleware(['throttle:reservation-submit', 'throttle:uploads'])
         ->name('public.reservations.store');
 
-    Route::middleware('guest')->group(function (): void {
-        Route::post('/login', LoginController::class)->middleware('throttle:login')->name('login');
-    });
+    Route::post('/login', LoginController::class)->middleware('throttle:login')->name('login');
 
     Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
         ->middleware(['signed', 'throttle:6,1'])

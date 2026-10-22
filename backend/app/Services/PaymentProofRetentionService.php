@@ -9,11 +9,14 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class PaymentProofRetentionService
 {
     private const CHUNK_SIZE = 100;
+
+    private const MAX_CANDIDATES = 1000;
 
     public function __construct(private readonly PaymentProofStorageService $storage) {}
 
@@ -21,6 +24,7 @@ class PaymentProofRetentionService
     public function preview(string $from, string $to): array
     {
         $payments = $this->eligiblePayments($from, $to)
+            ->whereIn('id', $this->boundedPaymentIds($from, $to))
             ->with('reservation:id,status')
             ->get(['id', 'reservation_id', 'proof_path']);
 
@@ -70,6 +74,8 @@ class PaymentProofRetentionService
     /** @return array<string, mixed> */
     public function delete(string $from, string $to, User $user): array
     {
+        // Bound both storage I/O and transaction count before any deletion.
+        $candidateIds = $this->boundedPaymentIds($from, $to);
         $summary = [
             'from' => $from,
             'to' => $to,
@@ -83,6 +89,7 @@ class PaymentProofRetentionService
         $affectedReservationIds = [];
 
         $this->eligiblePayments($from, $to)
+            ->whereIn('reservation_payments.id', $candidateIds)
             ->select('reservation_payments.id')
             ->orderBy('reservation_payments.id')
             ->chunkById(self::CHUNK_SIZE, function ($payments) use ($from, $to, $user, &$summary, &$affectedReservationIds): void {
@@ -198,6 +205,17 @@ class PaymentProofRetentionService
                     ->whereBetween('booking_date', [$from, $to])
                     ->whereIn('status', Reservation::FINAL_STATUSES);
             });
+    }
+
+    /** @return list<int> */
+    private function boundedPaymentIds(string $from, string $to): array
+    {
+        $ids = $this->eligiblePayments($from, $to)->orderBy('id')->limit(self::MAX_CANDIDATES + 1)->pluck('id');
+        if ($ids->count() > self::MAX_CANDIDATES) {
+            throw ValidationException::withMessages(['to' => ['This range includes too many payment proofs. Choose a smaller booking-date range (at most 1,000 proofs per cleanup).']]);
+        }
+
+        return $ids->all();
     }
 
     private function eligibleReservation(?Reservation $reservation, string $from, string $to): bool

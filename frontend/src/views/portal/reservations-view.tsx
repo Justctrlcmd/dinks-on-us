@@ -222,6 +222,11 @@ export function ReservationsView() {
   const reservations = query.data?.data.reservations ?? [];
   const kpis = query.data?.data.kpis;
   const meta = query.data?.meta;
+  const lastAvailablePage = Math.max(1, meta?.last_page ?? 1);
+  // Finalizing a booking can remove the last row on the current page.
+  if (query.isSuccess && !query.isPlaceholderData && meta && filters.page > lastAvailablePage) {
+    setFilters({ ...filters, page: lastAvailablePage });
+  }
   const isManager = currentUser.data?.role?.is_full_access === true;
   const actionPending = verifyMutation.isPending || startMutation.isPending || noShowMutation.isPending;
   const confirmPending =
@@ -288,7 +293,7 @@ export function ReservationsView() {
     <div className="grid gap-5">
       <PageHeader
         title="Reservations"
-        description="Review payment submissions and manage verified or ongoing court visits."
+        description="Past bookings needing attention appear first, oldest first, followed by current and upcoming visits."
         actionsClassName="absolute right-0 top-0"
         actions={
           <Button
@@ -530,6 +535,13 @@ export function ReservationsView() {
         reservation={selected}
         open={dialog === "view"}
         onOpenChange={(open) => !open && setDialog(null)}
+        actionsDisabled={actionPending}
+        onVerify={(reservation) => {
+          if (actionPending) return;
+          setDialog(null);
+          openConfirm("verify", reservation);
+        }}
+        onReject={(reservation) => openDialog("reject", reservation)}
       />
       <RejectReservationDialog
         key={`reject-${selected?.id ?? "none"}-${dialog === "reject"}`}

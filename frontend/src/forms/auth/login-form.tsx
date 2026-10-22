@@ -2,7 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
@@ -15,19 +14,17 @@ import { loginSchema, type LoginValues } from "@/validation/custom/auth-schemas"
 export function LoginForm() {
   const router = useRouter();
   const mutation = useLogin();
-  const [message, setMessage] = useState<string>();
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
   const submit = form.handleSubmit(async (values) => {
-    setMessage(undefined);
     try {
       await mutation.mutateAsync(values);
       router.replace("/portal");
     } catch (error) {
-      setMessage(applyApiErrors(error, form.setError));
+      applyApiErrors(error, form.setError);
     }
   });
 
@@ -52,7 +49,6 @@ export function LoginForm() {
         {...form.register("password")}
         error={form.formState.errors.password?.message}
       />
-      {message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null}
       <Button
         disabled={mutation.isPending || isMutationRateLimited(mutation)}
         type="submit"

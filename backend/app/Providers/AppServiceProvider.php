@@ -31,10 +31,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-own-profile', fn (User $user): bool => $user->role?->is_full_access === true);
 
         RateLimiter::for('login', function (Request $request) {
-            $email = Str::transliterate(Str::lower(trim((string) $request->input('email'))));
+            $inputEmail = $request->input('email');
+            $email = Str::transliterate(Str::lower(trim(is_string($inputEmail) ? $inputEmail : '')));
+            $fingerprint = hash_hmac('sha256', $email, (string) config('app.key'));
 
             return [
-                Limit::perMinute(config('security.rate_limits.login_account_per_minute'))->by('login-account|'.$email),
+                Limit::perMinute(config('security.rate_limits.login_account_per_minute'))->by('login-account|'.$fingerprint),
                 Limit::perMinute(config('security.rate_limits.login_ip_per_minute'))->by('login-ip|'.$request->ip()),
             ];
         });
@@ -60,13 +62,36 @@ class AppServiceProvider extends ServiceProvider
         )->by('reservation-options|'.$request->ip()));
 
         RateLimiter::for('reservation-submit', function (Request $request): array {
-            $identity = Str::lower(trim((string) $request->input('customer_email'))).'|'.trim((string) $request->input('customer_contact_number'));
+            $email = $request->input('customer_email');
+            $contact = $request->input('customer_contact_number');
+            $identity = Str::lower(trim(is_string($email) ? $email : '')).'|'.trim(is_string($contact) ? $contact : '');
             $fingerprint = hash_hmac('sha256', $identity, (string) config('app.key'));
 
             return [
                 Limit::perMinute(config('security.rate_limits.reservation_submit_per_minute'))->by('reservation-submit-minute|'.$request->ip()),
                 Limit::perHour(config('security.rate_limits.reservation_submit_per_hour'))->by('reservation-submit-hour|'.$request->ip()),
                 Limit::perHour(config('security.rate_limits.reservation_identity_per_hour'))->by('reservation-submit-identity|'.$fingerprint),
+            ];
+        });
+
+        RateLimiter::for('reservation-email-send', function (Request $request): array {
+            $inputEmail = $request->input('customer_email');
+            $email = hash_hmac('sha256', is_string($inputEmail) ? Str::lower(trim($inputEmail)) : 'invalid', (string) config('app.key'));
+
+            return [
+                Limit::perMinute(1)->by('reservation-email-minute|'.$email),
+                Limit::perHour(5)->by('reservation-email-hour|'.$email),
+                Limit::perMinute(5)->by('reservation-email-ip-minute|'.$request->ip()),
+                Limit::perHour(20)->by('reservation-email-ip-hour|'.$request->ip()),
+            ];
+        });
+        RateLimiter::for('reservation-email-verify', function (Request $request): array {
+            $inputKey = $request->input('checkout_key');
+            $key = hash('sha256', is_string($inputKey) ? $inputKey : 'invalid');
+
+            return [
+                Limit::perMinute(10)->by('reservation-email-verify-key|'.$key),
+                Limit::perMinute(30)->by('reservation-email-verify-ip|'.$request->ip()),
             ];
         });
 

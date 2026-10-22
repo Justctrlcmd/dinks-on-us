@@ -63,16 +63,17 @@ async function ensureCsrfCookie(signal?: AbortSignal): Promise<void> {
     }).then((response) => {
       if (!response.ok) throw new Error("Unable to initialize a secure session.");
     }).catch((error) => {
-      csrfRequest = null;
       throw networkError(error);
+    }).finally(() => {
+      csrfRequest = null;
     });
   }
   return csrfRequest;
 }
 
-async function request<T>(path: string, options: ApiFetchOptions = {}): Promise<ApiResponse<T>> {
+async function request<T>(path: string, options: ApiFetchOptions = {}, csrfRetried = false): Promise<ApiResponse<T>> {
   const { csrf = false, headers: providedHeaders, ...init } = options;
-  if (csrf) await ensureCsrfCookie(init.signal ?? undefined);
+  if (csrf && (!cookie("XSRF-TOKEN") || csrfRetried)) await ensureCsrfCookie(init.signal ?? undefined);
 
   const headers = new Headers(providedHeaders);
   headers.set("Accept", "application/json");
@@ -87,6 +88,12 @@ async function request<T>(path: string, options: ApiFetchOptions = {}): Promise<
     response = await fetch(getApiUrl(path), { ...init, credentials: "include", headers });
   } catch (cause) {
     throw networkError(cause);
+  }
+
+  // Laravel rejects CSRF before controller side effects. Renew once and replay
+  // the same body/idempotency key; network errors are never retried here.
+  if (response.status === 419 && csrf && !csrfRetried) {
+    return request<T>(path, options, true);
   }
 
   if (response.status === 204) {

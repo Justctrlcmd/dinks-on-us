@@ -11,10 +11,10 @@ import {
   FiImage,
   FiInfo,
   FiLock,
+  FiMail,
   FiShield,
   FiUploadCloud,
 } from "react-icons/fi";
-import { applyApiErrors } from "@/forms/apply-api-errors";
 import { FormFieldWrapper } from "@/components/common/forms/form-field-wrapper";
 import { InputWithLabel } from "@/components/common/forms/input-with-label";
 import { useToast } from "@/components/common/toast-provider";
@@ -24,17 +24,20 @@ import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { useSubmitReservation } from "@/hooks/mutations/use-reservation-mutations";
+import { useReservationEmailVerification } from "@/hooks/mutations/use-reservation-email-verification";
 import { isApiError } from "@/lib/api";
-import { formatHourRange } from "@/lib/time";
+import { clearReservationCustomerDetails, loadReservationCustomerDetails, saveReservationCustomerDetails } from "@/lib/reservation-customer-details";
+import { formatCompactHourRange } from "@/lib/time";
 import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { PublicPaymentMethod } from "@/types/payment-method";
 import { RESERVATION_DRAFT_STORAGE_KEY, type ManagementReservation, type ReservationDraft, type ReservationSlot } from "@/types/reservation";
 import { reservationCheckoutSchema, type ReservationCheckoutValues } from "@/validation/custom/reservation-checkout-schema";
+
+import { reservationEmailCodeSchema, reservationEmailSchema } from "@/validation/custom/reservation-email-verification-schema";
 
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -67,7 +70,7 @@ function parseDateOnly(value: string) {
 }
 
 function formatTimeRange(slot: ReservationSlot) {
-  return formatHourRange(slot.startHour, slot.endHour);
+  return formatCompactHourRange(slot.startHour, slot.endHour);
 }
 
 function reservationTotal(draft: ReservationDraft) {
@@ -158,8 +161,8 @@ function ReservationSummary({ draft }: { draft: ReservationDraft }) {
                   <ul className="mt-3 grid gap-2">
                     {court.slots.map((slot) => (
                       <li key={`${slot.date}-${slot.courtId}-${slot.startHour}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
-                        <span className="min-w-0 text-muted-foreground">{formatTimeRange(slot)}</span>
-                        <span className="font-semibold">{currency.format(slot.price)}</span>
+                        <span className="whitespace-nowrap text-muted-foreground">{formatTimeRange(slot)}</span>
+                        <span className="whitespace-nowrap font-semibold tabular-nums">{currency.format(slot.price)}</span>
                       </li>
                     ))}
                   </ul>
@@ -265,6 +268,23 @@ export function ReservationCheckout() {
       policy_acknowledged: false,
     },
   });
+  const [hasSavedCustomerDetails, setHasSavedCustomerDetails] = useState(() => loadReservationCustomerDetails() !== null);
+
+  useEffect(() => {
+    const saved = loadReservationCustomerDetails();
+    if (!saved) return;
+    for (const field of ["customer_name", "customer_email", "customer_contact_number"] as const) {
+      if (!form.getValues(field)) form.setValue(field, saved[field]);
+    }
+  }, [form]);
+
+  function forgetCustomerDetails() {
+    clearReservationCustomerDetails();
+    setHasSavedCustomerDetails(false);
+    form.setValue("customer_name", "", { shouldDirty: true });
+    form.setValue("customer_email", "", { shouldDirty: true });
+    form.setValue("customer_contact_number", "", { shouldDirty: true });
+  }
   const draft = useMemo(() => {
     if (!loaded) return null;
 
@@ -329,10 +349,37 @@ export function ReservationCheckout() {
     };
   }, [draft, optionsQuery.data]);
   const [submitted, setSubmitted] = useState<ManagementReservation | null>(null);
-  const [submitMessage, setSubmitMessage] = useState<string>();
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
-  const [emailConfirmationValues, setEmailConfirmationValues] = useState<ReservationCheckoutValues | null>(null);
   const submitMutation = useSubmitReservation();
+  const customerEmail = useWatch({ control: form.control, name: "customer_email" });
+  const emailVerification = useReservationEmailVerification(customerEmail, optionsQuery.refetch);
+  const codeForm = useForm<{ code: string }>({ resolver: zodResolver(reservationEmailCodeSchema), defaultValues: { code: "" } });
+  const code = useWatch({ control: codeForm.control, name: "code" });
+  const verificationBusy = emailVerification.sendMutation.isPending || emailVerification.verifyMutation.isPending;
+  const paymentUnlocked = emailVerification.verified && !emailVerification.verifyMutation.isPending && !optionsQuery.isError && Boolean(checkoutReview?.valid);
+  const canRetrySubmission = idempotencyKey !== null && emailVerification.checkoutKey !== null;
+
+  useEffect(() => { codeForm.reset(); }, [customerEmail, codeForm]);
+  useEffect(() => {
+    if (emailVerification.hasChallenge && !emailVerification.sendMutation.isPending && !emailVerification.verified) codeForm.setFocus("code");
+  }, [emailVerification.hasChallenge, emailVerification.sendMutation.isPending, emailVerification.verified, codeForm]);
+
+  async function sendEmailCode() {
+    const result = reservationEmailSchema.safeParse(form.getValues("customer_email"));
+    if (!result.success) {
+      form.setError("customer_email", { message: result.error.issues[0].message }, { shouldFocus: true });
+      return;
+    }
+    form.clearErrors("customer_email");
+    try {
+      await emailVerification.sendCode();
+      codeForm.reset();
+    } catch { /* API results are presented by the shared mutation toast provider. */ }
+  }
+
+  const verifyEmailCode = codeForm.handleSubmit(async ({ code }) => {
+    try { await emailVerification.verifyCode(code); } catch { /* Keep the code editable for retry. */ }
+  });
 
   const paymentMethods = paymentMethodsQuery.data ?? noPaymentMethods;
   const paymentMethodId = useWatch({ control: form.control, name: "payment_method_id" });
@@ -342,7 +389,7 @@ export function ReservationCheckout() {
     () => paymentMethods.find((method) => String(method.id) === paymentMethodId) ?? null,
     [paymentMethodId, paymentMethods],
   );
-  const paymentEvidenceEnabled = selectedPaymentMethod !== null;
+  const paymentEvidenceEnabled = paymentUnlocked && selectedPaymentMethod !== null;
 
   useEffect(() => {
     if (!paymentMethodId && paymentMethods[0]) {
@@ -351,17 +398,18 @@ export function ReservationCheckout() {
   }, [form, paymentMethodId, paymentMethods]);
 
   useEffect(() => {
-    if (!paymentEvidenceEnabled) {
+    if (!selectedPaymentMethod) {
       form.setValue("payment_reference_number", "", { shouldDirty: false, shouldValidate: false });
       form.resetField("payment_proof", { defaultValue: undefined });
     }
-  }, [form, paymentEvidenceEnabled]);
+  }, [form, selectedPaymentMethod]);
 
   async function submitReservation(values: ReservationCheckoutValues) {
-    if (!selectedPaymentMethod || !checkoutReview?.valid) return;
-    const currentDraft = checkoutReview.draft;
-    setSubmitMessage(undefined);
+    if ((!canRetrySubmission && (!paymentUnlocked || !checkoutReview?.valid)) || !emailVerification.checkoutKey || !selectedPaymentMethod || submitMutation.isPending) return;
+    const currentDraft = checkoutReview?.draft ?? draft;
+    if (!currentDraft) return;
     const input = new FormData();
+    input.set("checkout_key", emailVerification.checkoutKey);
     input.set("customer_name", values.customer_name);
     input.set("customer_email", values.customer_email);
     input.set("customer_contact_number", values.customer_contact_number);
@@ -385,27 +433,26 @@ export function ReservationCheckout() {
       const requestKey = idempotencyKey ?? createIdempotencyKey();
       if (!idempotencyKey) setIdempotencyKey(requestKey);
       const response = await submitMutation.mutateAsync({ input, idempotencyKey: requestKey });
+      saveReservationCustomerDetails(values);
       setIdempotencyKey(null);
       setSubmitted(response.data);
-      setEmailConfirmationValues(null);
       window.sessionStorage.removeItem(RESERVATION_DRAFT_STORAGE_KEY);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       if (isApiError(error) && error.code === "RESERVATION_SLOTS_UNAVAILABLE") {
-        setEmailConfirmationValues(null);
         setIdempotencyKey(null);
         void optionsQuery.refetch();
         return;
       }
 
-      setSubmitMessage(applyApiErrors(error, form.setError));
+      if (isApiError(error) && error.code === "EMAIL_VERIFICATION_REQUIRED") {
+        setIdempotencyKey(null);
+        emailVerification.invalidate();
+      }
     }
   }
 
-  const submit = form.handleSubmit((values) => {
-    setSubmitMessage(undefined);
-    setEmailConfirmationValues(values);
-  }, () => {
+  const submit = form.handleSubmit(submitReservation, () => {
     toast.error("Please complete all required fields before submitting.");
   });
 
@@ -431,15 +478,32 @@ export function ReservationCheckout() {
   if (submitted) {
     return (
       <>
-        <section className="mx-auto flex w-full max-w-2xl justify-center px-6 text-center sm:px-10">
-          <div className="w-full max-w-xl rounded-2xl border border-primary/35 bg-card p-7 sm:p-12">
+        <section className="mx-auto flex w-full max-w-2xl justify-center px-6 text-center sm:px-10" aria-labelledby="reservation-received-title">
+          <div className="w-full max-w-xl rounded-2xl border border-primary/35 bg-card p-6 sm:p-10">
             <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/12 text-primary"><FiCheckCircle className="size-8" aria-hidden="true" /></span>
-            <p className="mt-5 text-xs font-bold uppercase tracking-[.18em] text-energy">Reservation received</p>
-            <p className="mt-4 font-heading text-2xl font-extrabold text-primary">{submitted.reference_number}</p>
-            <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Your selected court times are held while staff reviews the submitted reservation information. An email will be sent to you once the reservation is verified or rejected.</p>
-            <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">Keep this reference for questions about your reservation.</p>
-            <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted-foreground">If you do not see our email, please check your spam or junk folder.</p>
-            <Button nativeButton={false} variant="outline" className="mt-7 h-12 rounded-full px-6 font-extrabold" render={<Link href="/" />}>Return home</Button>
+            <h1 id="reservation-received-title" className="mt-5 font-heading text-2xl font-extrabold tracking-[-.035em]">Reservation received</h1>
+            <div className="mt-5">
+              <p className="text-sm text-muted-foreground">Reservation reference</p>
+              <p className="mt-1 font-heading text-3xl font-extrabold tabular-nums text-primary">{submitted.reference_number}</p>
+            </div>
+            <div className="mt-7 space-y-5 border-t border-border pt-6 text-left">
+              <div className="flex gap-3">
+                <FiLock className="mt-1 size-5 shrink-0 text-primary" aria-hidden="true" />
+                <div>
+                  <h2 className="font-semibold">Your court times are held</h2>
+                  <p className="mt-1 leading-6 text-muted-foreground">Staff is reviewing your reservation and payment.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <FiMail className="mt-1 size-5 shrink-0 text-primary" aria-hidden="true" />
+                <div>
+                  <h2 className="font-semibold">Watch for an email</h2>
+                  <p className="mt-1 leading-6 text-muted-foreground">We’ll email you once your reservation is verified or rejected.</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">If you do not see our email, please check your spam or junk folder.</p>
+                </div>
+              </div>
+            </div>
+            <p className="mt-6 border-t border-border pt-5 text-sm leading-6 text-muted-foreground">Keep this reference for questions about your reservation.</p>
           </div>
         </section>
         <PublicMessageButton />
@@ -466,7 +530,6 @@ export function ReservationCheckout() {
       </header>
 
       <form className="grid min-w-0 gap-5" onSubmit={submit} noValidate>
-        {submitMessage ? <Alert variant="destructive"><AlertDescription>{submitMessage}</AlertDescription></Alert> : null}
         {optionsQuery.isError ? <Alert variant="destructive"><AlertDescription>Current pricing and availability could not be refreshed. Return to availability or refresh this page before submitting.</AlertDescription></Alert> : null}
         {!optionsQuery.isError && !checkoutReview ? <Alert variant="destructive"><AlertDescription>Current reservation pricing is not configured. Return to availability before submitting.</AlertDescription></Alert> : null}
         {checkoutReview && !checkoutReview.valid ? <Alert variant="destructive"><AlertDescription>One or more selected court times or equipment items are no longer available. Return to availability and update the reservation.</AlertDescription></Alert> : null}
@@ -496,6 +559,11 @@ export function ReservationCheckout() {
               placeholder="you@example.com"
               className="h-10 px-4"
               {...form.register("customer_email")}
+              disabled={verificationBusy || submitMutation.isPending}
+              onChange={(event) => {
+                void form.register("customer_email").onChange(event);
+                setIdempotencyKey(null);
+              }}
               error={form.formState.errors.customer_email?.message}
             />
           <InputWithLabel
@@ -516,6 +584,40 @@ export function ReservationCheckout() {
               error={form.formState.errors.customer_contact_number?.message}
             />
           </div>
+          <div className="mt-5 rounded-xl border border-primary/35 bg-primary/5 p-4">
+            <div className="flex items-start gap-3">
+              {emailVerification.verified ? <FiCheckCircle className="mt-1 size-5 shrink-0 text-primary" aria-hidden="true" /> : <FiMail className="mt-1 size-5 shrink-0 text-primary" aria-hidden="true" />}
+              <div className="min-w-0 flex-1">
+                <p className="font-heading font-extrabold" role="status">{emailVerification.verified ? "Email verified" : "Verify your email before payment"}</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{emailVerification.verified ? "Your email is verified for this checkout. Court times are held only after you submit your reservation." : "We will send a 6-digit code to confirm you can receive your reservation updates. No account is needed."}</p>
+                {!emailVerification.verified ? (
+                  <>
+                    {emailVerification.hasChallenge ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <InputWithLabel id="reservation-email-code" label="Verification code" inputMode="numeric" autoComplete="one-time-code" onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            if (!verificationBusy && !emailVerification.codeExpired && !isMutationRateLimited(emailVerification.verifyMutation)) void verifyEmailCode();
+                          }
+                        }} maxLength={6} placeholder="6-digit code" disabled={verificationBusy} description="Check your inbox or spam folder. Your code expires after 10 minutes." {...codeForm.register("code")} error={codeForm.formState.errors.code?.message} />
+                        <Button type="button" disabled={verificationBusy || !/^[0-9]{6}$/.test(code) || emailVerification.codeExpired || isMutationRateLimited(emailVerification.verifyMutation)} onClick={() => void verifyEmailCode()} className="rounded-full bg-energy font-extrabold text-energy-foreground hover:bg-energy/90">
+                          {mutationButtonLabel("Verifying email…", "Verify email", emailVerification.verifyMutation)}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {emailVerification.codeExpired || emailVerification.verificationExpired ? <p className="mt-3 text-sm text-muted-foreground">{emailVerification.verificationExpired ? "Email verification has expired. Request a new code to continue; your payment details are preserved." : "This code has expired. Request a new code to continue."}</p> : null}
+                    <Button type="button" variant="outline" className="mt-3 rounded-full font-extrabold" disabled={verificationBusy || emailVerification.resendSeconds > 0 || isMutationRateLimited(emailVerification.sendMutation)} onClick={() => void sendEmailCode()}>
+                      {emailVerification.resendSeconds > 0 ? `Resend in ${emailVerification.resendSeconds}s` : mutationButtonLabel("Sending code…", emailVerification.hasChallenge ? "Resend code" : "Send code", emailVerification.sendMutation)}
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-2 text-sm text-muted-foreground">
+            <p>After a successful reservation, your name, email, and mobile number are remembered on this device for next time. </p>
+            {hasSavedCustomerDetails ? <Button type="button" variant="link" className="h-auto p-0 text-sm" disabled={verificationBusy || submitMutation.isPending} onClick={forgetCustomerDetails}>Forget saved details</Button> : null}
+          </div>
         </section>
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="payment-method-title">
@@ -529,7 +631,7 @@ export function ReservationCheckout() {
               options={paymentMethods.map((method) => ({ value: String(method.id), label: method.name }))}
               placeholder={paymentMethodsQuery.isPending ? "Loading payment methods…" : "No payment method available"}
               error={form.formState.errors.payment_method_id?.message}
-              disabled={paymentMethodsQuery.isPending || paymentMethodsQuery.isError || paymentMethods.length === 0}
+              disabled={!paymentUnlocked || paymentMethodsQuery.isPending || paymentMethodsQuery.isError || paymentMethods.length === 0}
               triggerClassName="rounded-xl bg-background px-4 font-heading text-base"
               contentClassName="rounded-xl p-1"
               onValueChange={(value) => {
@@ -539,7 +641,9 @@ export function ReservationCheckout() {
               }}
             />
           </div>
-          {paymentMethodsQuery.isError ? (
+          {!paymentUnlocked ? (
+            <p className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground"><FiLock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{emailVerification.verified ? "Payment details will be available when your selected times and equipment are confirmed available." : "Verify your email to continue to payment."}</p>
+          ) : paymentMethodsQuery.isError ? (
             <p className="mt-4 rounded-xl border border-destructive/35 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
               Payment methods could not be loaded. Please refresh the page and try again.
             </p>
@@ -556,6 +660,7 @@ export function ReservationCheckout() {
 
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-7" aria-labelledby="payment-proof-title">
           <SectionHeading id="payment-proof-title" eyebrow="Payment proof" title="Submit your transaction details" description="Both the reference number and a clear receipt image are required for manual verification." />
+          {!emailVerification.verified ? <p className="mt-3 text-sm text-muted-foreground">Verify your email to unlock your payment reference and receipt upload.</p> : null}
           <div className="mt-6 grid gap-5">
             <InputWithLabel
               id="reference-number"
@@ -630,52 +735,21 @@ export function ReservationCheckout() {
             <FiLock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <span>Your payment proof is intended only for reservation verification.</span>
           </div>
-          <Button type="submit" disabled={!acknowledged || !selectedPaymentMethod || checkoutUnavailable || optionsQuery.isFetching || submitMutation.isPending || isMutationRateLimited(submitMutation)} className="mt-4 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90 sm:mt-5">
-            <FiShield aria-hidden="true" /> {mutationButtonLabel("Submitting reservation…", "Submit reservation", submitMutation)}
+          <Button type="submit" disabled={(!canRetrySubmission && (!paymentUnlocked || checkoutUnavailable || optionsQuery.isFetching)) || !acknowledged || !selectedPaymentMethod || verificationBusy || submitMutation.isPending || isMutationRateLimited(submitMutation)} className="mt-4 h-13 w-full rounded-full bg-energy px-5 font-extrabold text-energy-foreground hover:bg-energy/90 sm:mt-5">
+            <FiShield aria-hidden="true" /> {mutationButtonLabel("Submitting reservation…", canRetrySubmission ? "Retry reservation submission" : "Submit reservation", submitMutation)}
           </Button>
-          {checkoutUnavailable ? (
+          {canRetrySubmission ? (
+            <p className="mt-3 text-center text-xs text-muted-foreground">Retry to check whether your reservation was received. The same submission will not create a duplicate booking.</p>
+          ) : !emailVerification.verified ? (
+            <p className="mt-3 text-center text-xs text-muted-foreground">Verify your email before paying and submitting.</p>
+          ) : checkoutUnavailable ? (
             <p className="mt-3 text-center text-xs text-destructive">Update unavailable selections before submitting.</p>
           ) : !selectedPaymentMethod ? (
             <p className="mt-3 text-center text-xs text-muted-foreground">A payment method must be available before submitting.</p>
-          ) : !acknowledged ? (
-            <p className="mt-3 text-center text-xs text-muted-foreground">Check the acknowledgment above to enable submission.</p>
           ) : null}
         </section>
       </form>
 
-      <Dialog
-        open={emailConfirmationValues !== null}
-        onOpenChange={(open) => {
-          if (!open && !submitMutation.isPending) setEmailConfirmationValues(null);
-        }}
-      >
-        <DialogContent showCloseButton={false} className="gap-5 p-6 sm:max-w-lg sm:p-8">
-          <DialogHeader className="text-left">
-            <p className="text-xs font-bold uppercase tracking-[.18em] text-energy">One final check</p>
-            <DialogTitle className="font-heading text-2xl font-extrabold tracking-[-.04em]">Is this email address correct?</DialogTitle>
-            <DialogDescription className="leading-6">Your reservation result, including whether it is verified or rejected, will be sent to this address.</DialogDescription>
-          </DialogHeader>
-          <div className="rounded-xl border border-primary/35 bg-primary/8 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-[.14em] text-muted-foreground">Reservation email</p>
-            <p className="mt-1 break-all font-heading text-lg font-extrabold text-primary">{emailConfirmationValues?.customer_email}</p>
-          </div>
-          <DialogFooter className="sm:grid sm:grid-cols-2 sm:gap-3">
-            <DialogClose render={<Button type="button" variant="outline" disabled={submitMutation.isPending} className="h-12 rounded-full font-extrabold" />}>
-              Edit email
-            </DialogClose>
-            <Button
-              type="button"
-              disabled={submitMutation.isPending || isMutationRateLimited(submitMutation) || checkoutUnavailable || optionsQuery.isFetching}
-              className="h-12 rounded-full bg-energy font-extrabold text-energy-foreground hover:bg-energy/90"
-              onClick={() => {
-                if (emailConfirmationValues) void submitReservation(emailConfirmationValues);
-              }}
-            >
-              <FiShield aria-hidden="true" /> {mutationButtonLabel("Submitting reservation…", "Yes, submit reservation", submitMutation)}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

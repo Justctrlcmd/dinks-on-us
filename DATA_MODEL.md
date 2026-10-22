@@ -2375,3 +2375,14 @@ Any future client decision that changes reservation behavior should first be ref
 3. `DATA_MODEL.md`
 
 before database implementation is changed.
+
+## Guest checkout email verification
+
+`reservation_email_verifications` stores the unique `checkout_key_hash`, normalized
+email, nullable keyed `code_hash`, code expiry, resend time, failed attempts,
+verification time/expiry, and nullable consumed `reservation_id`. Raw checkout
+keys and codes are never persisted. Row locks protect resend, attempts, and
+single-booking consumption. The reservation foreign key restricts deletion.
+Expiry does not imply a scheduled purge. `reservations.customer_email_verified_at`
+is nullable and independent of staff approval `verified_at`; historical records
+and walk-ins remain null unless a future explicit inbox-verification flow is added.

@@ -1,10 +1,18 @@
 # Production constraints
 
-**Production status:** Not configured  
-**Current target:** Local development  
-**Production compatibility:** Not yet verified
+**Production status:** Existing demo deployment; hardening changes pending deployment
 
-No backend host, frontend host, managed database, public domains, storage provider, email provider, queue worker, scheduler, persistent process, concurrency target, monitoring service, backup policy, or rollback mechanism has been selected.
+**Current target:** One Hostinger VPS running Laravel and Next.js
+
+**Production compatibility:** Full release verification outstanding
+
+The operator reports `https://dinksonusph.com`, Nginx TLS termination,
+PHP 8.4-FPM, Next.js on loopback port 3001, MySQL on the same VPS, file cache,
+database sessions, local uploads, and Gmail SMTP. The checkout is
+`/var/www/dinks-on-us`. These are operator-provided details, not a completed
+infrastructure audit. Exact patch versions, process supervision, firewall,
+backup retention/restore, monitoring, and rollback still need verification.
+See [the Hostinger release checklist](docs/deployment/hostinger-vps.md).
 
 Set `BUSINESS_TIMEZONE=Asia/Manila` unless the business formally changes its
 operating timezone. Reservation dates, elapsed slots, closure validation, and
@@ -34,6 +42,23 @@ role, and deactivation events can revoke sessions across application instances.
 Run `php artisan security:check --production` against the final cached
 configuration as a deployment gate.
 
+Hostnames are literal values such as `dinksonusph.com,www.dinksonusph.com`,
+not regular expressions or escaped dots. Host/proxy middleware resolves the
+cached `security` configuration at request time. Never use wildcard proxy trust.
+Direct Nginx-to-FPM routing normally needs no trusted HTTP proxy. Verify the
+actual client address used for throttling; a Next.js rewrite that calls the
+public VPS origin may otherwise make all visitors share the server's address.
+The release checklist describes direct Nginx routing for `/backend` to avoid
+that extra hop without trusting client-supplied forwarding headers.
+
+The frontend CSP proxy must remain at `frontend/src/proxy.ts`, beside `src/app`.
+After deploying a frontend change, rebuild and restart the Next.js process; pulling
+source alone does not update the running build. Check a normal page response both
+directly from Next.js and through Nginx for `Content-Security-Policy`, and verify
+that its nonce matches the rendered scripts, including theme initialization.
+Check light/dark mode and browser navigation after enabling the policy. HSTS may
+be supplied centrally by Nginx; it does not replace the nonce-based CSP.
+
 The Argon2id transition initially uses `HASH_VERIFY=false` so existing bcrypt
 accounts can authenticate and be automatically rehashed. After confirming every
 stored user password begins with the Argon2id hash identifier, set
@@ -43,7 +68,7 @@ stored user password begins with the Argon2id hash identifier, set
 
 Use MySQL backups with documented retention and restore drills. Run migrations as a controlled release step and back up before destructive changes. Never edit an already-deployed migration; add a new one. A production release needs health checks, centralized logs without secrets, error monitoring, uptime monitoring, and a rollback plan for application code and schema compatibility.
 
-`php artisan system:reset-demo --force` is an intentional break-glass operation for resetting a live demo instance. It permanently removes all application records and only recreates the configured Manager account; it does not restore starter operational content. Take and verify a database backup, place the application in maintenance mode, run the command from an interactive terminal, type its exact production confirmation phrase, validate the blank state, then run `php artisan up`. It recreates the configured Manager credentials, including the repository defaults when those values have not been changed, and logs its completion summary without creating an application audit row.
+`php artisan system:reset-demo --force` is an intentional break-glass operation for resetting a demo instance. It permanently removes all application records, pending/failed jobs, and managed uploads, and only recreates the configured Manager account; it does not restore starter operational content. Take and verify a database **and uploads** backup, place the application in maintenance mode, stop notification workers, run the command from an interactive terminal, type its exact production confirmation phrase, validate the blank state, then run `php artisan up` and restart workers. Production reset/seeding rejects the repository's known default password and `.test` Manager email. Configure the real Manager email and a private password of at least eight characters before the reset. The command logs its completion summary without creating an application audit row. Filesystem and database changes are not one atomic operation: a partial file deletion cannot be rolled back by a database transaction.
 
 Default data seeding remains disabled in production unless it is deliberately enabled for an empty demo instance. Do not alter `APP_ENV`, do not add this to normal deployment automation, and do not use `migrate:fresh`. Temporarily set `ALLOW_PRODUCTION_SEED=true` in the production environment, then run `php artisan config:clear`, `php artisan db:seed --force`, and `php artisan optimize`. Immediately set `ALLOW_PRODUCTION_SEED=false` again, then run `php artisan config:clear` and `php artisan optimize`. The seeder creates or preserves only the configured Manager account, operating-hours configuration, weekday/weekend rates, Courts 1–3, and Paddle, Ball, and Titan Machine defaults.
 
@@ -65,29 +90,85 @@ and set `PUSH_NOTIFICATIONS_ENABLED=true` only after testing delivery with the
 chosen push provider. Keep the private VAPID key server-side; it must never be
 included in the frontend bundle.
 
-New reservation push delivery is dispatched after the reservation transaction
-commits. The repository defaults to a synchronous queue, which is suitable for
-local development but can add request-tail latency in production; configure a
-durable queue worker before enabling high-volume push delivery. Expired push
-endpoints are removed automatically, while other failures are marked for
-retry/inspection.
+New reservation push delivery uses `PUSH_QUEUE_CONNECTION=database` and the
+`push` queue after the reservation transaction commits. Apply the additive queue
+migration before enabling push, then supervise a worker; a source pull alone
+does not start one. Each device has an independent job with three attempts and
+30/120-second backoff. Expired endpoints are deleted; other failures set
+`failed_at` but remain eligible for retries and future notifications. Inspect
+`php artisan queue:failed` and deliberately retry failures after resolving their
+cause. Delivery is at least once; a worker failure after provider acceptance may
+produce a duplicate notification.
+
+Subscription endpoints must use HTTPS on the supported Google, Mozilla, Apple,
+or Windows push-provider hostnames. Userinfo, alternate ports, fragments, IP
+addresses, and arbitrary hosts are rejected. Stored endpoints are rechecked
+before delivery; redirects are disabled and connect/request timeouts are bounded.
+Provider URLs never belong in logs. A new provider requires a reviewed allowlist
+change and a real-browser delivery test.
+
+Reservation status emails use `RESERVATION_MAIL_QUEUE_CONNECTION=database` on
+the `mail` queue. Their encrypted job payload preserves event-time reservation
+details so retries do not silently substitute a later schedule. They use the
+same retry policy. The worker command for both default database connections is
+`php artisan queue:work database --queue=push,mail --sleep=3 --tries=3 --timeout=30`.
+Keep `retry_after` above the job timeout (90 seconds by default), and restart
+workers after deploying code/configuration. If these features are disabled, no
+notification worker is needed. `security:check --production` rejects synchronous
+notification connections when the corresponding feature is enabled.
 
 Browsers control notification permission and background delivery. The app's
 optional chime is best-effort foreground Web Audio and is not a guaranteed
 background notification sound.
 
+## Mandatory checkout email delivery
+
+Public online bookings require an email code before payment. Configure a real
+`MAIL_MAILER` and verified `MAIL_FROM_ADDRESS` before making checkout available.
+The code mail is independent of `RESERVATION_EMAILS_ENABLED`; leaving status
+notifications disabled must not disable verification. Code sending is synchronous,
+so verification itself needs no worker or scheduler. `MAIL_TIMEOUT=10` bounds
+SMTP operations (production gate accepts 1–30 seconds). The code and resend
+cooldown are committed before SMTP, so mail delivery holds no verification-row
+lock. On delivery failure the unused matching code is invalidated and the
+cooldown remains in effect. Monitor delivery failures and verify real inbox
+arrival; other mail transports need their own bounded provider options.
+
+Local development may use the log mailer to inspect code emails; it does not
+actually send messages to an inbox. Outside local/testing, log/array transports
+and failover/roundrobin configurations containing them are rejected with a safe
+unavailable response. `security:check --production` also rejects these transports.
+Delivery acceptance does not guarantee inbox arrival; checkout provides resend
+and spam-folder guidance and never bypasses verification on a delivery failure.
+Do not log raw codes or checkout keys in application/request monitoring.
+
+Apply the additive reservation-email migration before deploying the frontend.
+It creates verification records and adds a nullable email-verification timestamp;
+existing online bookings and walk-ins remain valid historical records with null
+email verification. Expiry is checked on access and no scheduled purge has been
+introduced. The guarded demo-reset command removes verification rows before
+reservations to preserve foreign-key ordering. Verification is consumed inside the booking transaction; email sending
+must not acquire court or equipment locks. Verify real inbox delivery, expiry,
+resend limits, and idempotent booking retries in the deployed topology.
+
 ## Unconfigured facilities
 
-- Files use the local disk only in development. Choose durable shared storage before user uploads.
-- Reservation payment proofs are private files and currently rely on the local disk. Choose durable private storage with authorized retrieval before production.
+- Local storage can serve the current single persistent VPS, provided both private
+  proofs and public uploads are backed up with the database, survive deployment,
+  and have tested permissions/restores. Private proofs currently require the local
+  disk; changing `FILESYSTEM_DISK` does not migrate them to object storage. A move
+  to multiple application hosts requires a separate storage compatibility change.
 - Payment-proof cleanup is manually triggered and synchronous. It must
   not introduce a scheduler, cron task, queue worker, automatic lifecycle rule,
   or time-based purge. Confirm the selected private provider supports authorized
   existence, size, read, and delete operations and define a safe synchronous
-  request/batch limit for the deployed host. Confirm that the deployed PHP image
+  request/batch limit for the deployed host. Preview and deletion reject ranges
+  with more than 1,000 eligible proof records before file I/O/deletion; choose
+  smaller booking-date ranges. Report queries allow at most 366 inclusive days.
+  Confirm that the deployed PHP image
   runtime can encode WebP before enabling upload normalization.
 - The repository defaults to the log mailer. Verification, rejection, reschedule, and walk-in verification email templates exist, but delivery is disabled by default through `RESERVATION_EMAILS_ENABLED=false`; choose a real provider and verified sender before enabling it in a production environment.
-- Queues run synchronously; no worker is required or assumed.
+- Push and reservation status mail require a supervised durable worker when enabled.
 - Scheduler and WebSockets are unused.
 - Redis is not required.
 - Expected concurrency and rate-limit store behavior are unknown.
