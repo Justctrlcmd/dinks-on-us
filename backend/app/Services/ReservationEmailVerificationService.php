@@ -16,7 +16,7 @@ class ReservationEmailVerificationService
     public function send(string $checkoutKey, string $email): ReservationEmailVerification
     {
         if (! app()->environment(['local', 'testing']) && ! $this->deliveryConfigured()) {
-            throw new ReservationEmailVerificationException('Email verification is temporarily unavailable. Please try again later or contact Dinks on Us.', 'EMAIL_DELIVERY_UNAVAILABLE', 503);
+            throw new ReservationEmailVerificationException('Email verification is temporarily unavailable. Please try again later or contact Dinks on Us.', 'EMAIL_DELIVERY_UNAVAILABLE', 503, (int) config('reservations.email_verification.resend_seconds'));
         }
 
         [$verification, $code, $minutes] = DB::transaction(function () use ($checkoutKey, $email): array {
@@ -54,7 +54,8 @@ class ReservationEmailVerificationService
                 ->where('code_hash', $verification->code_hash)
                 ->update(['code_hash' => null, 'code_expires_at' => null]);
             Log::warning('Reservation email code delivery failed.', ['exception_type' => $exception::class]);
-            throw new ReservationEmailVerificationException('We could not send your verification code. Please try again later or contact Dinks on Us.', 'EMAIL_DELIVERY_UNAVAILABLE', 503);
+            $retryAfter = max(1, (int) ceil(now()->diffInSeconds($verification->resend_available_at)));
+            throw new ReservationEmailVerificationException('We could not send your verification code. Please wait before trying again, or contact Dinks on Us if this continues.', 'EMAIL_DELIVERY_UNAVAILABLE', 503, $retryAfter);
         }
 
         return $verification;

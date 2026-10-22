@@ -46,6 +46,7 @@ export type ManagementReservationSlot = {
 };
 
 export type ManagementReservation = {
+  revision?: number;
   id: number;
   reference_number: string;
   source: ReservationSource;
@@ -55,7 +56,7 @@ export type ManagementReservation = {
   display_status: ReservationStatus;
   is_rescheduled: boolean;
   reschedule_count: number;
-  amounts: { original: number; adjustments: number; final: number; paid: number; outstanding: number; refundable_credit: number };
+  amounts: { original: number; adjustments: number; final: number; paid: number; refunded?: number; net_paid?: number; outstanding: number; refundable_credit: number };
   slots?: ManagementReservationSlot[];
   equipment?: Array<{ id: number; equipment_id: number | null; name: string; quantity: number; unit_amount: number; total_amount: number; kind: string }>;
   additional_players: { original_quantity: number; unit_amount: number };
@@ -84,6 +85,11 @@ export type HistoryListData = { reservations: ManagementReservation[]; kpis: His
 export type HistoryFilters = { page: number; search: string; status: "" | FinalReservationStatus; source: "" | ReservationSource };
 export type SlotInput = { court_id: number; date: string; start_hour: number };
 export type RescheduleReservationInput = {
+  expected_revision?: number;
+  quoted_amount?: number;
+  quoted_payment_amount?: number;
+  quoted_refund_amount?: number;
+  refund_settled?: boolean;
   slots: SlotInput[];
   add_on_slots?: SlotInput[];
   additional_players?: number;
@@ -94,6 +100,9 @@ export type RescheduleReservationInput = {
   payment_proof?: File;
 };
 export type ReservationAddOnsInput = {
+  expected_revision?: number;
+  quoted_amount?: number;
+  quoted_payment_amount?: number;
   slots?: SlotInput[];
   additional_players?: number;
   equipment?: Array<{ id: number; quantity: number }>;
@@ -104,6 +113,7 @@ export type ReservationAddOnsInput = {
 };
 
 export type WalkInReservationInput = {
+  quoted_amount?: number;
   customer_name: string;
   customer_email: string;
   customer_contact_number: string;

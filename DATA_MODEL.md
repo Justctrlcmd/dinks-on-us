@@ -560,7 +560,7 @@ RESCHEDULED
 ADD_ON
 ```
 
-This distinguishes initial base slots, replacement base slots, and court-time
+This distinguishes initial slots, replacement slots, and court-time
 add-ons. `is_current` preserves old schedule rows while limiting active
 occupancy to the current schedule.
 
@@ -1135,9 +1135,9 @@ BEGIN TRANSACTION
 
 1. Validate all target slots
 2. Secure target slots
-3. Require the replacement base-slot count to equal the original base-slot count
-4. Move existing `ADD_ON` slots to the new date at the same court/hour
-5. Revalidate and reprice all replacement, migrated, and newly added slots
+3. Require the replacement count to equal all current slots, including earlier add-ons
+4. Replace all current court/hour assignments and retain previous rows as history
+5. Revalidate and reprice all replacement and newly added slots
 6. Preserve old schedule rows and the schedule history snapshot
 7. Release previous occupancy only as the new locks are committed
 8. Recalculate balances, apply existing credit, and record any required payment
@@ -1377,6 +1377,8 @@ updated_at
 ## Entities
 
 `policy_sections` stores four fixed public policy sections.
+These are system structure, retained during demo resets. The repair migration
+restores missing sections without overwriting existing names, ordering, or text.
 `policy_subheaders` groups content inside a section and `policy_rules` stores the
 ordered rules under each subheader.
 
@@ -2114,7 +2116,7 @@ Examples:
 ```text
 SUM(reservations.final_amount) WHERE status = COMPLETED
 +
-SUM(reservations.amount_paid) WHERE status = NO_SHOW
+SUM(reservations.amount_paid - completed refunds) WHERE status = NO_SHOW
 ```
 
 The two revenue components use `completed_at` and `no_show_at`, respectively.
@@ -2222,7 +2224,7 @@ The following must remain true:
 
 24. Team accounts cannot use the Manager-only Profile or password endpoints.
 
-25. Existing court-time add-ons migrate to the new date during rescheduling and retain history.
+25. All current court slots, including earlier add-ons, are replaced by the selected reschedule slots and retain purchase/schedule history.
 ```
 
 ---
@@ -2386,3 +2388,44 @@ single-booking consumption. The reservation foreign key restricts deletion.
 Expiry does not imply a scheduled purge. `reservations.customer_email_verified_at`
 is nullable and independent of staff approval `verified_at`; historical records
 and walk-ins remain null unless a future explicit inbox-verification flow is added.
+
+### Reschedule payment snapshot (2026-10-22)
+
+`reservation_schedule_histories.payment_amount` is a nullable `decimal(12,2)`.
+New successful reschedules write the payment collected by that operation, or
+zero when no payment was needed, in the same transaction. Historical rows remain
+null because event-specific payments cannot reliably be recovered by timestamps.
+The email job snapshots this relation alongside slots and the financial ledger.
+
+### Staff reservation consistency (2026-10-22)
+
+- `reservations.revision`: unsigned big integer, default zero, incremented once
+  per successful reservation service transaction. Existing financial/history
+  data is unchanged by the migration.
+- `reservation_action_receipts`: `id`, `user_id` (users FK, cascade), `key_hash`
+  and `request_hash` (SHA-256), action name, nullable `reservation_id` (reservations
+  FK, cascade), timestamps. Unique `(user_id, key_hash)` serializes a logical
+  request even when creating a walk-in. The result ID is filled before commit;
+  an unfinished row cannot survive a failed transaction.
+- Receipts contain no customer fields or payment images. They last with the
+  reservation/actor and are cleared first by the explicit demo reset. No purge
+  scheduler or request-key expiry is introduced.
+
+
+### Immediate reschedule refund settlement (2026-10-22)
+
+`reservation_schedule_histories.refund_amount` is a nullable `decimal(12,2)`;
+new operations record zero or the exact refund settled in that transaction.
+Legacy values remain unknown/null. The existing `reservation_refunds` table
+records these as `RESCHEDULE_CREDIT` / `COMPLETED`, with amount, reason, actor,
+and timestamps; older `DUE` records remain unpaid obligations.
+
+`reservations.amount_paid` and individual payments retain gross collected
+amounts. Completed refund records are subtracted to derive net funds held;
+positive excess above the final charge is reusable credit only until refunded.
+Rescheduling settles the entire remaining excess and leaves credit zero. Do not
+zero the credit field alone, rewrite original payments, or mark legacy credit
+refunded without an explicit Manager confirmation. Current transaction reads
+lock refund rows. Later purchases, completion, cancellation caps, and no-show
+revenue use net funds; completed revenue already uses the final charge and must
+not subtract the same price difference twice.

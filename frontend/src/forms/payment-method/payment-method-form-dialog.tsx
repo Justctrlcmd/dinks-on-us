@@ -36,6 +36,7 @@ export function PaymentMethodFormDialog({
     },
   });
   const selectedFile = useWatch({ control: form.control, name: "qr_image" })?.item(0) ?? undefined;
+  const accountNumberInput = form.register("account_number");
   const isPending = createMutation.isPending || updateMutation.isPending;
   const previewUrl = useMemo(
     () => selectedFile ? URL.createObjectURL(selectedFile) : paymentMethod?.qr_image_url,
@@ -123,10 +124,16 @@ export function PaymentMethodFormDialog({
           />
           <InputWithLabel
             label="Account number"
-            placeholder="Account number or wallet identifier"
+            placeholder="Account number or wallet number"
             inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={100}
             required
-            {...form.register("account_number")}
+            {...accountNumberInput}
+            onChange={(event) => {
+              event.target.value = event.target.value.replace(/\D/g, "");
+              void accountNumberInput.onChange(event);
+            }}
             error={form.formState.errors.account_number?.message}
           />
         </form>

@@ -116,6 +116,13 @@ is applied by both court availability previews and final reservation pricing.
 
 Future collection endpoints default to `per_page=10`, allow 10/25/50/100, and cap at 100. Search/filter/sort values require module-specific allowlists; never pass unrestricted sort columns to `orderBy`.
 
+Starting a reservation checks the locked current booking date against
+`BusinessClock::today()` after status/revision validation and before any writes.
+It does not compare start/end hours. A committed idempotent retry is recovered
+before this check, preserving an earlier successful start across midnight.
+The Reservations action menu mirrors the calendar-date condition using the
+shared Philippine-date helper; the backend remains authoritative.
+
 The operational reservation list sorts on the server before pagination using
 `BusinessClock`: unresolved elapsed bookings first, oldest date and end time
 first, then current court slots, followed by the next upcoming slots. Only current
@@ -191,6 +198,10 @@ non-delivering log/array transports, including fallbacks, are rejected safely.
 The verification row/cooldown commits before sending; SMTP runs outside database
 locks, with a bounded timeout and conditional invalidation on failure. No
 verification scheduler, player account, or new reservation status is introduced.
+Delivery failures return `Retry-After` for the remaining resend cooldown. Checkout
+honors that delay immediately after the failure; it never automatically replays
+the send. Send-limit responses explain the wait rather than using the generic
+traffic-limit message. These controls do not establish successful SMTP delivery.
 
 Booking and closure checks use locking current reads after court locks so MySQL
 REPEATABLE READ snapshots cannot hide a committed closure or slot lock. Court-time
@@ -246,15 +257,97 @@ The reservation-module management options endpoint uses the same availability
 service and returns those slots for walk-ins, reschedules, and add-ons, which are
 not subject to that online limit.
 
-Rescheduling moves every current court slot to the reservation's single new
-booking date. Base slots use the submitted replacement selection; existing court
-add-ons keep their court and start hour, are revalidated and repriced on the new
-date, and block the reschedule if unavailable. New add-ons are charged separately.
-Existing refundable credit covers add-ons before another payment is required.
+Rescheduling replaces every current court slot on a single new booking date,
+including all previous court add-ons. Replacement count equals the current slot
+count, and every court/hour is selectable. Old rows remain historical; replacement
+rows are `RESCHEDULED` and genuinely new slots are `ADD_ON`. The price difference
+uses the total price of all current slots, while existing players, equipment,
+payments, and adjustment records carry forward. New add-ons are charged once and
+the resulting balance is compared with payments minus completed refunds. A
+lower total requires the exact reviewed refund and an explicit settlement
+acknowledgment; a completed refund is written inside the schedule transaction.
+Recalculation reads refund rows under locks so refunded money cannot be reused.
+Gross payment records remain unchanged. Replacement request limits
+accommodate the current slot count even when repeated purchases exceed 48 slots;
+each new add-on request remains capped at 48.
+
+Reschedule, add-on, completion, and cancellation dialogs wait for a successful
+detail fetch after opening. Rescheduling defaults its replacement date to today
+in Asia/Manila on each opening, prefills the current court/hour choices, and shows
+the existing booking date, current total, and cumulative amount paid as the baseline.
+Financial mutations use a hook-level committed callback to close their dialogs
+before seeding details can remount an editing form or invalidate its status. Closing does not depend on per-call callbacks surviving that remount or wait
+for unrelated query refreshes.
+Reservation action hooks seed the detail cache from the successful response and
+await reservation, dashboard, history, report, action-log, and availability
+invalidation before completing. Active queries are refetched; inactive queries
+are marked stale. Detail
+summaries show the whole current booking; recorded add-on charges and payments
+retain their historical amounts instead of being treated as fixed schedule slots.
 
 Run `php tests/Integration/equipment-concurrency.php` from `backend` to test
-simultaneous public/walk-in submissions on MySQL, including stale transaction
-snapshots. This creates and drops a randomly named isolated database using the
-configured MySQL connection (which must permit database creation). It never
-migrates or writes the configured application database. Normal feature tests use
-SQLite and do not claim to verify MySQL locks.
+simultaneous submissions, closure conflicts, staff retries, and revision conflicts
+on MySQL, including stale transaction snapshots. Its default mode creates/drops a
+random isolated database and requires database-creation privileges. The explicit
+`--table-prefix` fallback refuses non-local/non-testing environments, remote hosts,
+connection URLs, and pre-existing prefixes. It migrates only randomly named test
+tables in the configured local schema, hashes test constraint names to fit MySQL
+limits, stops workers, drops only those tables, and checks that application user
+and reservation counts are unchanged. It never migrates existing application
+tables. Normal feature tests still use SQLite.
+
+### Staff reservation review consistency
+
+Staff forms send the reviewed `quoted_amount` and (where applicable)
+`quoted_payment_amount`; cancellation sends `quoted_refund_amount`. The service
+compares these to authoritative amounts inside the existing reservation/pricing
+transaction. A mismatch returns `409 RESERVATION_REVIEW_CHANGED` and rolls back
+all tentative writes. The shared mutation hook refreshes details and options;
+changed detail data remounts the form and discards any old confirmation. Legacy clients without a retry header retain their earlier contract. Current
+staff hooks send `Idempotency-Key`; financial actions using it require reviewed
+amounts and `expected_revision` (walk-ins require the amount but have no prior
+revision). The locked reservation revision also rejects same-price stale edits.
+
+Each new schedule history records its own `payment_amount` and `refund_amount`
+(including zero).
+Status-mail snapshots eagerly include this history. Reschedule emails never
+infer the current operation's charge or refund from an earlier record or timestamp.
+`amounts.paid` remains gross collected; `amounts.refunded` totals completed refunds
+and `amounts.net_paid` is the amount still held. Cancellation caps, future charges,
+and no-show revenue use net funds; completed revenue remains the final charge.
+No cash transfer occurs automatically.
+Legacy history amounts remain unknown/null rather than being guessed.
+
+### Staff action revisions and retry receipts
+
+`reservations.revision` starts at zero for migrated rows and increments once in
+each successful reservation service transaction, including legacy actions. The
+revision is serialized with the booking. Current financial forms submit the value
+they reviewed; comparison happens after acquiring the reservation row lock.
+
+`ReservationActionGuard` inserts/locks a `reservation_action_receipts` row by
+actor and hashed request key inside the existing transaction. A finished matching
+receipt returns the current booking before stale-revision/status checks. It does
+not add another audit record, revision, payment, refund, proof, or status email.
+The request hash includes action, target, business fields, and proof bytes; review
+quotes/revision and refund acknowledgment are excluded so a refreshed retry can recover its earlier result.
+Changed payloads with the same key conflict. Failed transactions roll back the
+receipt too. Manager authorization still runs before receipt replay.
+
+Staff mutation hooks keep opaque retry keys in session storage, scoped to actor,
+action, and a hash of purchased items/booking identity. Review/payment fields are
+excluded from the client identity to avoid turning an ambiguous payment retry into
+a second purchase; the backend still checks payment/proof changes. No customer
+fields or files are stored. Successful responses and explicit changed-request conflicts clear the key.
+Other failures preserve it, including a later 4xx response that cannot prove an
+earlier ambiguous attempt failed. There is no automatic POST
+retry. An altered replay refreshes affected caches and exits the old financial
+confirmation; walk-ins return to Reservations. A recovered success says the
+request was already recorded rather than suggesting another purchase happened.
+
+All transactional pricing reads lock both configuration and rate-period rows.
+This prevents an older MySQL REPEATABLE READ snapshot from hiding a rate update
+after the configuration lock is acquired. Recalculation reads adjustment rows
+with locks, and successful/replayed write responses use current reads for their
+financial and schedule relations, rather than returning a mixture of current
+parent values and older ledger rows.

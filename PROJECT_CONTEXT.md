@@ -21,8 +21,9 @@ Current operating decisions include:
 * The Manager-configured public booking window defaults to 30 calendar days ahead, inclusive, and is enforced by both availability previews and final online submission.
 * Pending, Verified, and Ongoing reservations occupy court and time-based equipment availability.
 * Manager-created team accounts cannot open Profile or change their own identity or password; the Manager controls those credentials through Team & Access.
-* Rescheduling is Manager-only, keeps the original base-slot count, preserves history, migrates existing court-time add-ons to the new date, and settles the resulting balance or credit immediately.
+* Rescheduling is Manager-only, replaces all current court slots (including earlier add-ons), preserves history and prior payments, and settles the resulting balance or refund immediately, with explicit confirmation of customer repayment.
 * Court-time, additional-player, and rental-equipment add-ons are available for Verified and Ongoing reservations.
+* Marking a verified booking Ongoing requires its current booking date to be today in the business timezone; its booked hours do not restrict that manual action.
 
 ---
 
@@ -494,7 +495,7 @@ PENDING
 
 Rescheduling is primarily an action, not a permanent final status.
 
-Rescheduling is Manager-only, may be performed repeatedly, preserves every schedule change, and requires the same number of replacement one-hour slots. Price increases become additional balance; decreases become refundable credit.
+Rescheduling is Manager-only, may be performed repeatedly, preserves every schedule change, and requires the same number of replacement one-hour slots. Price increases require immediate collection; decreases require confirmation of a completed refund. Refunded money cannot be used as credit for later purchases.
 
 ---
 
@@ -917,8 +918,9 @@ Current customer email events:
 * Rescheduled
 
 The reschedule email contains the newly active reservation schedule and describes
-any refundable credit or additional payment as already settled during the
-reschedule. Cancellation, completion, and no-show actions also send customer
+the refund or additional payment completed during that reschedule. Refunds
+are recorded separately from gross payments, and future balances use the money
+still held after completed refunds. Cancellation, completion, and no-show actions also send customer
 emails when enabled: cancellation confirms the refunded amount, completion shows
 the final updated total including recorded add-ons, and no-show confirms that an
 amount already paid is non-refundable. Public online submission and add-ons do
@@ -1121,3 +1123,11 @@ PROJECT_CONTEXT.md
 ```
 
 `PROJECT_CONTEXT.md` should remain concise enough to orient future developers and AI agents while pointing them toward the more detailed source documents.
+
+### Staff consistency follow-up
+
+Current reservation actions support actor-scoped durable retry receipts, and
+financial dialogs submit the booking revision they reviewed. Same-price stale
+edits are rejected; confirmed retries do not repeat purchases, payments, refunds,
+audit entries, or emails. The MySQL integration harness can use strictly isolated
+local test tables when database-creation privileges are unavailable.

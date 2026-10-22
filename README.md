@@ -62,6 +62,23 @@ npm run dev
 
 `npm run dev` starts only Next.js at `http://127.0.0.1:3000`. Run `npm run dev:backend` from the frontend directory when you want to start only Laravel through npm, or `npm run dev:full` only when you intentionally want both processes together. The API URL is `http://127.0.0.1:8000`. Keep `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, CORS, and cookie settings aligned.
 
+When testing reservation status emails with `RESERVATION_EMAILS_ENABLED=true`
+and `RESERVATION_MAIL_QUEUE_CONNECTION=database`, apply all migrations and keep
+a worker running in a separate terminal from `backend`:
+
+```bash
+php artisan queue:work database --queue=push,mail --sleep=3 --tries=3 --timeout=30
+```
+
+Neither the API server nor `npm run dev:full` starts this worker. Checkout email
+codes send synchronously, so receiving a code does not prove status-email
+delivery works. Missing queue tables prevent an email from being queued; without
+a worker, queued emails remain pending. Check `php artisan queue:failed` for
+delivery failures. A status email that failed to queue cannot be recovered by
+starting a worker; do not repeat a reservation change just to trigger another
+email. SMTP inbox delivery still needs a real mailer; the default log mailer
+only records email content locally.
+
 ## Authentication and access
 
 Laravel Sanctum owns browser sessions and CSRF protection. Browser API traffic passes through the Next.js `/backend` rewrite, so CSRF and session cookies remain first-party when the site is installed as an app. Set the server-only `API_URL` for that rewrite. Public registration and password recovery routes are disabled. Management accounts are created through Team & Access and each team account receives one role. The Manager has full access and may update their own profile and password. Team accounts have no Profile page or self-service credential endpoints; an authorized Manager edits their identity, activation state, role, and password.
@@ -80,7 +97,7 @@ Portal navigation and every management API route enforce the same module permiss
 - Weekday rates apply Monday through Thursday; weekend rates apply Friday through Sunday.
 - The browser refreshes current options and submits `quoted_amount`; the backend recalculates and returns `409 Conflict` if the displayed quote changed.
 - Pending, verified, and ongoing reservations occupy court slots and equipment. Final statuses release future inventory.
-- Rescheduling is Manager-only, preserves history, keeps the original base-slot count, migrates existing court-time add-ons to the new date at the same court/hour, and settles any price difference immediately.
+- Rescheduling is Manager-only, replaces every current court slot including previous add-ons, preserves history, and settles any price difference immediately. A lower total requires confirmation of the completed refund; refunded money cannot fund later purchases.
 - Add-ons are available for verified and ongoing reservations. Existing refundable credit covers unpaid amounts first; cash or an active online method settles any remainder, with transaction number and proof required for online payment.
 - Reservation and closure dates use `BUSINESS_TIMEZONE`, which defaults to `Asia/Manila`; only past dates are disabled.
 

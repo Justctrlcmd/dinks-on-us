@@ -71,6 +71,57 @@ class ReservationMailDeliveryTest extends TestCase
         Mail::assertSent(ReservationStatusMail::class, fn ($mail): bool => $mail->reservation->customer_name === 'Test' && $mail->event === 'verified');
     }
 
+    public function test_queued_reschedule_mail_keeps_its_own_payment_snapshot(): void
+    {
+        config(['reservations.emails_enabled' => true, 'reservations.mail_queue_connection' => 'database']);
+        Bus::fake();
+        Mail::fake();
+        $reservation = $this->reservation();
+        $history = $reservation->scheduleHistories()->create([
+            'old_booking_date' => '2026-10-21', 'new_booking_date' => '2026-10-22',
+            'old_slots' => [], 'new_slots' => [], 'old_slot_amount' => 400, 'new_slot_amount' => 500,
+            'difference_amount' => 100, 'payment_amount' => 100,
+        ]);
+        app(ReservationMailDispatcher::class)->dispatch($reservation, 'rescheduled');
+        Bus::assertDispatched(SendReservationStatusMail::class, function (SendReservationStatusMail $job) use ($history): bool {
+            $history->update(['payment_amount' => 0]);
+            $restored = unserialize(serialize($job));
+            $this->assertTrue($restored->reservation->relationLoaded('scheduleHistories'));
+            $this->assertSame('100.00', $restored->reservation->scheduleHistories->first()->payment_amount);
+            $restored->handle();
+
+            return true;
+        });
+        Mail::assertSent(ReservationStatusMail::class, fn ($mail): bool => str_contains($mail->render(), 'Additional payment'));
+    }
+
+    public function test_queued_reschedule_mail_keeps_its_own_refund_and_net_payment_snapshot(): void
+    {
+        config(['reservations.emails_enabled' => true, 'reservations.mail_queue_connection' => 'database']);
+        Bus::fake();
+        Mail::fake();
+        $reservation = $this->reservation();
+        $reservation->update(['final_amount' => 400]);
+        $refund = $reservation->refunds()->create(['type' => 'RESCHEDULE_CREDIT', 'status' => 'COMPLETED', 'amount' => 100]);
+        $history = $reservation->scheduleHistories()->create([
+            'old_booking_date' => '2026-10-21', 'new_booking_date' => '2026-10-22',
+            'old_slots' => [], 'new_slots' => [], 'old_slot_amount' => 500, 'new_slot_amount' => 400,
+            'difference_amount' => -100, 'payment_amount' => 0, 'refund_amount' => 100,
+        ]);
+        app(ReservationMailDispatcher::class)->dispatch($reservation, 'rescheduled');
+        Bus::assertDispatched(SendReservationStatusMail::class, function (SendReservationStatusMail $job) use ($history, $refund): bool {
+            $history->update(['refund_amount' => 0]);
+            $refund->update(['amount' => 200]);
+            $restored = unserialize(serialize($job));
+            $this->assertSame('100.00', $restored->reservation->scheduleHistories->first()->refund_amount);
+            $this->assertSame(400.0, $restored->reservation->netAmountPaid());
+            $restored->handle();
+
+            return true;
+        });
+        Mail::assertSent(ReservationStatusMail::class, fn ($mail): bool => str_contains($mail->render(), 'Refunded this reschedule') && str_contains($mail->render(), 'Paid after refunds'));
+    }
+
     public function test_delivery_failures_reach_the_worker_without_exposing_provider_details(): void
     {
         config(['reservations.emails_enabled' => true]);

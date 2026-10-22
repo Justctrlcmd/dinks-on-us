@@ -68,7 +68,16 @@ stored user password begins with the Argon2id hash identifier, set
 
 Use MySQL backups with documented retention and restore drills. Run migrations as a controlled release step and back up before destructive changes. Never edit an already-deployed migration; add a new one. A production release needs health checks, centralized logs without secrets, error monitoring, uptime monitoring, and a rollback plan for application code and schema compatibility.
 
-`php artisan system:reset-demo --force` is an intentional break-glass operation for resetting a demo instance. It permanently removes all application records, pending/failed jobs, and managed uploads, and only recreates the configured Manager account; it does not restore starter operational content. Take and verify a database **and uploads** backup, place the application in maintenance mode, stop notification workers, run the command from an interactive terminal, type its exact production confirmation phrase, validate the blank state, then run `php artisan up` and restart workers. Production reset/seeding rejects the repository's known default password and `.test` Manager email. Configure the real Manager email and a private password of at least eight characters before the reset. The command logs its completion summary without creating an application audit row. Filesystem and database changes are not one atomic operation: a partial file deletion cannot be rolled back by a database transaction.
+`php artisan system:reset-demo --force` is an intentional break-glass operation for resetting a demo instance. It permanently removes application content, pending/failed jobs, and managed uploads, preserves the four fixed policy sections as empty boards, and recreates the configured Manager account; it does not restore starter operational content. Take and verify a database **and uploads** backup, place the application in maintenance mode, stop notification workers, run the command from an interactive terminal, type its exact production confirmation phrase, validate the blank state, then run `php artisan up` and restart workers. Production reset/seeding rejects the repository's known default password and `.test` Manager email. Configure the real Manager email and a private password of at least eight characters before the reset. The command logs its completion summary without creating an application audit row. Filesystem and database changes are not one atomic operation: a partial file deletion cannot be rolled back by a database transaction.
+
+For deployments where an earlier reset removed the fixed policy sections, the
+`2026_10_22_000002_restore_missing_policy_sections` migration restores only missing
+boards during the normal `php artisan migrate --force` release step. It preserves
+all existing policy content and has a non-destructive rollback. Deleted subheaders
+and rules require approved text or recovery from backup; this repair does not
+restore old default terms. Rebuild and restart Next.js to deliver the accompanying
+empty-state and validation-message fixes. Do not rerun the demo reset or initial
+table-creation migration as a repair.
 
 Default data seeding remains disabled in production unless it is deliberately enabled for an empty demo instance. Do not alter `APP_ENV`, do not add this to normal deployment automation, and do not use `migrate:fresh`. Temporarily set `ALLOW_PRODUCTION_SEED=true` in the production environment, then run `php artisan config:clear`, `php artisan db:seed --force`, and `php artisan optimize`. Immediately set `ALLOW_PRODUCTION_SEED=false` again, then run `php artisan config:clear` and `php artisan optimize`. The seeder creates or preserves only the configured Manager account, operating-hours configuration, weekday/weekend rates, Courts 1–3, and Paddle, Ball, and Titan Machine defaults.
 
@@ -131,7 +140,12 @@ so verification itself needs no worker or scheduler. `MAIL_TIMEOUT=10` bounds
 SMTP operations (production gate accepts 1–30 seconds). The code and resend
 cooldown are committed before SMTP, so mail delivery holds no verification-row
 lock. On delivery failure the unused matching code is invalidated and the
-cooldown remains in effect. Monitor delivery failures and verify real inbox
+cooldown remains in effect and is returned as `Retry-After` on the `503` so the
+browser cannot immediately retry into a `429`. A send-limit warning is not proof
+of delivery. Check the original failed request status and server log, effective
+cached mail settings, VPS-to-provider connectivity, and the visitor-IP routing
+described in the release checklist. Do not loosen rate limits to fix SMTP failures.
+Monitor delivery failures and verify real inbox
 arrival; other mail transports need their own bounded provider options.
 
 Local development may use the log mailer to inspect code emails; it does not
@@ -177,3 +191,45 @@ resend limits, and idempotent booking retries in the deployed topology.
   connection limits, and abuse monitoring before public launch.
 
 Shared hosting must be checked for PHP, Composer, cron, shell, symlink, permissions, and document-root limitations. A VPS additionally needs web server, PHP-FPM, Node process management, TLS, firewall, backups, and worker supervision decisions. Do not add an infrastructure-dependent feature until these constraints are updated.
+
+## Reservation workflow audit release (2026-10-22)
+
+Apply the additive `2026_10_22_000003_record_reschedule_payment_amount` migration
+before activating the updated backend. It adds one nullable financial-history
+column and does not rewrite existing payments, prices, schedules, or refunds.
+Legacy history remains null. Deploy the backend and rebuild/restart the frontend
+so current staff forms send review quotes. Restart mail workers to pick up the
+updated event snapshot/template. Existing queued jobs without schedule-history
+snapshots omit the extra-payment row instead of reading later database state.
+The migration has been applied to the local development database only; production
+still needs the normal controlled release.
+
+## Staff action consistency release (2026-10-22)
+
+Apply `2026_10_22_000004_guard_staff_reservation_actions` after the payment-history
+migration and before activating the new backend. It adds a default-zero revision
+column and a small action-receipt table; it does not rewrite booking totals or
+historical payments. This migration is applied locally only. Deploy backend and
+frontend together so the current UI sends retry keys plus reviewed revision and
+amounts. Legacy clients without the header remain compatible; a header with
+missing review fields is rejected safely. Restart workers for the replay-aware
+status-mail dispatcher. Leave additive schema in place during an application
+rollback unless a separate backed-up schema rollback is deliberately required.
+
+The MySQL integration command's `--table-prefix` fallback is local/testing only.
+It requires local CREATE/ALTER/DROP TABLE permissions rather than CREATE DATABASE,
+uses random private test tables/storage, and never migrates existing application
+tables. Do not weaken its environment/host/prefix guards to run it in production.
+
+
+## Immediate reschedule refund release (2026-10-22)
+
+Apply `2026_10_22_000005_record_reschedule_refund_amount` before enabling the
+updated backend. It adds one nullable schedule-history amount and leaves past
+payments, refund statuses, credits, and totals unchanged. Deploy the frontend
+and backend together: cheaper reschedules now require a reviewed refund amount
+and acknowledgment even from legacy clients. The application records that the
+Manager has already returned the money; it does not transfer funds. Restart mail
+workers so new snapshots render the operation's refund and net retained funds.
+No bulk conversion of old credits or due refunds is performed. Earlier queued
+snapshots without refund relations must not fetch later refunds while rendering.

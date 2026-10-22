@@ -12,14 +12,15 @@ export const courtConfigurationSchema = z.object({
   included_players_per_court: z.number().int().min(1, "At least one player must be included.").max(100),
   additional_player_price: z.number().min(0, "Enter a price of zero or more."),
   advance_booking_days: z.number().int().min(1, "Choose at least one day.").max(365, "Keep the booking window within 365 days."),
-  weekday_rates: z.array(ratePeriodSchema).min(1),
-  weekend_rates: z.array(ratePeriodSchema).min(1),
+  weekday_rates: z.array(ratePeriodSchema).min(1, "Add at least one weekday price period."),
+  weekend_rates: z.array(ratePeriodSchema).min(1, "Add at least one weekend price period."),
 }).superRefine((values, context) => {
   if (values.closing_hour <= values.opening_hour) {
     context.addIssue({ code: "custom", path: ["closing_hour"], message: "Closing time must be later than opening time." });
   }
 
   for (const field of ["weekday_rates", "weekend_rates"] as const) {
+    if (values[field].length === 0) continue;
     let expectedStart = values.opening_hour;
     values[field].forEach((period, index) => {
       if (period.start_hour !== expectedStart) {

@@ -189,6 +189,23 @@ class ReservationEmailVerificationTest extends TestCase
         $this->assertNull($verification->code_hash);
         $this->assertNull($verification->verified_at);
         $this->assertTrue($verification->resend_available_at->isFuture());
+        $response->assertHeader('Retry-After', '60');
+    }
+
+    public function test_slow_delivery_failure_returns_the_remaining_cooldown_and_retry_explains_the_wait(): void
+    {
+        $this->freezeTime();
+        Mail::shouldReceive('to')->once()->andReturnSelf();
+        Mail::shouldReceive('send')->once()->andReturnUsing(function (): void {
+            $this->travel(15)->seconds();
+            throw new RuntimeException('SMTP timed out.');
+        });
+        $this->postJson('/api/v1/public/reservation-email/send', $this->emailInput())
+            ->assertStatus(503)->assertHeader('Retry-After', '45');
+        $this->postJson('/api/v1/public/reservation-email/send', $this->emailInput())
+            ->assertTooManyRequests()->assertHeader('Retry-After', '45')
+            ->assertJsonPath('message', 'Please wait 45 seconds before requesting another verification code. Check your inbox and spam folder.');
+        $this->assertNull(ReservationEmailVerification::query()->sole()->code_hash);
     }
 
     public function test_code_delivery_does_not_hold_an_additional_database_transaction(): void

@@ -107,7 +107,7 @@ async function request<T>(path: string, options: ApiFetchOptions = {}, csrfRetri
       message: payload?.message ?? "Something went wrong while processing your request.",
       code: payload?.code ?? "REQUEST_FAILED",
       errors: payload?.errors ?? undefined,
-      retryAfterSeconds: response.status === 429 ? retryAfterSeconds(response.headers.get("Retry-After")) : undefined,
+      retryAfterSeconds: response.status === 429 || response.status === 503 ? retryAfterSeconds(response.headers.get("Retry-After")) : undefined,
     });
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("auth:unauthorized"));

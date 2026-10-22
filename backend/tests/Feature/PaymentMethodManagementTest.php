@@ -13,6 +13,28 @@ class PaymentMethodManagementTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_account_numbers_only_accept_digits_on_create_and_update(): void
+    {
+        Storage::fake('public');
+        $this->actingAs(User::factory()->create());
+        $fields = ['name' => 'Bank', 'account_name' => 'Dinks on Us'];
+        $method = PaymentMethod::query()->create([
+            ...$fields, 'account_number' => '001234', 'qr_image_path' => 'payment-methods/qr.webp',
+        ]);
+        foreach (['123abc', '1e10', '+123', '123.45', '001 234', '123-456', "123\n456", '１２３', 123456] as $number) {
+            $this->post('/api/v1/management/payment-methods', [
+                ...$fields, 'account_number' => $number,
+                'qr_image' => UploadedFile::fake()->image('qr.png'),
+            ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('account_number');
+            $this->patchJson("/api/v1/management/payment-methods/{$method->id}", [
+                ...$fields, 'account_number' => $number,
+            ])->assertUnprocessable()->assertJsonValidationErrors('account_number');
+        }
+        $this->assertSame('001234', $method->fresh()->account_number);
+        $this->assertDatabaseCount('payment_methods', 1);
+        $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
     public function test_an_authenticated_user_can_manage_payment_methods_and_qr_images(): void
     {
         Storage::fake('public');

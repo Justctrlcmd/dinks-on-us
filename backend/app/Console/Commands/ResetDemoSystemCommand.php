@@ -18,10 +18,11 @@ class ResetDemoSystemCommand extends Command
     protected $signature = 'system:reset-demo
         {--force : Confirm that all application data should be permanently removed}';
 
-    protected $description = 'Permanently remove all application data and recreate only the configured Manager account';
+    protected $description = 'Permanently remove application content, preserve fixed policy sections, and recreate the configured Manager account';
 
     /** @var list<string> */
     private const RESET_TABLES = [
+        'reservation_action_receipts',
         'reservation_email_verifications',
         'reservation_slot_locks',
         'reservation_refunds',
@@ -42,7 +43,7 @@ class ResetDemoSystemCommand extends Command
         'payment_methods',
         'policy_rules',
         'policy_subheaders',
-        'policy_sections',
+        // Fixed policy boards are system structure; their editable content is cleared above.
         'court_rate_periods',
         'court_configurations',
         'rental_equipment',
@@ -142,7 +143,7 @@ class ResetDemoSystemCommand extends Command
             'manager_email' => $user->email,
         ]);
 
-        $this->info("Reset complete. Only the protected Manager account ({$user->email}) remains.");
+        $this->info("Reset complete. The protected Manager account ({$user->email}) and empty fixed policy sections remain.");
 
         return self::SUCCESS;
     }

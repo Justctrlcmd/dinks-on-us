@@ -2,18 +2,29 @@
 
 namespace App\Http\Requests\Management;
 
+use App\Models\Reservation;
 use App\Support\BusinessClock;
 use App\Support\Security\ImageUploadRules;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class RescheduleReservationRequest extends FormRequest
+class RescheduleReservationRequest extends ReservationActionRequest
 {
+    protected bool $requiresRevision = true;
+
     public function rules(): array
     {
+        $reservation = $this->route('reservation');
+        // Repeated add-ons may legitimately grow the current booking beyond 48 slots.
+        $replacementLimit = $reservation instanceof Reservation ? max(48, $reservation->currentSlots()->count()) : 48;
+
         return [
-            'slots' => ['required', 'array', 'min:1', 'max:48'],
+            ...parent::rules(),
+            'quoted_amount' => ['required_with:idempotency_key', 'numeric', 'min:0', 'decimal:0,2'],
+            'quoted_payment_amount' => ['required_with:idempotency_key', 'numeric', 'min:0', 'decimal:0,2'],
+            'quoted_refund_amount' => ['sometimes', 'numeric', 'min:0', 'decimal:0,2'],
+            'refund_settled' => ['sometimes', 'boolean'],
+            'slots' => ['required', 'array', 'min:1', 'max:'.$replacementLimit],
             'slots.*.court_id' => ['required', 'integer', 'exists:courts,id'],
             'slots.*.date' => ['required', 'date_format:Y-m-d', BusinessClock::todayOrLaterRule()],
             'slots.*.start_hour' => ['required', 'integer', 'between:0,23'],
@@ -71,6 +82,7 @@ class RescheduleReservationRequest extends FormRequest
     public function messages(): array
     {
         return [
+            ...parent::messages(),
             'payment_proof.required' => 'Select a receipt image for this payment method.',
             'payment_method_id.required' => 'Choose an active e-wallet or bank payment method.',
             'payment_method_id.prohibited' => 'A configured payment method cannot be used without an online payment.',

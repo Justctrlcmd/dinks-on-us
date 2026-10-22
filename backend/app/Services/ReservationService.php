@@ -11,6 +11,7 @@ use App\Models\PaymentMethod;
 use App\Models\PolicySection;
 use App\Models\RentalEquipment;
 use App\Models\Reservation;
+use App\Models\ReservationActionReceipt;
 use App\Models\ReservationSlot;
 use App\Models\ReservationSlotLock;
 use App\Models\User;
@@ -34,6 +35,7 @@ class ReservationService
         private readonly PaymentProofStorageService $proofStorage,
         private readonly EquipmentAvailabilityService $equipmentAvailability,
         private readonly ReservationEmailVerificationService $emailVerification,
+        private readonly ReservationActionGuard $actionGuard,
     ) {}
 
     /** @param array<string, mixed> $input */
@@ -61,7 +63,7 @@ class ReservationService
                 }
                 $slots = collect($input['slots'])->sortBy(fn (array $slot): string => sprintf('%010d-%02d', $slot['court_id'], $slot['start_hour']))->values()->all();
                 $date = $slots[0]['date'];
-                $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
+                $configuration = CourtConfiguration::query()->with(['ratePeriods' => fn ($query) => $query->lockForUpdate()])->lockForUpdate()->find(1);
                 if (! $configuration) {
                     throw ValidationException::withMessages(['slots' => ['Court pricing has not been configured.']]);
                 }
@@ -124,7 +126,7 @@ class ReservationService
                 $reservation->statusHistories()->create(['from_status' => null, 'to_status' => Reservation::STATUS_PENDING]);
                 $this->audit(null, AuditLog::RESERVATION_SUBMITTED, $reservation, ['status' => Reservation::STATUS_PENDING, 'reference_number' => $reservation->reference_number]);
 
-                return $reservation->fresh(self::DETAIL_RELATIONS);
+                return $this->finishAction($reservation);
             });
         } catch (QueryException $exception) {
             if ($idempotencyKey && $exception->getCode() === '23000' && str_contains($exception->getMessage(), 'idempotency_key')) {
@@ -147,16 +149,20 @@ class ReservationService
     /** @param array<string, mixed> $input */
     public function createWalkIn(array $input, User $user, ?UploadedFile $proof = null): Reservation
     {
-        $proofPath = $proof ? $this->proofStorage->store($proof) : null;
+        $proofPath = null;
 
         try {
-            return DB::transaction(function () use ($input, $user, $proofPath): Reservation {
+            return DB::transaction(function () use ($input, $user, $proof, &$proofPath): Reservation {
+                $receipt = $this->actionGuard->begin($user, 'walk-in', null, $input, $proof);
+                if ($receipt !== null && $receipt->reservation_id !== null) {
+                    return $this->replayAction($receipt);
+                }
                 $slots = collect($input['slots'])
                     ->sortBy(fn (array $slot): string => sprintf('%010d-%02d', $slot['court_id'], $slot['start_hour']))
                     ->values()
                     ->all();
                 $date = $slots[0]['date'];
-                $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
+                $configuration = CourtConfiguration::query()->with(['ratePeriods' => fn ($query) => $query->lockForUpdate()])->lockForUpdate()->find(1);
                 if (! $configuration) {
                     throw ValidationException::withMessages(['slots' => ['Court pricing has not been configured.']]);
                 }
@@ -174,6 +180,7 @@ class ReservationService
                 $playerAmount = (int) $input['additional_players'] * (float) $configuration->additional_player_price;
                 $equipmentAmount = $equipment->sum(fn (array $item): float => $item['quantity'] * $item['unit_amount']);
                 $originalAmount = round($courtAmount + $playerAmount + $equipmentAmount, 2);
+                $this->assertReviewedAmount($input['quoted_amount'] ?? null, $originalAmount);
                 $now = now();
                 $channel = $input['payment_channel'];
                 $paymentMethod = null;
@@ -184,6 +191,7 @@ class ReservationService
                     }
                 }
 
+                $proofPath = $proof ? $this->proofStorage->store($proof) : null;
                 $reservation = Reservation::query()->create([
                     'source' => 'WALK_IN',
                     'booking_date' => $date,
@@ -253,7 +261,7 @@ class ReservationService
                     'amount_paid' => $originalAmount,
                 ]);
 
-                return $reservation->fresh(self::DETAIL_RELATIONS);
+                return $this->finishAction($reservation, $receipt);
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
@@ -279,7 +287,7 @@ class ReservationService
         $query = Reservation::query()->operational()
             ->leftJoinSub($scheduleOrder, 'schedule_order', 'schedule_order.reservation_id', '=', 'reservations.id')
             ->select('reservations.*')
-            ->with(['currentSlots.court'])
+            ->with(['currentSlots.court', 'refunds'])
             // Unresolved elapsed bookings need attention before current/upcoming visits.
             ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 0 ELSE 1 END')
             ->orderBy('reservations.booking_date')
@@ -344,7 +352,7 @@ class ReservationService
     {
         $query = Reservation::query()
             ->whereIn('status', Reservation::FINAL_STATUSES)
-            ->with(['currentSlots.court'])
+            ->with(['currentSlots.court', 'refunds'])
             ->latest('updated_at')
             ->latest('id');
 
@@ -398,10 +406,15 @@ class ReservationService
         return $reservation->load(self::DETAIL_RELATIONS);
     }
 
-    public function verify(Reservation $reservation, User $user): Reservation
+    public function verify(Reservation $reservation, User $user, array $context = []): Reservation
     {
-        return DB::transaction(function () use ($reservation, $user): Reservation {
+        return DB::transaction(function () use ($reservation, $user, $context): Reservation {
+            $receipt = $this->actionGuard->begin($user, 'verify', $reservation->id, $context);
+            if ($receipt !== null && $receipt->reservation_id !== null) {
+                return $this->replayAction($receipt);
+            }
             $reservation = $this->lockReservation($reservation);
+            $this->actionGuard->assertRevision($reservation, $context);
             $this->requireStatus($reservation, Reservation::STATUS_PENDING, 'Only pending reservations can be verified.');
             $this->equipmentAvailability->assertReservationAvailable($reservation);
             $payment = $reservation->payments()->where('kind', 'INITIAL')->lockForUpdate()->firstOrFail();
@@ -410,14 +423,19 @@ class ReservationService
             $this->recordTransition($reservation, Reservation::STATUS_PENDING, Reservation::STATUS_VERIFIED, $user);
             $this->audit($user, AuditLog::RESERVATION_VERIFIED, $reservation, ['status' => Reservation::STATUS_VERIFIED]);
 
-            return $reservation->fresh(self::DETAIL_RELATIONS);
+            return $this->finishAction($reservation, $receipt);
         });
     }
 
-    public function reject(Reservation $reservation, User $user, string $concern, string $reason): Reservation
+    public function reject(Reservation $reservation, User $user, string $concern, string $reason, array $context = []): Reservation
     {
-        return DB::transaction(function () use ($reservation, $user, $concern, $reason): Reservation {
+        return DB::transaction(function () use ($reservation, $user, $concern, $reason, $context): Reservation {
+            $receipt = $this->actionGuard->begin($user, 'reject', $reservation->id, [...$context, 'concern' => $concern, 'reason' => $reason]);
+            if ($receipt !== null && $receipt->reservation_id !== null) {
+                return $this->replayAction($receipt);
+            }
             $reservation = $this->lockReservation($reservation);
+            $this->actionGuard->assertRevision($reservation, [...$context, 'concern' => $concern, 'reason' => $reason]);
             $this->requireStatus($reservation, Reservation::STATUS_PENDING, 'Only pending reservations can be rejected.');
             $reservation->payments()->where('kind', 'INITIAL')->update(['status' => 'REJECTED']);
             $this->releaseLocks($reservation);
@@ -425,20 +443,28 @@ class ReservationService
             $this->recordTransition($reservation, Reservation::STATUS_PENDING, Reservation::STATUS_REJECTED, $user, $reason);
             $this->audit($user, AuditLog::RESERVATION_REJECTED, $reservation, ['status' => Reservation::STATUS_REJECTED, 'concern' => $concern]);
 
-            return $reservation->fresh(self::DETAIL_RELATIONS);
+            return $this->finishAction($reservation, $receipt);
         });
     }
 
-    public function start(Reservation $reservation, User $user): Reservation
+    public function start(Reservation $reservation, User $user, array $context = []): Reservation
     {
-        return DB::transaction(function () use ($reservation, $user): Reservation {
+        return DB::transaction(function () use ($reservation, $user, $context): Reservation {
+            $receipt = $this->actionGuard->begin($user, 'start', $reservation->id, $context);
+            if ($receipt !== null && $receipt->reservation_id !== null) {
+                return $this->replayAction($receipt);
+            }
             $reservation = $this->lockReservation($reservation);
+            $this->actionGuard->assertRevision($reservation, $context);
             $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be marked ongoing.');
+            if ($reservation->booking_date->toDateString() !== BusinessClock::today()) {
+                throw new ReservationConflictException('Only reservations booked for today can be marked ongoing.');
+            }
             $reservation->update(['status' => Reservation::STATUS_ONGOING, 'started_by_user_id' => $user->id, 'started_at' => now()]);
             $this->recordTransition($reservation, Reservation::STATUS_VERIFIED, Reservation::STATUS_ONGOING, $user);
             $this->audit($user, AuditLog::RESERVATION_STARTED, $reservation, ['status' => Reservation::STATUS_ONGOING]);
 
-            return $reservation->fresh(self::DETAIL_RELATIONS);
+            return $this->finishAction($reservation, $receipt);
         });
     }
 
@@ -450,35 +476,32 @@ class ReservationService
 
         try {
             return DB::transaction(function () use ($reservation, $user, $input, $proof, &$proofPath): Reservation {
+                $receipt = $this->actionGuard->begin($user, 'reschedule', $reservation->id, $input, $proof);
+                if ($receipt !== null && $receipt->reservation_id !== null) {
+                    return $this->replayAction($receipt);
+                }
                 $reservation = $this->lockReservation($reservation);
+                $this->actionGuard->assertRevision($reservation, $input);
                 $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be rescheduled.');
                 $inputSlots = $input['slots'];
                 $inputAddOnSlots = $input['add_on_slots'] ?? [];
                 $oldCurrentSlots = $reservation->currentSlots()->with('court')->orderBy('date')->orderBy('court_id')->orderBy('start_hour')->lockForUpdate()->get();
-                $oldBaseSlots = $oldCurrentSlots->where('kind', '!=', 'ADD_ON')->values();
-                $oldAddOnSlots = $oldCurrentSlots->where('kind', 'ADD_ON')->values();
-                if ($oldBaseSlots->count() !== count($inputSlots)) {
-                    throw ValidationException::withMessages(['slots' => ["Choose exactly {$oldBaseSlots->count()} one-hour replacement slots."]]);
+                if ($oldCurrentSlots->count() !== count($inputSlots)) {
+                    throw ValidationException::withMessages(['slots' => ["Choose exactly {$oldCurrentSlots->count()} one-hour replacement slots for the current reservation, including previous add-ons."]]);
                 }
 
-                $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
+                $configuration = CourtConfiguration::query()->with(['ratePeriods' => fn ($query) => $query->lockForUpdate()])->lockForUpdate()->find(1);
                 if (! $configuration) {
                     throw ValidationException::withMessages(['slots' => ['Court pricing has not been configured.']]);
                 }
                 $newDate = (string) $inputSlots[0]['date'];
-                $migratedAddOnInputs = $oldAddOnSlots->map(fn ($slot): array => [
-                    'court_id' => $slot->court_id,
-                    'date' => $newDate,
-                    'start_hour' => $slot->start_hour,
-                ])->all();
-                $allInputSlots = array_merge($inputSlots, $migratedAddOnInputs, $inputAddOnSlots);
+                $allInputSlots = array_merge($inputSlots, $inputAddOnSlots);
                 $courtIds = collect($allInputSlots)->pluck('court_id')->unique()->sort()->values();
                 $courts = Court::query()->active()->whereIn('id', $courtIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
                 if ($courts->count() !== $courtIds->count()) {
                     throw ValidationException::withMessages(['slots' => ['One or more selected courts are unavailable.']]);
                 }
                 $pricedSlots = $this->validateAndPriceSlots($inputSlots, $configuration, $courts);
-                $pricedMigratedAddOnSlots = $this->validateAndPriceSlots($migratedAddOnInputs, $configuration, $courts);
                 $pricedAddOnSlots = $this->validateAndPriceSlots($inputAddOnSlots, $configuration, $courts);
                 $newDate = $pricedSlots[0]['date'];
                 if (collect($pricedAddOnSlots)->contains(fn (array $slot): bool => $slot['date'] !== $newDate)) {
@@ -487,13 +510,13 @@ class ReservationService
 
                 $newKeys = collect($allInputSlots)->map(fn (array $slot): string => "{$slot['court_id']}-{$slot['date']}-{$slot['start_hour']}");
                 if ($newKeys->unique()->count() !== $newKeys->count()) {
-                    throw new ReservationConflictException('The replacement schedule overlaps an existing or newly selected add-on court time. Choose another time.');
+                    throw new ReservationConflictException('The replacement schedule and new add-on court times overlap. Choose another time.');
                 }
-                $this->assertNoClosureOrLock([...$pricedSlots, ...$pricedMigratedAddOnSlots, ...$pricedAddOnSlots], $reservation->id);
+                $this->assertNoClosureOrLock([...$pricedSlots, ...$pricedAddOnSlots], $reservation->id);
 
                 $oldSnapshot = $this->slotSnapshot($oldCurrentSlots);
                 $oldAmount = (float) $oldCurrentSlots->sum('unit_amount');
-                $newAmount = (float) collect([...$pricedSlots, ...$pricedMigratedAddOnSlots])->sum('unit_amount');
+                $newAmount = (float) collect($pricedSlots)->sum('unit_amount');
                 $difference = round($newAmount - $oldAmount, 2);
                 $addOnAmount = (float) collect($pricedAddOnSlots)->sum('unit_amount');
 
@@ -501,10 +524,6 @@ class ReservationService
                 $oldCurrentSlots->each->update(['is_current' => false]);
                 foreach ($pricedSlots as $slotData) {
                     $slot = $reservation->slots()->create([...$slotData, 'kind' => 'RESCHEDULED', 'is_current' => true, 'added_by_user_id' => $user->id]);
-                    ReservationSlotLock::query()->create(['reservation_slot_id' => $slot->id, 'court_id' => $slot->court_id, 'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour]);
-                }
-                foreach ($pricedMigratedAddOnSlots as $slotData) {
-                    $slot = $reservation->slots()->create([...$slotData, 'kind' => 'ADD_ON', 'is_current' => true, 'added_by_user_id' => $user->id]);
                     ReservationSlotLock::query()->create(['reservation_slot_id' => $slot->id, 'court_id' => $slot->court_id, 'date' => $slot->date->toDateString(), 'start_hour' => $slot->start_hour]);
                 }
                 foreach ($pricedAddOnSlots as $slotData) {
@@ -537,15 +556,17 @@ class ReservationService
                 }
 
                 $this->equipmentAvailability->assertReservationAvailable($reservation);
-                $reservation->scheduleHistories()->create([
+                $scheduleHistory = $reservation->scheduleHistories()->create([
                     'old_booking_date' => $reservation->booking_date, 'new_booking_date' => $newDate,
-                    'old_slots' => $oldSnapshot, 'new_slots' => collect([...$pricedSlots, ...$pricedMigratedAddOnSlots, ...$pricedAddOnSlots])->map(fn (array $slot): array => $this->slotArray($slot))->all(),
+                    'old_slots' => $oldSnapshot, 'new_slots' => collect([...$pricedSlots, ...$pricedAddOnSlots])->map(fn (array $slot): array => $this->slotArray($slot))->all(),
                     'old_slot_amount' => $oldAmount, 'new_slot_amount' => $newAmount, 'difference_amount' => $difference, 'performed_by_user_id' => $user->id,
                 ]);
                 $reservation->update(['booking_date' => $newDate, 'is_rescheduled' => true, 'reschedule_count' => $reservation->reschedule_count + 1]);
                 $this->recalculate($reservation);
 
-                $amountDue = max(0, round((float) $reservation->final_amount - (float) $reservation->amount_paid, 2));
+                $amountDue = max(0, round((float) $reservation->final_amount - $reservation->netAmountPaid(), 2));
+                $this->assertReviewedAmount($input['quoted_amount'] ?? null, (float) $reservation->final_amount);
+                $this->assertReviewedAmount($input['quoted_payment_amount'] ?? null, $amountDue);
                 $paymentAmount = 0.0;
                 if ($amountDue > 0) {
                     $channel = $input['payment_channel'] ?? null;
@@ -572,9 +593,23 @@ class ReservationService
                     $this->recalculate($reservation);
                 }
 
-                $this->audit($user, AuditLog::RESERVATION_RESCHEDULED, $reservation, ['difference_amount' => $difference, 'add_on_amount' => round($addOnAmount, 2), 'payment_amount' => $paymentAmount, 'reschedule_count' => $reservation->reschedule_count]);
+                $refundAmount = (float) $reservation->refundable_credit;
+                $this->assertReviewedAmount($input['quoted_refund_amount'] ?? null, $refundAmount);
+                if ($refundAmount > 0) {
+                    if (! isset($input['quoted_refund_amount']) || ! filter_var($input['refund_settled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                        throw ValidationException::withMessages(['refund_settled' => ['Return the displayed refund to the customer and confirm it has been settled before rescheduling.']]);
+                    }
+                    $reservation->refunds()->create([
+                        'type' => 'RESCHEDULE_CREDIT', 'status' => 'COMPLETED', 'amount' => $refundAmount,
+                        'reason' => 'Refund settled when rescheduling the reservation.', 'created_by_user_id' => $user->id,
+                    ]);
+                    $this->recalculate($reservation);
+                }
+                $scheduleHistory->update(['payment_amount' => $paymentAmount, 'refund_amount' => $refundAmount]);
 
-                return $reservation->fresh(self::DETAIL_RELATIONS);
+                $this->audit($user, AuditLog::RESERVATION_RESCHEDULED, $reservation, ['difference_amount' => $difference, 'add_on_amount' => round($addOnAmount, 2), 'payment_amount' => $paymentAmount, 'refund_amount' => $refundAmount, 'reschedule_count' => $reservation->reschedule_count]);
+
+                return $this->finishAction($reservation, $receipt);
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
@@ -590,11 +625,16 @@ class ReservationService
         $proofPath = null;
         try {
             return DB::transaction(function () use ($reservation, $user, $input, $proof, &$proofPath): Reservation {
+                $receipt = $this->actionGuard->begin($user, 'add-ons', $reservation->id, $input, $proof);
+                if ($receipt !== null && $receipt->reservation_id !== null) {
+                    return $this->replayAction($receipt);
+                }
                 $reservation = $this->lockReservation($reservation);
+                $this->actionGuard->assertRevision($reservation, $input);
                 if (! in_array($reservation->status, [Reservation::STATUS_VERIFIED, Reservation::STATUS_ONGOING], true)) {
                     throw new ReservationConflictException('Add-ons can only be added to a verified or ongoing reservation.');
                 }
-                $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
+                $configuration = CourtConfiguration::query()->with(['ratePeriods' => fn ($query) => $query->lockForUpdate()])->lockForUpdate()->find(1);
                 if (! $configuration) {
                     throw ValidationException::withMessages(['add_ons' => ['Court pricing has not been configured.']]);
                 }
@@ -634,7 +674,9 @@ class ReservationService
 
                 $this->equipmentAvailability->assertReservationAvailable($reservation);
                 $this->recalculate($reservation);
-                $amountDue = max(0, round((float) $reservation->final_amount - (float) $reservation->amount_paid, 2));
+                $amountDue = max(0, round((float) $reservation->final_amount - $reservation->netAmountPaid(), 2));
+                $this->assertReviewedAmount($input['quoted_amount'] ?? null, (float) $reservation->final_amount);
+                $this->assertReviewedAmount($input['quoted_payment_amount'] ?? null, $amountDue);
                 if ($amountDue > 0) {
                     $channel = $input['payment_channel'] ?? null;
                     if (! $channel) {
@@ -660,7 +702,7 @@ class ReservationService
                 }
                 $this->audit($user, AuditLog::RESERVATION_ADD_ON_ADDED, $reservation, ['add_on_amount' => round($addOnAmount, 2), 'payment_amount' => $amountDue, 'adjustment_amount' => $reservation->adjustment_amount, 'final_amount' => $reservation->final_amount]);
 
-                return $reservation->fresh(self::DETAIL_RELATIONS);
+                return $this->finishAction($reservation, $receipt);
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
@@ -670,15 +712,22 @@ class ReservationService
         }
     }
 
-    public function complete(Reservation $reservation, User $user, ?string $channel, ?string $reference, ?UploadedFile $proof): Reservation
+    public function complete(Reservation $reservation, User $user, ?string $channel, ?string $reference, ?UploadedFile $proof, array $quote = []): Reservation
     {
         $proofPath = null;
         try {
-            return DB::transaction(function () use ($reservation, $user, $channel, $reference, $proof, &$proofPath): Reservation {
+            return DB::transaction(function () use ($reservation, $user, $channel, $reference, $proof, $quote, &$proofPath): Reservation {
+                $receipt = $this->actionGuard->begin($user, 'complete', $reservation->id, $quote, $proof);
+                if ($receipt !== null && $receipt->reservation_id !== null) {
+                    return $this->replayAction($receipt);
+                }
                 $reservation = $this->lockReservation($reservation);
+                $this->actionGuard->assertRevision($reservation, $quote);
                 $this->requireStatus($reservation, Reservation::STATUS_ONGOING, 'Only ongoing reservations can be completed.');
                 $this->recalculate($reservation);
-                $outstanding = max(0, round((float) $reservation->final_amount - (float) $reservation->amount_paid, 2));
+                $outstanding = max(0, round((float) $reservation->final_amount - $reservation->netAmountPaid(), 2));
+                $this->assertReviewedAmount($quote['quoted_amount'] ?? null, (float) $reservation->final_amount);
+                $this->assertReviewedAmount($quote['quoted_payment_amount'] ?? null, $outstanding);
                 if ($outstanding > 0 && ! $channel) {
                     throw ValidationException::withMessages(['payment_channel' => ['Choose how the outstanding amount was collected.']]);
                 }
@@ -696,7 +745,7 @@ class ReservationService
                 $this->recordTransition($reservation, Reservation::STATUS_ONGOING, Reservation::STATUS_COMPLETED, $user);
                 $this->audit($user, AuditLog::RESERVATION_COMPLETED, $reservation, ['status' => Reservation::STATUS_COMPLETED, 'final_amount' => $reservation->final_amount, 'amount_paid' => $reservation->amount_paid]);
 
-                return $reservation->fresh(self::DETAIL_RELATIONS);
+                return $this->finishAction($reservation, $receipt);
             });
         } catch (Throwable $exception) {
             if ($proofPath) {
@@ -706,29 +755,40 @@ class ReservationService
         }
     }
 
-    public function noShow(Reservation $reservation, User $user): Reservation
+    public function noShow(Reservation $reservation, User $user, array $context = []): Reservation
     {
-        return DB::transaction(function () use ($reservation, $user): Reservation {
+        return DB::transaction(function () use ($reservation, $user, $context): Reservation {
+            $receipt = $this->actionGuard->begin($user, 'no-show', $reservation->id, $context);
+            if ($receipt !== null && $receipt->reservation_id !== null) {
+                return $this->replayAction($receipt);
+            }
             $reservation = $this->lockReservation($reservation);
+            $this->actionGuard->assertRevision($reservation, $context);
             $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be marked as no-show.');
             $this->releaseLocks($reservation);
-            $reservation->update(['status' => Reservation::STATUS_NO_SHOW, 'no_show_by_user_id' => $user->id, 'no_show_at' => now()]);
+            $reservation->update(['status' => Reservation::STATUS_NO_SHOW, 'refundable_credit' => 0, 'no_show_by_user_id' => $user->id, 'no_show_at' => now()]);
             $this->recordTransition($reservation, Reservation::STATUS_VERIFIED, Reservation::STATUS_NO_SHOW, $user);
-            $this->audit($user, AuditLog::RESERVATION_NO_SHOW, $reservation, ['status' => Reservation::STATUS_NO_SHOW, 'recognized_revenue' => $reservation->amount_paid]);
+            $this->audit($user, AuditLog::RESERVATION_NO_SHOW, $reservation, ['status' => Reservation::STATUS_NO_SHOW, 'recognized_revenue' => $reservation->netAmountPaid()]);
 
-            return $reservation->fresh(self::DETAIL_RELATIONS);
+            return $this->finishAction($reservation, $receipt);
         });
     }
 
-    public function cancel(Reservation $reservation, User $user, string $reason, string $refundType, ?float $customAmount): Reservation
+    public function cancel(Reservation $reservation, User $user, string $reason, string $refundType, ?float $customAmount, ?float $quotedRefund = null, array $context = []): Reservation
     {
         $this->requireManager($user);
 
-        return DB::transaction(function () use ($reservation, $user, $reason, $refundType, $customAmount): Reservation {
+        return DB::transaction(function () use ($reservation, $user, $reason, $refundType, $customAmount, $quotedRefund, $context): Reservation {
+            $receipt = $this->actionGuard->begin($user, 'cancel', $reservation->id, [...$context, 'reason' => $reason, 'refund_type' => $refundType, 'refund_amount' => $refundType === 'CUSTOM' ? $customAmount : null]);
+            if ($receipt !== null && $receipt->reservation_id !== null) {
+                return $this->replayAction($receipt);
+            }
             $reservation = $this->lockReservation($reservation);
+            $this->actionGuard->assertRevision($reservation, [...$context, 'reason' => $reason, 'refund_type' => $refundType, 'refund_amount' => $refundType === 'CUSTOM' ? $customAmount : null]);
             $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be cancelled.');
-            $refundAmount = $refundType === 'FULL' ? (float) $reservation->amount_paid : round((float) $customAmount, 2);
-            if ($refundAmount > (float) $reservation->amount_paid) {
+            $refundAmount = $refundType === 'FULL' ? $reservation->netAmountPaid() : round((float) $customAmount, 2);
+            $this->assertReviewedAmount($quotedRefund, $refundAmount);
+            if ($refundAmount > $reservation->netAmountPaid()) {
                 throw ValidationException::withMessages(['refund_amount' => ['The refund cannot exceed the amount collected.']]);
             }
             $this->releaseLocks($reservation);
@@ -739,8 +799,50 @@ class ReservationService
             $this->recordTransition($reservation, Reservation::STATUS_VERIFIED, Reservation::STATUS_CANCELLED, $user, $reason);
             $this->audit($user, AuditLog::RESERVATION_CANCELLED, $reservation, ['status' => Reservation::STATUS_CANCELLED, 'refund_amount' => $refundAmount]);
 
-            return $reservation->fresh(self::DETAIL_RELATIONS);
+            return $this->finishAction($reservation, $receipt);
         });
+    }
+
+    private function finishAction(Reservation $reservation, ?ReservationActionReceipt $receipt = null): Reservation
+    {
+        $reservation->increment('revision');
+        $receipt?->update(['reservation_id' => $reservation->id]);
+
+        return $this->currentDetail($reservation->id);
+    }
+
+    private function replayAction(ReservationActionReceipt $receipt): Reservation
+    {
+        $reservation = $this->currentDetail($receipt->reservation_id);
+        $reservation->actionWasReplayed = true;
+
+        return $reservation;
+    }
+
+    /** Current reads keep the response consistent with writes after a lock wait. */
+    private function currentDetail(int $id): Reservation
+    {
+        $reservation = Reservation::query()->lockForUpdate()->findOrFail($id);
+        $reservation->load([
+            'currentSlots' => fn ($query) => $query->lockForUpdate(), 'currentSlots.court',
+            'payments' => fn ($query) => $query->lockForUpdate(),
+            'equipmentItems' => fn ($query) => $query->lockForUpdate(),
+            'adjustments' => fn ($query) => $query->lockForUpdate(),
+            'scheduleHistories' => fn ($query) => $query->lockForUpdate(),
+            'refunds' => fn ($query) => $query->lockForUpdate(),
+        ]);
+
+        return $reservation;
+    }
+
+    private function assertReviewedAmount(mixed $quoted, float $actual): void
+    {
+        if ($quoted !== null && abs(round((float) $quoted, 2) - round($actual, 2)) > 0.001) {
+            throw new ReservationConflictException(
+                'Reservation pricing or payments changed. Review the current booking and amounts before continuing.',
+                'RESERVATION_REVIEW_CHANGED',
+            );
+        }
     }
 
     /** @param list<array<string, mixed>> $slots @param EloquentCollection<int, Court> $courts @return list<array<string, mixed>> */
@@ -825,10 +927,11 @@ class ReservationService
 
     private function recalculate(Reservation $reservation): void
     {
-        $adjustments = round((float) $reservation->adjustments()->sum('total_amount'), 2);
+        $adjustments = round((float) $reservation->adjustments()->lockForUpdate()->get(['total_amount'])->sum('total_amount'), 2);
         $final = max(0, round((float) $reservation->original_amount + $adjustments, 2));
-        $reservation->update(['adjustment_amount' => $adjustments, 'final_amount' => $final, 'refundable_credit' => max(0, round((float) $reservation->amount_paid - $final, 2))]);
-        $reservation->refresh();
+        $refunds = $reservation->refunds()->lockForUpdate()->get();
+        $reservation->setRelation('refunds', $refunds);
+        $reservation->update(['adjustment_amount' => $adjustments, 'final_amount' => $final, 'refundable_credit' => max(0, round($reservation->netAmountPaid() - $final, 2))]);
     }
 
     private function releaseLocks(Reservation $reservation): void
@@ -843,7 +946,8 @@ class ReservationService
 
     private function lockReservation(Reservation $reservation): Reservation
     {
-        return Reservation::query()->lockForUpdate()->findOrFail($reservation->id);
+        return Reservation::query()->lockForUpdate()->findOrFail($reservation->id)
+            ->load(['refunds' => fn ($query) => $query->lockForUpdate()]);
     }
 
     private function requireStatus(Reservation $reservation, string $status, string $message): void

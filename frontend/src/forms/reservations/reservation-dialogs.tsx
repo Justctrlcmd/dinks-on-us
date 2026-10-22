@@ -8,6 +8,9 @@ import { z } from "zod";
 import { FiCheckCircle, FiChevronDown, FiPlus, FiXCircle } from "react-icons/fi";
 import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ErrorState } from "@/components/common/error-state";
+import { LoadingState } from "@/components/common/loading-state";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +22,8 @@ import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { useAddReservationAddOns, useCancelReservation, useCompleteReservation, useRejectReservation, useRescheduleReservation } from "@/hooks/mutations/use-reservation-mutations";
 import { equipmentForSchedule } from "@/lib/equipment-availability";
-import { formatDateOnly } from "@/lib/date";
+import { isApiError } from "@/lib/api";
+import { formatDateOnly, todayInTimeZone } from "@/lib/date";
 import { ReservationSlotLabel, ReservationSummaryLine as SummaryLine } from "@/forms/reservations/reservation-summary-line";
 import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import { reservationProofUrl } from "@/services/reservations/reservation-service";
@@ -57,6 +61,10 @@ const paymentKindLabels: Record<string, string> = {
   RESCHEDULE: "Reschedule payment",
   SETTLEMENT: "Final balance payment",
 };
+
+function netPaid(reservation: ManagementReservation): number {
+  return reservation.amounts.net_paid ?? Math.max(0, reservation.amounts.paid - (reservation.refunds ?? []).filter((refund) => refund.status === "COMPLETED").reduce((sum, refund) => sum + refund.amount, 0));
+}
 
 function Field({ label, htmlFor, required, error, children }: { label: string; htmlFor?: string; required?: boolean; error?: string; children: React.ReactNode }) {
   return <div className="grid gap-2"><Label htmlFor={htmlFor}>{label}{required ? <span aria-hidden="true"> *</span> : null}</Label>{children}{error ? <p id={htmlFor ? `${htmlFor}-error` : undefined} role="alert" className="text-xs leading-4 text-destructive">{error}</p> : null}</div>;
@@ -104,15 +112,15 @@ export function ReservationDetailDialog({ reservation, reservationId, open, onOp
   const dashboardDetail = useDashboardReservation(source === "dashboard" && open ? targetId : null);
   const detail = source === "history" ? historyDetail : source === "dashboard" ? dashboardDetail : reservationDetail;
   const item = detail.data ?? reservation;
-  const originalSlots = item?.slots?.filter((slot) => slot.kind !== "ADD_ON") ?? [];
+  const currentSlots = item?.slots ?? [];
   const addOnSlots = item?.slots?.filter((slot) => slot.kind === "ADD_ON") ?? [];
-  const originalEquipment = item?.equipment?.filter((equipment) => equipment.kind !== "ADD_ON") ?? [];
   const addOnEquipment = item?.equipment?.filter((equipment) => equipment.kind === "ADD_ON") ?? [];
   const addOnAdjustments = item?.adjustments?.filter((adjustment) => ["COURT_ADD_ON", "ADDITIONAL_PLAYER", "EQUIPMENT"].includes(adjustment.type)) ?? [];
   const addOnPlayers = addOnAdjustments.filter((adjustment) => adjustment.type === "ADDITIONAL_PLAYER");
+  const courtAddOnCharges = addOnAdjustments.filter((adjustment) => adjustment.type === "COURT_ADD_ON");
+  const playerCount = (item?.additional_players.original_quantity ?? 0) + addOnPlayers.reduce((total, adjustment) => total + adjustment.quantity, 0);
+  const playerAmount = (item?.additional_players.original_quantity ?? 0) * (item?.additional_players.unit_amount ?? 0) + addOnPlayers.reduce((total, adjustment) => total + adjustment.total_amount, 0);
   const addOnTotal = addOnAdjustments.reduce((total, adjustment) => total + adjustment.total_amount, 0);
-  const addOnPayments = item?.payments?.filter((payment) => payment.kind === "ADD_ON" && payment.status === "VERIFIED") ?? [];
-  const addOnPaid = addOnPayments.reduce((total, payment) => total + payment.amount, 0);
   const otherAdjustments = (item?.amounts.adjustments ?? 0) - addOnTotal;
   const hasAddOns = addOnSlots.length > 0 || addOnEquipment.length > 0 || addOnPlayers.length > 0 || addOnAdjustments.length > 0;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-5xl">
@@ -120,44 +128,44 @@ export function ReservationDetailDialog({ reservation, reservationId, open, onOp
     {detail.isPending && !item ? <p className="py-8 text-center text-sm text-muted-foreground">Loading reservation details…</p> : item ? <div className="grid gap-5">
       <section className="rounded-xl border p-4"><h3 className="font-heading font-bold">Customer information</h3><dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_1fr_1.1fr]"><div className="min-w-0"><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{item.customer.name}</dd></div><div className="min-w-0"><dt className="text-muted-foreground">Email</dt><dd className="break-all font-medium">{item.customer.email}</dd></div><div className="min-w-0"><dt className="text-muted-foreground">Contact</dt><dd className="font-medium">{item.customer.contact_number}</dd></div><div className="min-w-0"><dt className="text-muted-foreground">Source</dt><dd className="font-medium capitalize">{item.source.toLowerCase().replaceAll("_", "-")}</dd></div></dl></section>
       <section className="rounded-xl border p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-heading font-bold">Original reservation summary</h3><span className="text-xs text-muted-foreground" aria-label="Schedule year">{item.booking_date.slice(0, 4)}</span></div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-heading font-bold">Current reservation summary</h3><span className="text-xs text-muted-foreground" aria-label="Schedule year">{item.booking_date.slice(0, 4)}</span></div>
         <div className="mt-3 divide-y divide-border/80">
-          {originalSlots.map((slot) => <SummaryLine key={slot.id} label={<ReservationSlotLabel courtName={slot.court_name} date={slot.date} startHour={slot.start_hour} endHour={slot.end_hour} />} amount={slot.amount} />)}
-          {item.additional_players.original_quantity > 0 ? <SummaryLine label={`Additional players: ${item.additional_players.original_quantity} × ${currency.format(item.additional_players.unit_amount)}`} amount={item.additional_players.original_quantity * item.additional_players.unit_amount} /> : null}
-          {originalEquipment.map((equipment) => <SummaryLine key={equipment.id} label={`${equipment.name}: ${equipment.quantity} × ${currency.format(equipment.unit_amount)}`} amount={equipment.total_amount} />)}
+          {currentSlots.map((slot) => <SummaryLine key={slot.id} label={<ReservationSlotLabel courtName={slot.court_name} date={slot.date} startHour={slot.start_hour} endHour={slot.end_hour} />} amount={slot.amount} />)}
+          {playerCount > 0 ? <SummaryLine label={`Additional players: ${playerCount}`} amount={playerAmount} /> : null}
+          {item.equipment?.map((equipment) => <SummaryLine key={equipment.id} label={`${equipment.name}: ${equipment.quantity} × ${currency.format(equipment.unit_amount)}`} amount={equipment.total_amount} />)}
         </div>
         <dl className="mt-3 grid gap-2 border-t pt-3 text-sm">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4">
-            <dt className="text-muted-foreground">Original reservation total</dt>
-            <dd className="whitespace-nowrap text-right font-heading text-lg font-extrabold tabular-nums">{currency.format(item.amounts.original)}</dd>
+            <dt className="text-muted-foreground">Current reservation total</dt>
+            <dd className="whitespace-nowrap text-right font-heading text-lg font-extrabold tabular-nums">{currency.format(item.amounts.final)}</dd>
           </div>
         </dl>
+        {netPaid(item) < item.amounts.paid ? <div className="mt-3 grid gap-2 border-t pt-3 text-sm"><SummaryLine label="Total refunded" amount={item.amounts.paid - netPaid(item)} className="py-0" /><SummaryLine label="Paid after refunds" amount={netPaid(item)} className="py-0" /></div> : null}
+        {item.amounts.outstanding > 0 ? <p className="mt-3 rounded-lg bg-destructive/10 p-3 text-sm font-semibold text-destructive">Outstanding balance: {currency.format(item.amounts.outstanding)}</p> : null}
+        {item.amounts.refundable_credit > 0 ? <p className="mt-3 rounded-lg bg-primary/10 p-3 text-sm font-semibold text-primary">{item.status === "CANCELLED" ? "Refund recorded" : item.status === "COMPLETED" ? "Refund due" : "Refundable credit"}: {currency.format(item.amounts.refundable_credit)}</p> : null}
       </section>
       {hasAddOns ? <>
       <section className="rounded-xl border p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-heading font-bold">Paid add-ons</h3><span className="text-xs text-muted-foreground" aria-label="Schedule year">{item.booking_date.slice(0, 4)}</span></div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-heading font-bold">Recorded add-on charges</h3><span className="text-xs text-muted-foreground" aria-label="Schedule year">{item.booking_date.slice(0, 4)}</span></div>
+        <p className="mt-1 text-xs text-muted-foreground">Previous purchases remain recorded here. All active court times are included in the current summary above.</p>
         <div className="mt-3 divide-y divide-border/80">
-          {addOnSlots.map((slot) => <SummaryLine key={slot.id} label={<ReservationSlotLabel courtName={slot.court_name} date={slot.date} startHour={slot.start_hour} endHour={slot.end_hour} />} amount={slot.amount} />)}
+          {courtAddOnCharges.map((adjustment) => <SummaryLine key={adjustment.id} label={adjustment.description} amount={adjustment.total_amount} />)}
           {addOnPlayers.map((adjustment) => <SummaryLine key={adjustment.id} label={`${adjustment.description}: ${adjustment.quantity} × ${currency.format(adjustment.unit_amount)}`} amount={adjustment.total_amount} />)}
           {addOnEquipment.map((equipment) => <SummaryLine key={equipment.id} label={`${equipment.name}: ${equipment.quantity} × ${currency.format(equipment.unit_amount)}`} amount={equipment.total_amount} />)}
         </div>
         <div className="mt-3 grid gap-2 border-t pt-3 text-sm">
           <SummaryLine label="Total add-ons" amount={addOnTotal} />
-          <SummaryLine label="Add-on payment recorded" amount={addOnPaid} labelClassName="text-primary" amountClassName="text-primary" />
         </div>
       </section>
       <section className="rounded-xl border p-4">
         <h3 className="font-heading font-bold">Updated total</h3>
-        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+        <dl className="mt-3 grid gap-3 text-sm">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4"><dt className="text-muted-foreground">Original reservation</dt><dd className="whitespace-nowrap text-right font-bold tabular-nums">{currency.format(item.amounts.original)}</dd></div>
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4"><dt className="text-muted-foreground">Add-ons</dt><dd className="whitespace-nowrap text-right font-bold tabular-nums">{currency.format(addOnTotal)}</dd></div>
           {Math.abs(otherAdjustments) >= 0.01 ? <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4"><dt className="text-muted-foreground">Other adjustments</dt><dd className={`whitespace-nowrap text-right font-bold tabular-nums ${otherAdjustments < 0 ? "text-primary" : ""}`}>{currency.format(otherAdjustments)}</dd></div> : null}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4"><dt className="text-muted-foreground">Total paid</dt><dd className="whitespace-nowrap text-right font-bold tabular-nums">{currency.format(item.amounts.paid)}</dd></div>
         </dl>
         <div className="mt-4 border-t pt-3">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4"><span className="font-semibold">Updated reservation total</span><strong className="whitespace-nowrap text-right font-heading text-xl font-extrabold tabular-nums text-primary">{currency.format(item.amounts.final)}</strong></div>
-          {item.amounts.outstanding > 0 ? <p className="mt-3 rounded-lg bg-destructive/10 p-3 text-sm font-semibold text-destructive">Outstanding balance: {currency.format(item.amounts.outstanding)}</p> : null}
-          {item.amounts.refundable_credit > 0 ? <p className="mt-3 rounded-lg bg-primary/10 p-3 text-sm font-semibold text-primary">Refundable credit: {currency.format(item.amounts.refundable_credit)}</p> : null}
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4"><span className="font-semibold">Total paid</span><strong className="whitespace-nowrap text-right font-heading text-xl font-extrabold tabular-nums text-primary">{currency.format(item.amounts.paid)}</strong></div>
         </div>
       </section>
       </> : null}
@@ -236,19 +244,29 @@ export function RejectReservationDialog({ reservation, open, onOpenChange }: { r
 }
 
 function RescheduleForm({ reservation, onDone }: { reservation: ManagementReservation; onDone: () => void }) {
-  const initialRanges = [{ courtId: "", slots: [] }];
-  const requiredCount = reservation.slots?.filter((slot) => slot.kind !== "ADD_ON").length ?? 0;
-  const mutation = useRescheduleReservation();
+  const [initialDate] = useState(() => todayInTimeZone());
+  const emptyRanges = [{ courtId: "", slots: [] }];
+  const initialRanges = useMemo(() => {
+    const grouped = new Map<string, { courtId: string; slots: string[] }>();
+    for (const slot of reservation.slots ?? []) {
+      const courtId = String(slot.court_id);
+      const range = grouped.get(courtId) ?? { courtId, slots: [] };
+      range.slots.push(String(slot.start_hour));
+      grouped.set(courtId, range);
+    }
+    return grouped.size ? [...grouped.values()] : [{ courtId: "", slots: [] }];
+  }, [reservation.slots]);
+  const requiredCount = reservation.slots?.length ?? 0;
+  const mutation = useRescheduleReservation(onDone);
   const [addOnsOpen, setAddOnsOpen] = useState(false);
   const [pendingInput, setPendingInput] = useState<RescheduleReservationInput | null>(null);
-  const detailQuery = useReservation(reservation.id);
-  const detail = detailQuery.data ?? reservation;
+  const detail = reservation;
   const form = useForm<RescheduleReservationValues>({
     resolver: zodResolver(rescheduleReservationSchema(requiredCount)),
     defaultValues: {
-      date: reservation.booking_date,
+      date: initialDate,
       ranges: initialRanges,
-      add_on_ranges: initialRanges,
+      add_on_ranges: emptyRanges,
       additional_players: 0,
       equipment: {},
       payment_channel: null,
@@ -257,9 +275,9 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
       payment_proof: undefined,
     },
   });
-  const date = useWatch({ control: form.control, name: "date" }) ?? reservation.booking_date;
+  const date = useWatch({ control: form.control, name: "date" }) ?? initialDate;
   const ranges = useWatch({ control: form.control, name: "ranges" }) ?? initialRanges;
-  const addOnRanges = useWatch({ control: form.control, name: "add_on_ranges" }) ?? initialRanges;
+  const addOnRanges = useWatch({ control: form.control, name: "add_on_ranges" }) ?? emptyRanges;
   const players = useWatch({ control: form.control, name: "additional_players" }) ?? 0;
   const watchedEquipment = useWatch({ control: form.control, name: "equipment" });
   const equipment = watchedEquipment ?? emptyEquipment;
@@ -273,11 +291,10 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
   const paymentSelection = paymentChannel === "CASH" ? "CASH" : paymentMethodId ? `METHOD:${paymentMethodId}` : null;
   const selectedSlots = useMemo(() => expandRanges(date, ranges), [date, ranges]);
   const selectedAddOnSlots = useMemo(() => expandRanges(date, addOnRanges), [date, addOnRanges]);
-  const preservedAddOnSlots = (detail.slots ?? []).filter((slot) => slot.kind === "ADD_ON");
-  const optionHours = [...preservedAddOnSlots, ...selectedSlots, ...selectedAddOnSlots].map((slot) => slot.start_hour);
+  const optionHours = [...selectedSlots, ...selectedAddOnSlots].map((slot) => slot.start_hour);
   const rawOptions = useReservationOptions(date, optionHours, "management").data;
   const options = useMemo(() => {
-    if (!rawOptions) return undefined;
+    if (!rawOptions || rawOptions.date !== date) return undefined;
     const currentSlots = new Set((detail.slots ?? []).map((slot) => `${slot.date}-${slot.start_hour}`));
     const adjusted = {
       ...rawOptions,
@@ -289,8 +306,8 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
         })) };
       }),
     };
-    return { ...adjusted, equipment: equipmentForSchedule(adjusted, [...new Set([...preservedAddOnSlots.map((slot) => slot.start_hour), ...selectedSlots.map((slot) => slot.start_hour), ...selectedAddOnSlots.map((slot) => slot.start_hour)])]) };
-  }, [detail, preservedAddOnSlots, rawOptions, selectedAddOnSlots, selectedSlots]);
+    return { ...adjusted, equipment: equipmentForSchedule(adjusted, [...new Set([...selectedSlots.map((slot) => slot.start_hour), ...selectedAddOnSlots.map((slot) => slot.start_hour)])]) };
+  }, [date, detail, rawOptions, selectedAddOnSlots, selectedSlots]);
   useEffect(() => {
     if (!options) return;
     const corrected = Object.fromEntries(Object.entries(equipment).map(([id, quantity]) => [id, Math.min(quantity, options.equipment.find((item) => item.id === Number(id))?.available_quantity ?? 0)]));
@@ -306,45 +323,38 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
     const court = options?.courts.find((candidate) => candidate.id === slot.court_id);
     return { ...slot, courtName: court?.name ?? `Court ${slot.court_id}`, endHour: option?.end_hour ?? slot.start_hour + 1, amount: Number(option?.price ?? 0) };
   });
-  const migratedAddOnDetails = preservedAddOnSlots.map((slot) => {
-    const option = options?.slots.find((candidate) => candidate.start_hour === slot.start_hour);
-    const court = options?.courts.find((candidate) => candidate.id === slot.court_id);
-    return { ...slot, date, courtName: court?.name ?? slot.court_name, endHour: option?.end_hour ?? slot.end_hour, amount: Number(option?.price ?? slot.amount) };
-  });
   const selectedEquipment = (options?.equipment ?? []).filter((item) => (equipment[item.id] ?? 0) > 0);
-  const originalSlots = (detail.slots ?? []).filter((slot) => slot.kind !== "ADD_ON");
-  const originalSlotAmount = originalSlots.reduce((total, slot) => total + slot.amount, 0);
+  const currentSlots = detail.slots ?? [];
+  const currentSlotAmount = currentSlots.reduce((total, slot) => total + slot.amount, 0);
   const replacementAmount = replacementDetails.reduce((total, slot) => total + slot.amount, 0);
-  const oldAddOnSlotAmount = preservedAddOnSlots.reduce((total, slot) => total + slot.amount, 0);
-  const migratedAddOnSlotAmount = migratedAddOnDetails.reduce((total, slot) => total + slot.amount, 0);
-  const migratedAddOnUnavailable = options ? preservedAddOnSlots.some((slot) => {
-    const courtExists = options.courts.some((court) => court.id === slot.court_id);
-    const periodExists = options.slots.some((period) => period.start_hour === slot.start_hour);
-    if (!courtExists || !periodExists || options.is_date_closed) return true;
-    const unavailable = options.unavailable_slots.some((item) => item.court_id === slot.court_id && item.start_hour === slot.start_hour);
-    const past = options.past_slots.some((item) => item.court_id === slot.court_id && item.start_hour === slot.start_hour);
-    return past || (date !== slot.date && unavailable);
-  }) : false;
   const addOnSlotAmount = addOnDetails.reduce((total, slot) => total + slot.amount, 0);
   const playerAmount = players * (options?.configuration?.additional_player_price ?? 0);
   const equipmentAmount = selectedEquipment.reduce((total, item) => total + (equipment[item.id] ?? 0) * item.price, 0);
   const addOnAmount = addOnSlotAmount + playerAmount + equipmentAmount;
-  const updatedTotal = (detail.amounts.final ?? 0) + (replacementAmount + migratedAddOnSlotAmount - originalSlotAmount - oldAddOnSlotAmount) + addOnAmount;
-  const amountToPay = Math.max(0, updatedTotal - (detail.amounts.paid ?? 0));
-  const resultingCredit = Math.max(0, (detail.amounts.paid ?? 0) - updatedTotal);
+  const updatedTotal = (detail.amounts.final ?? 0) + (replacementAmount - currentSlotAmount) + addOnAmount;
+  const amountToPay = Math.max(0, Math.round((updatedTotal - netPaid(detail)) * 100) / 100);
+  const resultingCredit = Math.max(0, Math.round((netPaid(detail) - updatedTotal) * 100) / 100);
+  const [refundSettled, setRefundSettled] = useState(false);
+  const refundToSettle = pendingInput?.quoted_refund_amount ?? 0;
   const slotCount = selectedSlots.length;
   const scheduleComplete = slotCount === requiredCount && ranges.every((range) => Boolean(range.courtId) && range.slots.length > 0);
   const addOnRangesComplete = addOnRanges.every((range) => (!range.courtId && range.slots.length === 0) || (Boolean(range.courtId) && range.slots.length > 0));
   const selectedKeys = [
-    ...preservedAddOnSlots.map((slot) => `${slot.court_id}-${slot.start_hour}`),
     ...ranges.concat(addOnRanges).filter((range) => range.courtId && range.slots.length > 0).flatMap((range) => range.slots.map((slot) => `${range.courtId}-${slot}`)),
   ];
   const hasDuplicateSelection = new Set(selectedKeys).size !== selectedKeys.length;
+  const unavailableSelection = options ? [...selectedSlots, ...selectedAddOnSlots].some((slot) => {
+    const isCurrent = currentSlots.some((held) => held.court_id === slot.court_id && held.date === date && held.start_hour === slot.start_hour);
+    return options.is_date_closed || !options.courts.some((court) => court.id === slot.court_id)
+      || !options.slots.some((period) => period.start_hour === slot.start_hour)
+      || options.past_slots.some((past) => past.court_id === slot.court_id && past.start_hour === slot.start_hour)
+      || (!isCurrent && options.unavailable_slots.some((held) => held.court_id === slot.court_id && held.start_hour === slot.start_hour));
+  }) : false;
   const pricingReady = Boolean(options);
   const paymentRequired = pricingReady && scheduleComplete && addOnRangesComplete && amountToPay > 0;
   const nonCashPayment = paymentChannel === "EWALLET_BANK" && Boolean(paymentMethodId);
   const paymentComplete = !paymentRequired || paymentChannel === "CASH" || (nonCashPayment && Boolean(paymentReference.trim()) && Boolean(paymentProof?.item(0)));
-  const canSubmit = scheduleComplete && addOnRangesComplete && !hasDuplicateSelection && !migratedAddOnUnavailable && Boolean(options) && paymentComplete && !mutation.isPending;
+  const canSubmit = requiredCount > 0 && scheduleComplete && addOnRangesComplete && !hasDuplicateSelection && !unavailableSelection && Boolean(options) && paymentComplete && !mutation.isPending;
   const submit = form.handleSubmit((values) => {
     if (!reservation || (amountToPay > 0 && !paymentComplete)) {
       if (amountToPay > 0 && !paymentChannel) form.setError("payment_channel", { message: "Choose how the outstanding balance was collected." });
@@ -352,6 +362,10 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
     }
     const proof = values.payment_proof?.item(0);
     const input: RescheduleReservationInput = {
+      expected_revision: reservation.revision,
+      quoted_amount: updatedTotal,
+      quoted_payment_amount: amountToPay,
+      quoted_refund_amount: resultingCredit,
       slots: expandRanges(values.date, values.ranges ?? []),
       add_on_slots: expandRanges(values.date, values.add_on_ranges ?? []),
       additional_players: values.additional_players ?? 0,
@@ -363,56 +377,93 @@ function RescheduleForm({ reservation, onDone }: { reservation: ManagementReserv
         payment_proof: proof && proof.size > 0 ? proof : undefined,
       } : {}),
     };
+    setRefundSettled(false);
     setPendingInput(input);
   });
   function confirm() {
-    if (!pendingInput) return;
+    if (!pendingInput || (refundToSettle > 0 && !refundSettled)) return;
     mutation.mutate(
-      { id: reservation.id, input: pendingInput },
-      { onSuccess: () => { setPendingInput(null); onDone(); }, onError: () => setPendingInput(null) },
+      { id: reservation.id, input: { ...pendingInput, ...(refundToSettle > 0 ? { refund_settled: true } : {}) } },
+      { onError: (error) => { setPendingInput(null); if (isApiError(error) && error.code === "RESERVATION_REQUEST_KEY_REUSED") onDone(); } },
     );
   }
   const scheduleError = form.formState.errors.date?.message ?? form.formState.errors.ranges?.message;
   const addOnScheduleError = form.formState.errors.add_on_ranges?.message ?? (form.formState.errors.add_on_ranges ? "Complete each added court time." : undefined);
   const paymentError = form.formState.errors.payment_channel?.message ?? form.formState.errors.payment_method_id?.message;
-  const oldBaseSlots = originalSlots.map((slot) => ({ court_id: slot.court_id, start_hour: slot.start_hour, date: slot.date }));
-  return <><form onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Reschedule {reservation.reference_number}?</DialogTitle><DialogDescription>Choose exactly {requiredCount} replacement slots. Existing add-on court times move to the new date at their same court and hour, using the current configured price. Players and equipment stay on this reservation.</DialogDescription></DialogHeader>
-    <ScheduleFields idPrefix="reservation-replacement" date={date} setDate={(nextDate) => form.setValue("date", nextDate, { shouldDirty: true, shouldValidate: true })} ranges={ranges} setRanges={(nextRanges) => form.setValue("ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} allowedCurrentSlots={oldBaseSlots} disableClosedDates={false} maxSelectedSlots={requiredCount} onRemoveRange={(index) => form.setValue("ranges", ranges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={scheduleError} />
+  const existingPlayers = detail.additional_players.original_quantity + (detail.adjustments ?? []).filter((adjustment) => adjustment.type === "ADDITIONAL_PLAYER").reduce((sum, adjustment) => sum + adjustment.quantity, 0);
+  const allowedCurrentSlots = currentSlots.map((slot) => ({ court_id: slot.court_id, start_hour: slot.start_hour, date: slot.date }));
+  return <><form onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Reschedule {reservation.reference_number}?</DialogTitle><DialogDescription>Choose exactly {requiredCount} replacement slots for all current court times, including previous add-ons. Existing players, equipment, and payments carry forward. Use add-ons only for new purchases.</DialogDescription></DialogHeader>
+    <section className="rounded-xl border bg-muted/20 p-4" aria-label="Current booking">
+      <h3 className="font-semibold">Current booking</h3>
+      <p className="mt-1 text-sm text-muted-foreground">{requiredCount} court slots · {formatDateOnly(detail.booking_date)}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{existingPlayers} additional players carried forward{detail.equipment?.length ? ` · Equipment: ${detail.equipment.map((item) => `${item.name} × ${item.quantity}`).join(", ")}` : ""}</p>
+      <div className="mt-3 grid gap-2 text-sm">
+        <SummaryLine label="Current reservation total" amount={detail.amounts.final} className="py-0" />
+        <SummaryLine label="Total already paid" amount={detail.amounts.paid} className="py-0" />
+        {netPaid(detail) < detail.amounts.paid ? <><SummaryLine label="Already refunded" amount={detail.amounts.paid - netPaid(detail)} className="py-0" /><SummaryLine label="Paid after refunds" amount={netPaid(detail)} className="py-0" /></> : null}
+        {detail.amounts.refundable_credit > 0 ? <SummaryLine label="Existing credit" amount={detail.amounts.refundable_credit} className="py-0" /> : null}
+        {detail.amounts.outstanding > 0 ? <SummaryLine label="Outstanding balance" amount={detail.amounts.outstanding} className="py-0" /> : null}
+      </div>
+    </section>
+    <ScheduleFields idPrefix="reservation-replacement" date={date} setDate={(nextDate) => form.setValue("date", nextDate, { shouldDirty: true, shouldValidate: true })} ranges={ranges} setRanges={(nextRanges) => form.setValue("ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} allowedCurrentSlots={allowedCurrentSlots} disableClosedDates={false} maxSelectedSlots={requiredCount} onRemoveRange={(index) => form.setValue("ranges", ranges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={scheduleError} />
     <Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" disabled={slotCount >= requiredCount} onClick={() => form.setValue("ranges", [...ranges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another court</Button>
     <p className={slotCount === requiredCount ? "text-sm font-semibold text-primary" : "text-sm font-semibold text-destructive"}>{slotCount} of {requiredCount} replacement slots selected</p>
-    {hasDuplicateSelection ? <p role="alert" className="text-sm font-semibold text-destructive">A replacement or new add-on overlaps an existing add-on court time.</p> : null}
-    {migratedAddOnUnavailable ? <p role="alert" className="text-sm font-semibold text-destructive">An existing add-on court time is unavailable on the new date. Choose another date before rescheduling.</p> : null}
-    <section className="rounded-xl border"><button type="button" className="flex min-h-12 w-full items-center justify-between gap-4 px-4 text-left font-semibold" aria-expanded={addOnsOpen} onClick={() => setAddOnsOpen((open) => !open)}><span>Add-ons for the new schedule?</span><FiChevronDown className={`shrink-0 transition-transform ${addOnsOpen ? "rotate-180" : ""}`} aria-hidden="true" /></button>{addOnsOpen ? <div className="grid gap-4 border-t p-4"><p className="text-sm text-muted-foreground">Add court time, players, or rental equipment to the same reservation.</p><ScheduleFields idPrefix="reservation-reschedule-addon" date={date} setDate={() => undefined} showDate={false} ranges={addOnRanges} setRanges={(nextRanges) => form.setValue("add_on_ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} disableClosedDates={false} onRemoveRange={(index) => form.setValue("add_on_ranges", addOnRanges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={addOnScheduleError} /><Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" onClick={() => form.setValue("add_on_ranges", [...addOnRanges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another add-on court</Button><div className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><h4 className="font-semibold">Additional players</h4><p className="text-sm text-muted-foreground">{currency.format(options?.configuration?.additional_player_price ?? 0)} each</p></div><QuantityStepper value={players} decreaseDisabled={players === 0} increaseDisabled={false} decreaseLabel="Remove one additional player" increaseLabel="Add one additional player" onDecrease={() => form.setValue("additional_players", Math.max(0, players - 1), { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("additional_players", players + 1, { shouldDirty: true, shouldValidate: true })} /></div><div className="rounded-xl border p-4"><h4 className="font-semibold">Rental equipment</h4><div className="mt-3 grid gap-3">{options?.equipment.map((item) => { const quantity = equipment[item.id] ?? 0; return <div key={item.id} className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0"><div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · {item.available_quantity === 0 ? "Unavailable for selected schedule" : `${item.available_quantity} available for your selected schedule`}</p></div><QuantityStepper value={quantity} decreaseDisabled={quantity === 0} increaseDisabled={quantity >= item.available_quantity} decreaseLabel={`Remove one ${item.name}`} increaseLabel={`Add one ${item.name}`} onDecrease={() => form.setValue("equipment", { ...equipment, [item.id]: Math.max(0, quantity - 1) }, { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("equipment", { ...equipment, [item.id]: quantity + 1 }, { shouldDirty: true, shouldValidate: true })} /></div>; })}</div></div></div> : null}</section>
-    {scheduleComplete && addOnRangesComplete && pricingReady ? <section className="rounded-xl border p-4"><h3 className="font-semibold">Updated balance</h3>{date ? <p className="mt-1 text-xs text-muted-foreground">{formatDateOnly(date)}</p> : null}<div className="mt-3 grid gap-2 text-sm">{replacementDetails.map((slot) => <SummaryLine key={`replacement-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} />} amount={slot.amount} className="py-0" />)}{migratedAddOnDetails.map((slot) => <SummaryLine key={`migrated-add-on-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} prefix="Existing add-on moved" />} amount={slot.amount} className="py-0" />)}{addOnDetails.map((slot) => <SummaryLine key={`add-on-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} prefix="New add-on" />} amount={slot.amount} className="py-0" />)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={item.id} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-2 grid gap-2 border-t pt-3"><div className="flex justify-between gap-3"><span>Current reservation total</span><strong>{currency.format(detail.amounts.final)}</strong></div>{detail.amounts.outstanding > 0 ? <div className="flex justify-between gap-3 text-muted-foreground"><span>Current outstanding balance</span><strong>{currency.format(detail.amounts.outstanding)}</strong></div> : null}<div className="flex justify-between gap-3"><span>Updated reservation total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <div className="flex justify-between gap-3 text-base font-extrabold text-destructive"><span>Balance to collect now</span><strong>{currency.format(amountToPay)}</strong></div> : resultingCredit > 0 ? <div className="flex justify-between gap-3 text-base font-extrabold text-primary"><span>Refundable credit</span><strong>{currency.format(resultingCredit)}</strong></div> : <div className="flex justify-between gap-3 font-semibold text-primary"><span>No balance difference</span><strong>{currency.format(0)}</strong></div>}</div></div></section> : null}
+    {hasDuplicateSelection ? <p role="alert" className="text-sm font-semibold text-destructive">Replacement and new add-on court times cannot overlap.</p> : null}
+    {unavailableSelection ? <p role="alert" className="text-sm font-semibold text-destructive">One or more selected court times are unavailable. Update the replacement schedule before continuing.</p> : null}
+    <section className="rounded-xl border"><button type="button" className="flex min-h-12 w-full items-center justify-between gap-4 px-4 text-left font-semibold" aria-expanded={addOnsOpen} onClick={() => setAddOnsOpen((open) => !open)}><span>Add-ons for the new schedule?</span><FiChevronDown className={`shrink-0 transition-transform ${addOnsOpen ? "rotate-180" : ""}`} aria-hidden="true" /></button>{addOnsOpen ? <div className="grid gap-4 border-t p-4"><p className="text-sm text-muted-foreground">Add court time, players, or rental equipment to the same reservation.</p><ScheduleFields idPrefix="reservation-reschedule-addon" date={date} setDate={() => undefined} showDate={false} ranges={addOnRanges} setRanges={(nextRanges) => form.setValue("add_on_ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} disableClosedDates={false} onRemoveRange={(index) => form.setValue("add_on_ranges", addOnRanges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={addOnScheduleError} /><Button type="button" variant="link" size="sm" className="h-auto w-fit px-0" onClick={() => form.setValue("add_on_ranges", [...addOnRanges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another add-on court</Button><div className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><h4 className="font-semibold">New additional players</h4><p className="text-sm text-muted-foreground">{currency.format(options?.configuration?.additional_player_price ?? 0)} each</p></div><QuantityStepper value={players} decreaseDisabled={players === 0} increaseDisabled={false} decreaseLabel="Remove one additional player" increaseLabel="Add one additional player" onDecrease={() => form.setValue("additional_players", Math.max(0, players - 1), { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("additional_players", players + 1, { shouldDirty: true, shouldValidate: true })} /></div><div className="rounded-xl border p-4"><h4 className="font-semibold">Additional rental equipment</h4><div className="mt-3 grid gap-3">{options?.equipment.map((item) => { const quantity = equipment[item.id] ?? 0; return <div key={item.id} className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0"><div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · {item.available_quantity === 0 ? "Unavailable for selected schedule" : `${item.available_quantity} available for your selected schedule`}</p></div><QuantityStepper value={quantity} decreaseDisabled={quantity === 0} increaseDisabled={quantity >= item.available_quantity} decreaseLabel={`Remove one ${item.name}`} increaseLabel={`Add one ${item.name}`} onDecrease={() => form.setValue("equipment", { ...equipment, [item.id]: Math.max(0, quantity - 1) }, { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("equipment", { ...equipment, [item.id]: quantity + 1 }, { shouldDirty: true, shouldValidate: true })} /></div>; })}</div></div></div> : null}</section>
+    {scheduleComplete && addOnRangesComplete && pricingReady ? <section className="rounded-xl border p-4"><h3 className="font-semibold">Updated balance</h3>{date ? <p className="mt-1 text-xs text-muted-foreground">{formatDateOnly(date)}</p> : null}<div className="mt-3 grid gap-2 text-sm">{replacementDetails.map((slot) => <SummaryLine key={`replacement-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} />} amount={slot.amount} className="py-0" />)}{addOnDetails.map((slot) => <SummaryLine key={`add-on-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} prefix="New add-on" />} amount={slot.amount} className="py-0" />)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={item.id} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-2 grid gap-2 border-t pt-3"><div className="flex justify-between gap-3"><span>Current reservation total</span><strong>{currency.format(detail.amounts.final)}</strong></div>{detail.amounts.outstanding > 0 ? <div className="flex justify-between gap-3 text-muted-foreground"><span>Current outstanding balance</span><strong>{currency.format(detail.amounts.outstanding)}</strong></div> : null}<div className="flex justify-between gap-3"><span>Updated reservation total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <div className="flex justify-between gap-3 text-base font-extrabold text-destructive"><span>Balance to collect now</span><strong>{currency.format(amountToPay)}</strong></div> : resultingCredit > 0 ? <div className="flex justify-between gap-3 text-base font-extrabold text-primary"><span>Refund to settle now</span><strong>{currency.format(resultingCredit)}</strong></div> : <div className="flex justify-between gap-3 font-semibold text-primary"><span>No balance difference</span><strong>{currency.format(0)}</strong></div>}</div></div></section> : null}
     {paymentRequired ? <section className="grid gap-4 rounded-xl border p-4"><div><h3 className="font-semibold">Payment method</h3><p className="text-sm text-muted-foreground">Collect the full outstanding balance after this reschedule.</p></div><SelectWithLabel id="reservation-reschedule-payment-method" label="Payment method" required value={paymentSelection} error={paymentError} options={[{ value: "CASH", label: "Cash" }, ...paymentMethods.map((method) => ({ value: `METHOD:${method.id}`, label: method.name }))]} placeholder="Select payment method" onValueChange={(value) => { if (!value) return; if (value === "CASH") { form.setValue("payment_channel", "CASH", { shouldDirty: true, shouldValidate: true }); form.setValue("payment_method_id", undefined, { shouldDirty: true, shouldValidate: true }); form.setValue("payment_reference_number", "", { shouldDirty: true, shouldValidate: true }); form.resetField("payment_proof", { defaultValue: undefined }); } else { form.setValue("payment_channel", "EWALLET_BANK", { shouldDirty: true, shouldValidate: true }); form.setValue("payment_method_id", Number(value.replace("METHOD:", "")), { shouldDirty: true, shouldValidate: true }); } }} description={paymentMethodsQuery.isPending ? "Loading active e-wallet and bank methods…" : "Cash or an active payment account."} />{paymentMethodsQuery.isError ? <p role="alert" className="text-sm text-destructive">Online payment methods could not be loaded. Cash remains available.</p> : null}{selectedPaymentMethod ? <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-muted-foreground">Account name</dt><dd className="font-medium">{selectedPaymentMethod.account_name}</dd></div><div><dt className="text-muted-foreground">Account number</dt><dd className="font-medium">{selectedPaymentMethod.account_number}</dd></div></dl><PaymentMethodQrDialog method={selectedPaymentMethod} /></div> : null}<Field label="Transaction number" required={nonCashPayment} error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_reference_number")} /></Field><Field label="Payment proof" required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field><div className="rounded-lg bg-muted/30 p-3 text-sm font-semibold"><div className="flex justify-between gap-3"><span>Balance to collect now</span><strong>{currency.format(amountToPay)}</strong></div></div></section> : null}
     <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep current schedule</Button>} /><Button type="submit" disabled={!canSubmit || mutation.isPending || isMutationRateLimited(mutation)}>Review reschedule</Button></DialogFooter>
   </form>
   <ReservationActionConfirmationDialog
     open={Boolean(pendingInput)}
-    onOpenChange={(nextOpen) => { if (!nextOpen) setPendingInput(null); }}
+    onOpenChange={(nextOpen) => { if (!nextOpen) { setPendingInput(null); setRefundSettled(false); } }}
     title={`Reschedule ${reservation.reference_number}?`}
-    description="This records a new schedule and any related payment or credit. Review the result before continuing."
-    confirmLabel={mutationButtonLabel("Rescheduling…", "Confirm reschedule", mutation)}
+    description={refundToSettle > 0 ? `Return ${currency.format(refundToSettle)} to the customer before confirming this reschedule. This records the refund as settled.` : "This records the new schedule and any payment collected. Review the result before continuing."}
+    confirmLabel={mutationButtonLabel("Rescheduling…", refundToSettle > 0 ? "Confirm refund and reschedule" : "Confirm reschedule", mutation)}
     pending={mutation.isPending}
-    disabled={isMutationRateLimited(mutation)}
+    disabled={isMutationRateLimited(mutation) || (refundToSettle > 0 && !refundSettled)}
     onConfirm={confirm}
   >
-    <div className="grid gap-2"><p className="font-semibold">Replacement schedule{date ? ` · ${formatDateOnly(date)}` : ""}</p>{replacementDetails.map((slot) => <SummaryLine key={`confirm-replacement-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} />} amount={slot.amount} className="py-0" />)}{migratedAddOnDetails.map((slot) => <SummaryLine key={`confirm-migrated-add-on-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} prefix="Existing add-on moved" />} amount={slot.amount} className="py-0" />)}{addOnDetails.map((slot) => <SummaryLine key={`confirm-add-on-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} prefix="New add-on" />} amount={slot.amount} className="py-0" />)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={`confirm-equipment-${item.id}`} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-1 grid gap-2 border-t pt-3"><div className="flex justify-between gap-3"><span>Updated total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <div className="flex justify-between gap-3 font-semibold text-destructive"><span>Collect now</span><strong>{currency.format(amountToPay)}</strong></div> : resultingCredit > 0 ? <div className="flex justify-between gap-3 font-semibold text-primary"><span>Refundable credit</span><strong>{currency.format(resultingCredit)}</strong></div> : null}</div></div>
+    <div className="grid gap-2"><p className="font-semibold">Replacement schedule{date ? ` · ${formatDateOnly(date)}` : ""}</p>{replacementDetails.map((slot) => <SummaryLine key={`confirm-replacement-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} />} amount={slot.amount} className="py-0" />)}{addOnDetails.map((slot) => <SummaryLine key={`confirm-add-on-${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} startHour={slot.start_hour} endHour={slot.endHour} prefix="New add-on" />} amount={slot.amount} className="py-0" />)}{players > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {players}</span><strong>{currency.format(playerAmount)}</strong></div> : null}{selectedEquipment.map((item) => <div key={`confirm-equipment-${item.id}`} className="flex justify-between gap-3"><span>{item.name} · {equipment[item.id] ?? 0}</span><strong>{currency.format((equipment[item.id] ?? 0) * item.price)}</strong></div>)}<div className="mt-1 grid gap-2 border-t pt-3"><div className="flex justify-between gap-3"><span>Updated total</span><strong>{currency.format(updatedTotal)}</strong></div>{amountToPay > 0 ? <div className="flex justify-between gap-3 font-semibold text-destructive"><span>Collect now</span><strong>{currency.format(amountToPay)}</strong></div> : resultingCredit > 0 ? <div className="flex justify-between gap-3 font-semibold text-primary"><span>Refund to settle now</span><strong>{currency.format(resultingCredit)}</strong></div> : null}</div></div>
+    {refundToSettle > 0 ? <div className="mt-4 rounded-xl border bg-muted/20 p-4"><p className="font-semibold">Refund customer: {currency.format(refundToSettle)}</p><p className="mt-1 text-sm text-muted-foreground">The refund will not remain available as credit for future purchases.</p><div className="mt-3 flex items-start gap-3"><Checkbox id="reschedule-refund-settled" checked={refundSettled} onCheckedChange={(checked) => setRefundSettled(checked === true)} disabled={mutation.isPending} /><Label htmlFor="reschedule-refund-settled" className="leading-5">I confirm the customer has received {currency.format(refundToSettle)}.</Label></div></div> : null}
   </ReservationActionConfirmationDialog></>;
 }
 
+function CurrentReservationContent({ reservationId, title, statuses, children }: {
+  reservationId: number;
+  title: string;
+  statuses: ManagementReservation["status"][];
+  children: (reservation: ManagementReservation) => React.ReactNode;
+}) {
+  const query = useReservation(reservationId, { refetchOnMount: "always" });
+  if (query.isError || !query.isFetchedAfterMount || !query.data || !statuses.includes(query.data.status)) {
+    return <>
+      <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>Review the latest reservation before continuing.</DialogDescription></DialogHeader>
+      {query.isError ? <ErrorState title="We couldn't load the current reservation." onRetry={() => void query.refetch()} />
+        : !query.isFetchedAfterMount || !query.data ? <LoadingState message="Loading the current schedule and payments…" />
+          : <ErrorState title="This action is no longer available for this reservation." description="Its status has changed. Close this dialog and refresh the list." />}
+    </>;
+  }
+  return children(query.data);
+}
+
 export function RescheduleReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl">{open && reservation ? <RescheduleForm key={`${reservation.id}-${reservation.reschedule_count}`} reservation={reservation} onDone={() => onOpenChange(false)} /> : null}</DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl">{open && reservation ? <CurrentReservationContent reservationId={reservation.id} title="Reschedule reservation" statuses={["VERIFIED"]}>{(current) => <RescheduleForm key={JSON.stringify(current)} reservation={current} onDone={() => onOpenChange(false)} />}</CurrentReservationContent> : null}</DialogContent></Dialog>;
 }
 
 export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const date = reservation?.booking_date ?? "";
-  const detail = useReservation(open ? reservation?.id ?? null : null).data;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl">{open && reservation ? <CurrentReservationContent reservationId={reservation.id} title="Add reservation items" statuses={["VERIFIED", "ONGOING"]}>{(current) => <AddOnsForm key={JSON.stringify(current)} reservation={current} onOpenChange={onOpenChange} />}</CurrentReservationContent> : null}</DialogContent></Dialog>;
+}
+
+function AddOnsForm({ reservation, onOpenChange }: { reservation: ManagementReservation; onOpenChange: (open: boolean) => void }) {
+  const date = reservation.booking_date;
+  const detail = reservation;
   const paymentMethodsQuery = usePublicPaymentMethods();
   const paymentMethods = paymentMethodsQuery.data ?? [];
   const [courtOpen, setCourtOpen] = useState(false);
   const [pendingInput, setPendingInput] = useState<ReservationAddOnsInput | null>(null);
-  const mutation = useAddReservationAddOns();
+  const mutation = useAddReservationAddOns(() => onOpenChange(false));
   const form = useForm<ReservationAddOnsValues>({
     resolver: zodResolver(reservationAddOnsSchema),
     defaultValues: { ranges: [{ courtId: "", slots: [] }], additional_players: 0, equipment: {}, payment_channel: null, payment_method_id: undefined, payment_reference_number: "", payment_proof: undefined },
@@ -427,13 +478,9 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
   const nonCashPayment = paymentChannel === "EWALLET_BANK" && Boolean(paymentMethodId);
   const paymentReference = useWatch({ control: form.control, name: "payment_reference_number" }) ?? "";
   const paymentProof = useWatch({ control: form.control, name: "payment_proof" });
-  useEffect(() => {
-    if (open) {
-      form.reset({ ranges: [{ courtId: "", slots: [] }], additional_players: 0, equipment: {}, payment_channel: null, payment_method_id: undefined, payment_reference_number: "", payment_proof: undefined });
-    }
-  }, [form, open, reservation?.id]);
   const selectedSlots = useMemo(() => expandRanges(date, ranges), [date, ranges]);
-  const rawOptions = useReservationOptions(date, [...(detail?.slots ?? []).map((slot) => slot.start_hour), ...selectedSlots.map((slot) => slot.start_hour)], "management").data;
+  const optionsQuery = useReservationOptions(date, [...(detail.slots ?? []).map((slot) => slot.start_hour), ...selectedSlots.map((slot) => slot.start_hour)], "management");
+  const rawOptions = optionsQuery.data;
   const options = useMemo(() => {
     if (!rawOptions) return undefined;
     const currentHours = new Set((detail?.slots ?? []).map((slot) => slot.start_hour));
@@ -461,17 +508,32 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
   const playerAmount = players * (options?.configuration?.additional_player_price ?? 0);
   const equipmentAmount = selectedEquipment.reduce((total, item) => total + (equipment[item.id] ?? 0) * item.price, 0);
   const addOnAmount = slotAmount + playerAmount + equipmentAmount;
-  const currentTotal = detail?.amounts.final ?? reservation?.amounts.final ?? 0;
-  const currentBalance = Math.max(detail?.amounts.outstanding ?? reservation?.amounts.outstanding ?? 0, 0);
-  const currentCredit = Math.max(detail?.amounts.refundable_credit ?? reservation?.amounts.refundable_credit ?? 0, 0);
+  const currentTotal = detail.amounts.final;
+  const currentBalance = Math.max(detail.amounts.outstanding, 0);
+  const currentCredit = Math.max(detail.amounts.refundable_credit, 0);
   const updatedTotal = currentTotal + addOnAmount;
   const creditApplied = Math.min(currentCredit, addOnAmount + currentBalance);
   const remainingCredit = Math.max(0, currentCredit - creditApplied);
   const amountToPay = Math.max(0, addOnAmount + currentBalance - creditApplied);
   const requiresPayment = amountToPay > 0;
+  useEffect(() => {
+    if (!requiresPayment && paymentChannel) {
+      form.setValue("payment_channel", null, { shouldValidate: true });
+      form.setValue("payment_method_id", undefined, { shouldValidate: true });
+      form.setValue("payment_reference_number", "", { shouldValidate: true });
+      form.resetField("payment_proof", { defaultValue: undefined });
+    }
+  }, [form, paymentChannel, requiresPayment]);
   const paymentComplete = !requiresPayment || paymentChannel === "CASH" || (nonCashPayment && Boolean(paymentReference.trim()) && Boolean(paymentProof?.item(0)));
   const hasInput = selectedSlots.length > 0 || players > 0 || selectedEquipment.length > 0;
+  const pricingReady = Boolean(options?.configuration) && !optionsQuery.isError && !optionsQuery.isPlaceholderData && !optionsQuery.isFetching;
+  const unavailable = new Set((options?.unavailable_slots ?? []).map((slot) => `${slot.court_id}-${slot.start_hour}`));
+  const slotsAvailable = selectedSlots.every((slot) => options?.courts.some((court) => court.id === slot.court_id)
+    && options.slots.some((hour) => hour.start_hour === slot.start_hour)
+    && !options.is_date_closed && !(options.past_slots ?? []).some((past) => past.court_id === slot.court_id && past.start_hour === slot.start_hour)
+    && !unavailable.has(`${slot.court_id}-${slot.start_hour}`));
   const submit = form.handleSubmit((values) => {
+    if (!pricingReady || !slotsAvailable) return;
     if (!reservation) return;
     if (requiresPayment && !values.payment_channel) {
       form.setError("payment_channel", { message: "Choose a payment method." });
@@ -481,13 +543,18 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
     const selectedEquipment = (options?.equipment ?? []).filter((item) => (values.equipment[item.id] ?? 0) > 0);
     const proof = values.payment_proof?.item(0);
     const input: ReservationAddOnsInput = {
+      expected_revision: reservation.revision,
+      quoted_amount: updatedTotal,
+      quoted_payment_amount: amountToPay,
       slots: selectedSlots,
       additional_players: values.additional_players,
       equipment: selectedEquipment.map((item) => ({ id: item.id, quantity: values.equipment[item.id] ?? 0 })),
-      payment_channel: values.payment_channel ?? undefined,
-      payment_method_id: values.payment_method_id,
-      payment_reference_number: values.payment_reference_number?.trim() || undefined,
-      payment_proof: proof && proof.size > 0 ? proof : undefined,
+      ...(requiresPayment ? {
+        payment_channel: values.payment_channel ?? undefined,
+        payment_method_id: values.payment_method_id,
+        payment_reference_number: values.payment_reference_number?.trim() || undefined,
+        payment_proof: proof && proof.size > 0 ? proof : undefined,
+      } : {}),
     };
     setPendingInput(input);
   });
@@ -495,13 +562,17 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
     if (!reservation || !pendingInput) return;
     mutation.mutate(
       { id: reservation.id, input: pendingInput },
-      { onSuccess: () => { setPendingInput(null); onOpenChange(false); }, onError: () => setPendingInput(null) },
+      { onError: (error) => { setPendingInput(null); if (isApiError(error) && error.code === "RESERVATION_REQUEST_KEY_REUSED") onOpenChange(false); } },
     );
   }
   const scheduleError = form.formState.errors.ranges?.message ?? (form.formState.errors.ranges ? "Complete each selected court time." : undefined);
   const paymentChannelError = form.formState.errors.payment_channel?.message;
   const paymentMethodError = form.formState.errors.payment_method_id?.message;
-  return <><Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) setCourtOpen(false); onOpenChange(nextOpen); }}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-4"><DialogHeader><DialogTitle>Add these items to {reservation?.reference_number}?</DialogTitle><DialogDescription>Add available court time, players, or rental equipment to this reservation. Added court time is limited to the reservation date.</DialogDescription></DialogHeader>
+  if (optionsQuery.isError || !options) return <>
+    <DialogHeader><DialogTitle>Add reservation items</DialogTitle><DialogDescription>Load current pricing and availability before adding items.</DialogDescription></DialogHeader>
+    {optionsQuery.isError ? <ErrorState title="We couldn't load pricing and availability." onRetry={() => void optionsQuery.refetch()} /> : <LoadingState message="Loading current pricing and availability…" />}
+  </>;
+  return <><form onSubmit={submit} noValidate className="grid gap-4"><DialogHeader><DialogTitle>Add these items to {reservation?.reference_number}?</DialogTitle><DialogDescription>Add available court time, players, or rental equipment to this reservation. Added court time is limited to the reservation date.</DialogDescription></DialogHeader>
     <section className="rounded-xl border"><button type="button" className="flex min-h-12 w-full items-center justify-between px-4 font-semibold" onClick={() => setCourtOpen(!courtOpen)}>Add court time?<FiChevronDown className={courtOpen ? "rotate-180" : ""} aria-hidden /></button>{courtOpen ? <div className="border-t p-4"><ScheduleFields date={date} setDate={() => undefined} dateLocked ranges={ranges} setRanges={(nextRanges) => form.setValue("ranges", nextRanges, { shouldDirty: true, shouldValidate: true })} onRemoveRange={(index) => form.setValue("ranges", ranges.filter((_, rangeIndex) => rangeIndex !== index), { shouldDirty: true, shouldValidate: true })} error={scheduleError} /><Button type="button" variant="link" size="sm" className="mt-3 h-auto px-0" onClick={() => form.setValue("ranges", [...ranges, { courtId: "", slots: [] }], { shouldDirty: true, shouldValidate: true })}><FiPlus aria-hidden="true" />Add another court</Button></div> : null}</section>
     <section className="flex items-center justify-between gap-4 rounded-xl border p-4"><div><h3 className="font-semibold">Add players</h3><p className="text-sm text-muted-foreground">{currency.format(options?.configuration?.additional_player_price ?? 0)} each</p></div><QuantityStepper value={players} decreaseDisabled={players === 0} increaseDisabled={false} decreaseLabel="Remove one additional player" increaseLabel="Add one additional player" onDecrease={() => form.setValue("additional_players", Math.max(0, players - 1), { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("additional_players", players + 1, { shouldDirty: true, shouldValidate: true })} /></section>
     <section className="rounded-xl border p-4"><h3 className="font-semibold">Rental equipment</h3><div className="mt-3 grid gap-3">{options?.equipment.map((item) => { const quantity = equipment[item.id] ?? 0; return <div key={item.id} className="flex items-center justify-between gap-4 border-t pt-3 first:border-t-0 first:pt-0"><div className="min-w-0"><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{currency.format(item.price)} · {item.available_quantity === 0 ? "Unavailable for selected schedule" : `${item.available_quantity} available for your selected schedule`}</p></div><QuantityStepper value={quantity} decreaseDisabled={quantity === 0} increaseDisabled={quantity >= item.available_quantity} decreaseLabel={`Remove one ${item.name}`} increaseLabel={`Add one ${item.name}`} onDecrease={() => form.setValue("equipment", { ...equipment, [item.id]: Math.max(0, quantity - 1) }, { shouldDirty: true, shouldValidate: true })} onIncrease={() => form.setValue("equipment", { ...equipment, [item.id]: quantity + 1 }, { shouldDirty: true, shouldValidate: true })} /></div>; })}</div></section>
@@ -538,8 +609,9 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
         <Field label={nonCashPayment ? "Payment proof" : "Payment proof (optional)"} required={nonCashPayment} error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} required={nonCashPayment} disabled={!nonCashPayment} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field>
       </section> : <section className="rounded-xl border border-primary/35 bg-primary/8 p-4"><h3 className="font-semibold text-primary">Covered by available credit</h3><p className="mt-1 text-sm text-muted-foreground">No payment method, transaction number, or proof is required for these add-ons.</p></section>}
     </> : null}
-    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Cancel</Button>} /><Button type="submit" disabled={!hasInput || !paymentComplete || mutation.isPending || isMutationRateLimited(mutation)}>Review add-ons</Button></DialogFooter>
-  </form></DialogContent></Dialog>
+    {!slotsAvailable ? <p role="alert" className="text-sm text-destructive">Some selected court times are no longer available. Update your selection.</p> : null}
+    <DialogFooter><DialogClose render={<Button type="button" variant="outline">Cancel</Button>} /><Button type="submit" disabled={!pricingReady || !slotsAvailable || !hasInput || !paymentComplete || mutation.isPending || isMutationRateLimited(mutation)}>Review add-ons</Button></DialogFooter>
+  </form>
   <ReservationActionConfirmationDialog
     open={Boolean(pendingInput)}
     onOpenChange={(nextOpen) => { if (!nextOpen) setPendingInput(null); }}
@@ -555,7 +627,11 @@ export function AddOnsDialog({ reservation, open, onOpenChange }: { reservation:
 }
 
 export function CompleteReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const mutation = useCompleteReservation();
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">{open && reservation ? <CurrentReservationContent reservationId={reservation.id} title="Complete reservation" statuses={["ONGOING"]}>{(current) => <CompleteReservationForm key={JSON.stringify(current)} reservation={current} onOpenChange={onOpenChange} />}</CurrentReservationContent> : null}</DialogContent></Dialog>;
+}
+
+function CompleteReservationForm({ reservation, onOpenChange }: { reservation: ManagementReservation; onOpenChange: (open: boolean) => void }) {
+  const mutation = useCompleteReservation(() => onOpenChange(false));
   const [pendingInput, setPendingInput] = useState<FormData | null>(null);
   const requiresPayment = (reservation?.amounts.outstanding ?? 0) > 0;
   const form = useForm<CompleteReservationValues>({
@@ -564,13 +640,12 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
   });
   const paymentChannel = useWatch({ control: form.control, name: "payment_channel" }) ?? null;
 
-  useEffect(() => {
-    if (open) form.reset({ payment_channel: null, payment_reference_number: "", payment_proof: undefined });
-  }, [form, open, reservation?.id]);
-
   const submit = form.handleSubmit((values) => {
     if (!reservation) return;
     const input = new FormData();
+    if (reservation.revision !== undefined) input.set("expected_revision", String(reservation.revision));
+    input.set("quoted_amount", reservation.amounts.final.toFixed(2));
+    input.set("quoted_payment_amount", Math.max(0, reservation.amounts.outstanding).toFixed(2));
     if (values.payment_channel) input.set("payment_channel", values.payment_channel);
     if (values.payment_reference_number) input.set("payment_reference_number", values.payment_reference_number);
     const proof = values.payment_proof?.item(0);
@@ -581,10 +656,10 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
     if (!reservation || !pendingInput) return;
     mutation.mutate(
       { id: reservation.id, input: pendingInput },
-      { onSuccess: () => { setPendingInput(null); onOpenChange(false); }, onError: () => setPendingInput(null) },
+      { onError: (error) => { setPendingInput(null); if (isApiError(error) && error.code === "RESERVATION_REQUEST_KEY_REUSED") onOpenChange(false); } },
     );
   }
-  return <><Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg"><form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Complete {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes service and records the final amount as business data.</DialogDescription></DialogHeader>
+  return <><form onSubmit={submit} noValidate className="grid gap-5"><DialogHeader><DialogTitle>Complete {reservation?.reference_number}?</DialogTitle><DialogDescription>This finalizes service and records the final amount as business data.</DialogDescription></DialogHeader>
     <div className="rounded-xl border p-4"><p className="text-sm text-muted-foreground">Final reservation total</p><p className="font-heading text-2xl font-extrabold">{currency.format(reservation?.amounts.final ?? 0)}</p>{reservation?.amounts.refundable_credit ? <p className="mt-2 text-sm font-semibold">Refundable credit: {currency.format(reservation.amounts.refundable_credit)}</p> : null}</div>
     {requiresPayment ? <><SelectWithLabel id="reservation-payment-channel" label="How was the additional amount collected?" required value={paymentChannel} error={form.formState.errors.payment_channel?.message} options={[{ value: "CASH", label: "Cash" }, { value: "EWALLET", label: "E-wallet" }, { value: "BANK", label: "Bank" }]} placeholder="Select payment channel" onValueChange={(value) => {
       const nextChannel = value as CompleteReservationValues["payment_channel"];
@@ -595,7 +670,7 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
       }
     }} /><Field label="Transaction reference (optional)" error={form.formState.errors.payment_reference_number?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_reference_number)} disabled={paymentChannel !== "EWALLET" && paymentChannel !== "BANK"} {...form.register("payment_reference_number")} /></Field><Field label="Payment proof (optional)" error={form.formState.errors.payment_proof?.message}><Input aria-invalid={Boolean(form.formState.errors.payment_proof)} disabled={paymentChannel !== "EWALLET" && paymentChannel !== "BANK"} {...form.register("payment_proof")} type="file" accept="image/jpeg,image/png,image/webp" /></Field></> : null}
     <DialogFooter><DialogClose render={<Button type="button" variant="outline">Not yet</Button>} /><Button type="submit" disabled={mutation.isPending || isMutationRateLimited(mutation)}>Review completion</Button></DialogFooter>
-  </form></DialogContent></Dialog>
+  </form>
   <ReservationActionConfirmationDialog
     open={Boolean(pendingInput)}
     onOpenChange={(nextOpen) => { if (!nextOpen) setPendingInput(null); }}
@@ -611,7 +686,11 @@ export function CompleteReservationDialog({ reservation, open, onOpenChange }: {
 }
 
 export function CancelReservationDialog({ reservation, open, onOpenChange }: { reservation: ManagementReservation | null; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const mutation = useCancelReservation();
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">{open && reservation ? <CurrentReservationContent reservationId={reservation.id} title="Cancel reservation" statuses={["VERIFIED"]}>{(current) => <CancelReservationForm key={JSON.stringify(current)} reservation={current} onOpenChange={onOpenChange} />}</CurrentReservationContent> : null}</DialogContent></Dialog>;
+}
+
+function CancelReservationForm({ reservation, onOpenChange }: { reservation: ManagementReservation; onOpenChange: (open: boolean) => void }) {
+  const mutation = useCancelReservation(() => onOpenChange(false));
   const [pendingValues, setPendingValues] = useState<z.output<typeof cancelReservationSchema> | null>(null);
   const form = useForm<CancelReservationValues, unknown, z.output<typeof cancelReservationSchema>>({
     resolver: zodResolver(cancelReservationSchema),
@@ -619,32 +698,30 @@ export function CancelReservationDialog({ reservation, open, onOpenChange }: { r
   });
   const refundType = useWatch({ control: form.control, name: "refund_type" }) ?? "FULL";
 
-  useEffect(() => {
-    if (open) form.reset({ reason: "", refund_type: "FULL", refund_amount: undefined });
-  }, [form, open, reservation?.id]);
-
-  const submit = form.handleSubmit((values) => setPendingValues(values));
+  const submit = form.handleSubmit((values) => {
+    if (values.refund_type === "CUSTOM" && (values.refund_amount ?? 0) > netPaid(reservation)) {
+      form.setError("refund_amount", { message: "The refund cannot exceed the amount collected." });
+      return;
+    }
+    setPendingValues(values);
+  });
   function confirm() {
     if (!reservation || !pendingValues) return;
     mutation.mutate(
-      { id: reservation.id, input: { reason: pendingValues.reason, refund_type: pendingValues.refund_type, ...(pendingValues.refund_type === "CUSTOM" ? { refund_amount: pendingValues.refund_amount } : {}) } },
-      { onSuccess: () => { setPendingValues(null); onOpenChange(false); }, onError: () => setPendingValues(null) },
+      { id: reservation.id, input: { expected_revision: reservation.revision, reason: pendingValues.reason, refund_type: pendingValues.refund_type, quoted_refund_amount: Number((pendingValues.refund_type === "FULL" ? netPaid(reservation) : pendingValues.refund_amount ?? 0).toFixed(2)), ...(pendingValues.refund_type === "CUSTOM" ? { refund_amount: pendingValues.refund_amount } : {}) } },
+      { onError: (error) => { setPendingValues(null); if (isApiError(error) && error.code === "RESERVATION_REQUEST_KEY_REUSED") onOpenChange(false); } },
     );
   }
   const reasonError = form.formState.errors.reason?.message;
   const refundAmountError = form.formState.errors.refund_amount?.message;
   return <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
-        <form key={`${reservation?.id ?? "none"}-${open}`} onSubmit={submit} noValidate className="grid gap-5">
+        <form onSubmit={submit} noValidate className="grid gap-5">
           <DialogHeader><DialogTitle>Cancel {reservation?.reference_number}?</DialogTitle><DialogDescription>Use this only for an approved force majeure cancellation. Court times will be released.</DialogDescription></DialogHeader>
           <Field label="Cancellation reason" htmlFor="reservation-cancellation-reason" required error={reasonError}><Textarea id="reservation-cancellation-reason" aria-invalid={Boolean(reasonError)} aria-describedby={reasonError ? "reservation-cancellation-reason-error" : undefined} {...form.register("reason")} rows={5} /></Field>
-          <SelectWithLabel id="reservation-refund" label="Refund" required value={refundType} error={form.formState.errors.refund_type?.message} options={[{ value: "FULL", label: `Full refund · ${currency.format(reservation?.amounts.paid ?? 0)}` }, { value: "CUSTOM", label: "Custom refund" }]} onValueChange={(value) => { if (value === "FULL" || value === "CUSTOM") form.setValue("refund_type", value, { shouldDirty: true, shouldValidate: true }); }} />
-          {refundType === "CUSTOM" ? <Field label="Custom refund amount" htmlFor="reservation-custom-refund" required error={refundAmountError}><Input id="reservation-custom-refund" type="number" min="0" max={reservation?.amounts.paid} step="0.01" aria-invalid={Boolean(refundAmountError)} aria-describedby={refundAmountError ? "reservation-custom-refund-error" : undefined} {...form.register("refund_amount", { setValueAs: (value) => value === "" ? undefined : Number(value) })} /></Field> : null}
+          <SelectWithLabel id="reservation-refund" label="Refund" required value={refundType} error={form.formState.errors.refund_type?.message} options={[{ value: "FULL", label: `Full refund · ${currency.format(netPaid(reservation))}` }, { value: "CUSTOM", label: "Custom refund" }]} onValueChange={(value) => { if (value === "FULL" || value === "CUSTOM") form.setValue("refund_type", value, { shouldDirty: true, shouldValidate: true }); }} />
+          {refundType === "CUSTOM" ? <Field label="Custom refund amount" htmlFor="reservation-custom-refund" required error={refundAmountError}><Input id="reservation-custom-refund" type="number" min="0" max={netPaid(reservation)} step="0.01" aria-invalid={Boolean(refundAmountError)} aria-describedby={refundAmountError ? "reservation-custom-refund-error" : undefined} {...form.register("refund_amount", { setValueAs: (value) => value === "" ? undefined : Number(value) })} /></Field> : null}
           <DialogFooter><DialogClose render={<Button type="button" variant="outline">Keep reservation</Button>} /><Button type="submit" variant="destructive" disabled={mutation.isPending || isMutationRateLimited(mutation)}>Review cancellation</Button></DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
     <ReservationActionConfirmationDialog
       open={Boolean(pendingValues)}
       onOpenChange={(nextOpen) => { if (!nextOpen) setPendingValues(null); }}
@@ -656,7 +733,7 @@ export function CancelReservationDialog({ reservation, open, onOpenChange }: { r
       disabled={isMutationRateLimited(mutation)}
       onConfirm={confirm}
     >
-      <dl className="grid gap-2"><div className="flex justify-between gap-3"><dt>Refund</dt><dd className="font-bold">{currency.format(pendingValues?.refund_type === "FULL" ? reservation?.amounts.paid ?? 0 : pendingValues?.refund_amount ?? 0)}</dd></div><div><dt className="text-muted-foreground">Reason</dt><dd className="whitespace-pre-wrap font-medium">{pendingValues?.reason}</dd></div></dl>
+      <dl className="grid gap-2"><div className="flex justify-between gap-3"><dt>Refund</dt><dd className="font-bold">{currency.format(pendingValues?.refund_type === "FULL" ? netPaid(reservation) : pendingValues?.refund_amount ?? 0)}</dd></div><div><dt className="text-muted-foreground">Reason</dt><dd className="whitespace-pre-wrap font-medium">{pendingValues?.reason}</dd></div></dl>
     </ReservationActionConfirmationDialog>
   </>;
 }

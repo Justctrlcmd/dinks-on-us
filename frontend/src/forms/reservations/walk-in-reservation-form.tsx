@@ -17,6 +17,7 @@ import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-
 import { equipmentForSchedule } from "@/lib/equipment-availability";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
+import { isApiError } from "@/lib/api";
 import { formatDateOnly, todayInTimeZone } from "@/lib/date";
 import { ReservationSlotLabel, ReservationSummaryLine } from "@/forms/reservations/reservation-summary-line";
 import {
@@ -122,6 +123,7 @@ export function WalkInReservationForm() {
     }
     try {
       await mutation.mutateAsync({
+        quoted_amount: total,
         customer_name: values.customer_name.trim(),
         customer_email: values.customer_email.trim().toLowerCase(),
         customer_contact_number: values.customer_contact_number.trim(),
@@ -134,7 +136,9 @@ export function WalkInReservationForm() {
         payment_proof: values.payment_proof?.item(0) ?? undefined,
       });
       router.push("/portal/reservations");
-    } catch {}
+    } catch (error) {
+      if (isApiError(error) && error.code === "RESERVATION_REQUEST_KEY_REUSED") router.push("/portal/reservations");
+    }
   });
 
   return (

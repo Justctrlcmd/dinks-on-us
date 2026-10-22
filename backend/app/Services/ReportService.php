@@ -217,7 +217,9 @@ class ReportService
         $this->applyReservationDimensions($completed, $filters);
         $completedCount = $completed->count();
         $extendedCount = (clone $completed)
-            ->whereHas('currentSlots', fn (Builder $query) => $query->where('kind', 'ADD_ON'))
+            // A later reschedule replaces ADD_ON rows with RESCHEDULED rows.
+            // The purchase still counts as an extension of this reservation.
+            ->whereHas('slots', fn (Builder $query) => $query->where('kind', 'ADD_ON'))
             ->count();
 
         return [
@@ -272,9 +274,9 @@ class ReportService
                 ->where('status', Reservation::STATUS_NO_SHOW)
                 ->whereBetween('no_show_at', $bounds);
             $this->applySource($noShowQuery, $filters['source']);
-            $noShowEvents = $noShowQuery->get(['no_show_at', 'amount_paid'])->map(fn (Reservation $reservation): array => [
+            $noShowEvents = $noShowQuery->with('refunds')->get(['id', 'no_show_at', 'amount_paid'])->map(fn (Reservation $reservation): array => [
                 'date' => $reservation->no_show_at,
-                'amount' => (float) $reservation->amount_paid,
+                'amount' => $reservation->netAmountPaid(),
             ]);
         }
 

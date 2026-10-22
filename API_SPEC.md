@@ -554,6 +554,9 @@ seconds. A verified checkout may submit for 30 minutes. Both endpoints use named
 rate limiters; `429` includes `Retry-After`. Code failures use safe `422` codes
 `EMAIL_CODE_INVALID`, `EMAIL_CODE_EXPIRED`, or `EMAIL_CODE_ATTEMPTS_EXCEEDED`.
 Delivery failure is `503 EMAIL_DELIVERY_UNAVAILABLE` with no provider details.
+It includes `Retry-After` for the remaining resend cooldown; the client disables
+resending for that delay. It does not imply that a code was delivered. An email
+send `429` explains how long to wait; send requests are never automatically retried.
 
 Verification creates no player account, reservation, payment, or availability
 lock. The frontend refreshes availability/pricing before unlocking payment.
@@ -1178,6 +1181,14 @@ VERIFIED → ONGOING
 
 The transition is manually confirmed by Staff or Manager when the customer is at the facility and has started playing. It is never triggered automatically by the clock.
 
+The locked reservation's latest `booking_date` must equal `BusinessClock::today()`
+(Asia/Manila by default). Past/future dates return `409 RESERVATION_CONFLICT`
+with a safe message and no status, timestamp, revision, audit, or retry-receipt
+changes. Booked start/end hours are not checked. This applies equally to walk-ins
+and rescheduled bookings, using their current date rather than historical slots.
+A matching retry of a previously committed start still returns that existing
+result after midnight without performing another transition.
+
 ---
 
 # 41. Reject Reservation
@@ -1377,9 +1388,9 @@ BEGIN
 6. Release previous availability
 7. Create schedule history
 8. Create audit log
-9. Require the replacement base-slot count to equal the original base-slot count
-10. Move existing `ADD_ON` slots to the new date at their same court/start hour
-11. Revalidate and reprice replacement, migrated, and new add-on slots
+9. Require the replacement count to equal the full current-slot count, including previous add-ons
+10. Replace all current slots with the submitted court/hour selections on one date
+11. Revalidate and reprice replacement and newly purchased add-on slots
 12. Recalculate equipment for the complete new schedule
 13. Apply existing refundable credit to the amount due
 14. Record a verified Cash or online payment for any remaining balance
@@ -1395,10 +1406,20 @@ ROLLBACK
 
 The existing reservation schedule remains unchanged.
 
+`slots` includes replacements for every currently held slot; previous add-ons
+must not be repeated in `add_on_slots` unless they are genuinely new purchases.
+The server checks the latest current-slot count under the reservation lock.
+Replacement rows become `RESCHEDULED`; previous slot rows, payments, players,
+equipment, and adjustments remain preserved. Price changes use all old and new
+replacement slots, and only a remaining balance creates another verified payment.
+The replacement array may exceed 48 only to accommodate a larger current booking;
+new `add_on_slots` remains capped at 48. Deploy the frontend and API together;
+older clients sending only base slots receive validation errors for expanded bookings.
+
 After a successful commit, the reschedule email is sent when reservation emails
 are configured and enabled. It contains the reservation reference, newly active
 court/date/time prices, additional players, rental items, amount paid, and any
-remaining refundable credit. Additional payment is described as already
+the refund settled by that operation. Additional payment is described as already
 collected because the action cannot succeed with an unpaid positive balance.
 Previous schedule data remains in internal history and is not presented as the
 active schedule in this email.
@@ -1539,7 +1560,7 @@ All adjustments
 Final Amount
 ```
 
-The backend also calculates `max(final_amount - amount_paid, 0)` as the exact additional collection. When positive, Staff selects Cash, E-wallet, or Bank and may attach a transaction reference and proof image.
+The backend also calculates `max(final_amount - net_paid, 0)` as the exact additional collection. When positive, Staff selects Cash, E-wallet, or Bank and may attach a transaction reference and proof image.
 
 ---
 
@@ -1810,6 +1831,10 @@ Manager should be able to:
 * Update account information
 * Replace QR image
 * Remove a method from future payment selection by deactivating it
+
+Creating and updating a payment method requires `account_number` to be a string
+of 1–100 ASCII digits. Keep leading zeros; letters, spaces, signs, and punctuation
+are rejected with a safe validation message. Editing may keep the existing QR image.
 
 Historical payment records must remain meaningful after deactivation.
 
@@ -2243,7 +2268,7 @@ Recognized revenue uses:
 ```text
 SUM(final_amount) for COMPLETED reservations, dated by completed_at
 +
-SUM(amount_paid) for NO_SHOW reservations, dated by no_show_at
+SUM(amount_paid - completed refunds) for NO_SHOW reservations, dated by no_show_at
 ```
 
 `VERIFIED`, `PENDING_PAYMENT`, and other non-finalized states are not recognized
@@ -3025,3 +3050,79 @@ API_SPEC.md
 ```
 
 before implementation is modified.
+
+## Staff financial review quotes
+
+The current staff UI includes these monetary review fields. They are optional
+for legacy requests without a retry header; the retry contract below requires
+them.
+
+| Endpoint action | Fields | Compared against |
+| --- | --- | --- |
+| `walk-in` | `quoted_amount` | Authoritative full walk-in total |
+| `reschedule`, `add-ons`, `complete` | `quoted_amount`, `quoted_payment_amount` | Resulting total and positive amount to collect now |
+| `cancel` | `quoted_refund_amount` | Full or custom refund to record |
+
+Fields are non-negative monetary numbers with at most two decimal places. A
+mismatch returns `409 RESERVATION_REVIEW_CHANGED` with safe instructions to
+review the booking again. No schedule, payment, refund, status, audit entry, or
+newly stored proof from the rejected action is committed. Other validation and
+availability conflicts retain their existing responses. Omitted quotes preserve
+older-client behavior; current staff forms always send them.
+
+`amounts.refundable_credit` is zero for no-show records, including legacy records
+that retained a credit value. The amount already collected remains unchanged.
+
+## Staff reservation retry contract and revision checks
+
+All management reservation write endpoints accept `Idempotency-Key` (16–100
+letters/digits or `._~-`). This header is authoritative; a body key cannot replace
+it. The current staff frontend sends a generated key. Reservation resources now
+include integer `revision`, incremented once per successful service mutation.
+
+| Endpoint with a retry key | Required review fields |
+| --- | --- |
+| `walk-in` | `quoted_amount` |
+| `reschedule`, `add-ons`, `complete` | `expected_revision`, `quoted_amount`, `quoted_payment_amount` |
+| `cancel` | `expected_revision`, `quoted_refund_amount` |
+| `verify`, `reject`, `start`, `no-show` | Existing inputs; optional `expected_revision` |
+
+Missing modern-contract review fields return a safe 422 response. A mismatched
+locked revision returns `409 RESERVATION_REVIEW_CHANGED`, including same-price
+changes. Older clients omitting the header retain the previous input contract.
+
+An actor-scoped matching retry returns 200 (201 for walk-in) and the current
+booking, with message `This request was already recorded. Current booking
+retrieved.` No mutation or customer status mail repeats. Matching happens before
+revision/status checks; an already-completed action can therefore be recovered.
+Action/target/business/payment/proof changes with the same key return
+`409 RESERVATION_REQUEST_KEY_REUSED`. Review metadata can change on a retry and
+is excluded from its business hash. Current authorization is checked normally.
+Failed transactions retain no retry receipt. Keys do not authorize access.
+
+
+## Immediate reschedule refund contract (2026-10-22)
+
+`POST /management/reservations/{reservation}/reschedule` accepts:
+
+- `quoted_refund_amount`: nonnegative monetary amount, at most two decimals.
+- `refund_settled`: boolean acknowledgment that the customer received the refund.
+
+If the new final charge is below net funds held, both the exact positive quote
+and a true acknowledgment are mandatory, including for older clients without
+an idempotency header. Missing confirmation returns safe 422 validation;
+a different monetary quote returns `409 RESERVATION_REVIEW_CHANGED`. All
+schedule, slot-lock, history, refund, and retry-receipt writes roll back together.
+The refund is recorded as completed; no external payment transfer is initiated.
+Reschedules with no excess need no acknowledgment. Retrying a committed request
+returns the recorded booking without another refund or status email.
+
+Reservation `amounts` adds `refunded` (completed refunds only) and `net_paid`
+(gross `paid` minus completed refunds, floored at zero). Outstanding balances
+and future settlement calculations use `net_paid`. Original payment records and
+`paid` remain unchanged. Cancellation cannot refund more than `net_paid`;
+no-show revenue uses the retained funds. Finalized cancellations/no-shows do not
+show collectible balances. Existing unsettled credit stays unsettled until an
+explicit action handles it. The schedule history stores this operation's refund
+amount for the event-time email snapshot; later zero-refund emails do not claim
+a previous refund as new.

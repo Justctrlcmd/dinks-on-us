@@ -3,15 +3,19 @@
 namespace App\Http\Requests\Management;
 
 use App\Support\Security\ImageUploadRules;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class AddReservationAddOnsRequest extends FormRequest
+class AddReservationAddOnsRequest extends ReservationActionRequest
 {
+    protected bool $requiresRevision = true;
+
     public function rules(): array
     {
         return [
+            ...parent::rules(),
+            'quoted_amount' => ['required_with:idempotency_key', 'numeric', 'min:0', 'decimal:0,2'],
+            'quoted_payment_amount' => ['required_with:idempotency_key', 'numeric', 'min:0', 'decimal:0,2'],
             'slots' => ['sometimes', 'array', 'max:48'],
             'slots.*.court_id' => ['required', 'integer', 'exists:courts,id'],
             'slots.*.date' => ['required', 'date_format:Y-m-d'],
@@ -57,6 +61,7 @@ class AddReservationAddOnsRequest extends FormRequest
     public function messages(): array
     {
         return [
+            ...parent::messages(),
             'payment_proof.required' => 'Select a receipt image for this payment method.',
             'payment_method_id.required' => 'Choose an active e-wallet or bank payment method.',
             'payment_method_id.prohibited' => 'A configured payment method cannot be used for cash.',

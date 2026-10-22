@@ -20,6 +20,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class Reservation extends Model
 {
+    public bool $actionWasReplayed = false;
+
     public const STATUS_PENDING = 'PENDING';
 
     public const STATUS_VERIFIED = 'VERIFIED';
@@ -78,6 +80,18 @@ class Reservation extends Model
         return $this->hasMany(ReservationRefund::class);
     }
 
+    public function refundedAmount(): float
+    {
+        $this->loadMissing('refunds');
+
+        return round((float) $this->refunds->where('status', 'COMPLETED')->sum('amount'), 2);
+    }
+
+    public function netAmountPaid(): float
+    {
+        return max(0, round((float) $this->amount_paid - $this->refundedAmount(), 2));
+    }
+
     public function scopeOperational(Builder $query): void
     {
         $query->whereIn('status', self::OPERATIONAL_STATUSES);
@@ -86,7 +100,7 @@ class Reservation extends Model
     protected function casts(): array
     {
         return [
-            'booking_date' => 'date:Y-m-d', 'customer_email_verified_at' => 'datetime', 'is_rescheduled' => 'boolean', 'reschedule_count' => 'integer',
+            'revision' => 'integer', 'booking_date' => 'date:Y-m-d', 'customer_email_verified_at' => 'datetime', 'is_rescheduled' => 'boolean', 'reschedule_count' => 'integer',
             'original_additional_players' => 'integer', 'additional_player_unit_amount' => 'decimal:2',
             'original_amount' => 'decimal:2', 'adjustment_amount' => 'decimal:2', 'final_amount' => 'decimal:2',
             'amount_paid' => 'decimal:2', 'refundable_credit' => 'decimal:2', 'policy_snapshot' => 'array',

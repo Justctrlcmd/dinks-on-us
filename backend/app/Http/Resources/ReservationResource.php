@@ -16,6 +16,7 @@ class ReservationResource extends JsonResource
 
         return [
             'id' => $reservation->id,
+            'revision' => (int) $reservation->revision,
             'reference_number' => $reservation->reference_number,
             'source' => $reservation->source,
             'booking_date' => $reservation->booking_date->toDateString(),
@@ -29,8 +30,11 @@ class ReservationResource extends JsonResource
                 'adjustments' => (float) $reservation->adjustment_amount,
                 'final' => (float) $reservation->final_amount,
                 'paid' => (float) $reservation->amount_paid,
-                'outstanding' => max(0, (float) $reservation->final_amount - (float) $reservation->amount_paid),
-                'refundable_credit' => (float) $reservation->refundable_credit,
+                'refunded' => $reservation->refundedAmount(),
+                'net_paid' => $reservation->netAmountPaid(),
+                'outstanding' => in_array($reservation->status, [Reservation::STATUS_CANCELLED, Reservation::STATUS_REJECTED, Reservation::STATUS_NO_SHOW], true)
+                    ? 0.0 : max(0, round((float) $reservation->final_amount - $reservation->netAmountPaid(), 2)),
+                'refundable_credit' => $reservation->status === Reservation::STATUS_NO_SHOW ? 0.0 : (float) $reservation->refundable_credit,
             ],
             'rejection' => $reservation->rejection_concern ? ['concern' => $reservation->rejection_concern, 'reason' => $reservation->rejection_reason] : null,
             'cancellation_reason' => $reservation->cancellation_reason,

@@ -3,10 +3,9 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class RejectReservationRequest extends FormRequest
+class RejectReservationRequest extends ReservationActionRequest
 {
     use NormalizesInput;
 
@@ -19,6 +18,6 @@ class RejectReservationRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['concern' => ['required', Rule::in(self::CONCERNS)], 'reason' => ['required', 'string', 'max:1500']];
+        return [...parent::rules(), 'concern' => ['required', Rule::in(self::CONCERNS)], 'reason' => ['required', 'string', 'max:1500']];
     }
 }
