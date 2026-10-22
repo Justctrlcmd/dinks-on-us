@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'queue_connection' => env('PUSH_QUEUE_CONNECTION', 'database'),
     'enabled' => (bool) env('PUSH_NOTIFICATIONS_ENABLED', false),
     'subject' => env('PUSH_VAPID_SUBJECT', 'mailto:hello@dinksonus.test'),
     'public_key' => env('PUSH_VAPID_PUBLIC_KEY'),

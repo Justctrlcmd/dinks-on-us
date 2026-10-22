@@ -34,4 +34,32 @@ describe("API helpers", () => {
     const { publicFetch } = await import("./api");
     await expect(publicFetch("/api/v1/login", { method: "POST", csrf: true })).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
   });
+
+  it("renews expired CSRF once and reuses the same submission and idempotency key", async () => {
+    const success = { success: true, message: "ok", data: null, code: null, errors: null, meta: null };
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: false }), { status: 419 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(success), { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+    const { publicFetch } = await import("./api");
+    const body = JSON.stringify({ email: "test@example.com" });
+    await expect(publicFetch("/api/v1/example", { method: "POST", csrf: true, body, headers: { "Idempotency-Key": "same-key" } })).resolves.toMatchObject({ success: true });
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+    for (const index of [1, 3]) {
+      const options = mockFetch.mock.calls[index][1];
+      expect(options.body).toBe(body);
+      expect(options.headers.get("Idempotency-Key")).toBe("same-key");
+    }
+  });
+
+  it("stops after a repeated CSRF rejection and allows future requests to initialize again", async () => {
+    vi.stubGlobal("fetch", vi.fn((path: string) => Promise.resolve(path.endsWith("csrf-cookie")
+      ? new Response(null, { status: 204 })
+      : new Response(JSON.stringify({ success: false, code: "CSRF_TOKEN_MISMATCH" }), { status: 419 }))));
+    const { publicFetch } = await import("./api");
+    await expect(publicFetch("/api/v1/example", { method: "POST", csrf: true })).rejects.toMatchObject({ status: 419 });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
 });

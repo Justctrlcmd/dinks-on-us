@@ -49,5 +49,4 @@ class SecurityAuditService
     ): AuditLog {
         return $this->record($action, request(), $actor, $target, $details, $module, $targetLabel, $actorName);
     }
-
 }

@@ -18,7 +18,8 @@ release gate, not a claim that the system is invulnerable.
 - Login rotates the session identifier. Logout invalidates the session and
   rotates the CSRF token.
 - Password changes, staff password resets, staff deactivation, staff soft deletion, and role changes
-  invalidate affected database sessions.
+  invalidate affected database sessions and rotate remember-me tokens so an old
+  cookie cannot recreate a revoked session. Bulk role revocation does both.
 - Role create/update/delete, staff password reset, staff soft deletion, and manual proof deletion
   require the acting user's current password.
 - Login successes/failures and privileged account/access changes write safe
@@ -57,6 +58,16 @@ release gate, not a claim that the system is invulnerable.
   management API responses are not cached.
 - HSTS is enabled only after HTTPS is confirmed in production.
 - Push-notification navigation accepts same-origin destinations only.
+- Successful login/logout cancels outstanding reads and clears browser query and
+  mutation caches. Session expiry clears private data and redirects the portal.
+- Push endpoints are allowlisted HTTPS provider URLs, checked both when saved and
+  before delivery. Redirects are disabled; network timeouts are bounded. The
+  Apple host family follows [Apple's Web Push documentation](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers),
+  with [Mozilla's endpoint](https://mozilla-services.github.io/autopush-rs/) and
+  [Google's FCM endpoint](https://developer.chrome.com/blog/push-notifications-on-the-open-web)
+  restricted to their known hosts.
+- Report requests cap at 366 inclusive days. Manual proof preview/deletion caps
+  at 1,000 eligible records and rejects larger ranges before file I/O.
 
 ## Files and secrets
 
@@ -78,6 +89,7 @@ Run these from a clean checkout using the intended release environment:
 ```text
 cd backend
 composer audit --locked --no-interaction
+composer validate --strict --no-check-publish
 vendor/bin/pint --test
 php artisan test
 php artisan security:check --production
@@ -93,3 +105,29 @@ npm run build
 Resolve high/critical dependency findings or record a time-bounded, reviewed
 exception. Rotate any credential suspected of exposure; removing it from Git is
 not sufficient. Back up and test rollback before schema changes.
+
+## Guest reservation email verification
+
+Online checkout requires inbox verification before payment, enforced again by
+Laravel on submission. Checkout capabilities remain in browser memory and are
+stored only as SHA-256 digests. Codes use application-keyed HMAC digests, a
+10-minute lifetime, five incorrect attempts, and single use. Resend replaces the
+code after 60 seconds. Send limits: one/minute and five/hour per normalized email,
+five/minute and twenty/hour per IP. Verify limits: ten/minute per checkout key
+and thirty/minute per IP. Shared cache storage is required across instances.
+
+Verified access lasts 30 minutes and is consumed atomically with the reservation.
+Rollback preserves access, and idempotent retrieval requires the original checkout
+key and email. This proves temporary inbox access, not personal identity, payment,
+or permanent deliverability. It grants no account access and holds no availability.
+Codes and checkout keys must not enter request logs. Outside local/testing,
+non-delivering mail transports or fallbacks are rejected without bypassing email
+verification. Production security checks enforce delivery-capable configuration.
+SMTP is bounded by `MAIL_TIMEOUT` (10 seconds by default); delivery happens after
+the verification row/cooldown commits. A failed send invalidates only its own
+unused code and retains resend throttling. Push and optional status emails use
+durable jobs with bounded retries; queued status-email snapshots are encrypted.
+Run migrations and supervise the worker before enabling them. Production
+reset/seeding rejects the known repository password and `.test` Manager email.
+See [the VPS release checklist](../deployment/hostinger-vps.md) for the remaining
+deployment and backup/restore checks.

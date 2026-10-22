@@ -186,6 +186,12 @@ class DashboardTest extends TestCase
         $this->actingAs($this->dashboardUser)
             ->getJson('/api/v1/management/reservations')
             ->assertForbidden();
+        $this->postJson("/api/v1/management/reservations/{$reservation->id}/verify")
+            ->assertForbidden();
+        $this->postJson("/api/v1/management/reservations/{$reservation->id}/reject", [
+            'concern' => 'INVALID_PAYMENT_PROOF', 'reason' => 'Payment could not be verified.',
+        ])->assertForbidden();
+        $this->assertSame(Reservation::STATUS_PENDING, $reservation->fresh()->status);
     }
 
     public function test_slot_becomes_past_only_after_its_end_time(): void

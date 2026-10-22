@@ -178,6 +178,14 @@ across courts, selection chips or a concise list must make every choice easy to
 review and remove. Never imply that a slot is guaranteed until submission
 succeeds.
 
+Email inbox verification lives inside Your information with Send code, a labeled
+6-digit code input, Verify email, and a resend countdown. Keep payment-card
+headings visible while locked; hide QR/transfer details and disable method,
+reference, receipt, and submission controls until verification and an availability
+refresh succeed. Changing email relocks payment while preserving entered evidence.
+Keep the existing brand tokens and controls. Final submission does not display a
+second email-correctness confirmation dialog.
+
 Payment instructions, QR code, receipt upload, reference number, and the
 pending-verification outcome should be presented as a calm, numbered flow.
 The confirmation state must state that selected slots are held while payment is
@@ -266,6 +274,13 @@ remain mandatory.
 - Charts use navy, teal, sky, burgundy, and mint in a consistent series order,
   with labels and accessible alternatives rather than colour-only legends.
 
+Pending reservations opened from Reservations or the Dashboard expose Verify,
+Reject, and Close in that order. Dashboard actions require Reservation module
+access (or a full-access Manager); Dashboard-only staff keep a read-only view.
+Reuse the existing verification confirmation and rejection concern/reason form.
+Other statuses and History show Close only. Successful actions refresh Dashboard
+and Reservation queries through the shared mutation hooks.
+
 ### Established portal component references
 
 Project-specific screens must adapt to the current portal language before
@@ -299,6 +314,17 @@ appear after the mutation refreshes activity. Show missing/failed counts only
 when non-zero. Never display
 customer details, payment references, private paths, database IDs, IP addresses,
 user agents, or raw audit data.
+
+### Compact reservation summaries
+
+Priced court rows in reservation details, walk-ins, add-ons, reschedule previews,
+and their confirmations use the shared reservation summary line. Use short dates
+such as `Oct 11` and whole-hour ranges such as `11 PM–12 AM`. Show the full date
+or year once in the summary heading/context instead of repeating the year in each
+row. Keep court names, dates, and complete time ranges together; allow wrapping
+between those parts on narrow screens. Keep amounts in a separate right-aligned,
+non-wrapping column, using the existing text size. Public checkout and the current
+selection summary use compact time ranges while retaining their date context.
 
 ## 8. Accessibility and responsive rules
 

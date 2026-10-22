@@ -8,3 +8,7 @@ export function formatHour(hour: number): string {
 export function formatHourRange(startHour: number, endHour: number): string {
   return `${formatHour(startHour)} – ${formatHour(endHour)}`;
 }
+
+export function formatCompactHourRange(startHour: number, endHour: number): string {
+  return `${formatHour(startHour).replace(":00", "")}–${formatHour(endHour).replace(":00", "")}`;
+}

@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const development = process.env.NODE_ENV === "development";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL;
+  const apiOrigin = apiUrl ? new URL(apiUrl).origin : null;
   const policy = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${development ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob:${apiOrigin ? ` ${apiOrigin}` : ""}`,
     "font-src 'self' data:",
     `connect-src 'self'${development ? " ws: wss:" : ""}`,
     "worker-src 'self' blob:",

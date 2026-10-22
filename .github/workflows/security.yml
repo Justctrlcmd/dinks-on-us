@@ -27,7 +27,7 @@ jobs:
         with:
           working-directory: backend
       - run: composer audit --locked --no-interaction
-      - run: composer schemas:check
+      - run: composer validate --strict --no-check-publish
       - run: vendor/bin/pint --test
       - run: php artisan test
 

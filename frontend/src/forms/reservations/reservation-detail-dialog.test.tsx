@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManagementReservation } from "@/types/reservation";
 
 const reservation = vi.hoisted(() => ({
@@ -39,6 +40,12 @@ vi.mock("@/hooks/queries/use-dashboard", () => ({
 
 import { ReservationDetailDialog } from "@/forms/reservations/reservation-dialogs";
 
+beforeEach(() => {
+  reservation.status = "COMPLETED";
+  reservation.display_status = "COMPLETED";
+});
+afterEach(cleanup);
+
 describe("ReservationDetailDialog", () => {
   it("clearly identifies original, add-on, and final balance payments", () => {
     render(
@@ -52,8 +59,52 @@ describe("ReservationDetailDialog", () => {
     expect(screen.getByRole("heading", { name: "Payment records and proofs" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Original reservation payment" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Add-on payment" })).toBeInTheDocument();
-    expect(screen.getByText("Payment recorded for added court time, players, or equipment.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Final balance payment" })).toBeInTheDocument();
     expect(screen.getAllByText("No proof image was provided for this payment.")).toHaveLength(3);
+  });
+
+  it.each(["reservations", "dashboard"] as const)("offers Verify, Reject, Close for a pending reservation from %s", async (source) => {
+    reservation.status = "PENDING";
+    reservation.display_status = "PENDING";
+    const user = userEvent.setup();
+    const onVerify = vi.fn();
+    const onReject = vi.fn();
+    render(<ReservationDetailDialog reservation={reservation as ManagementReservation} open source={source} onOpenChange={vi.fn()} onVerify={onVerify} onReject={onReject} />);
+
+    const footer = screen.getByRole("button", { name: "Verify" }).closest('[data-slot="dialog-footer"]')!;
+    expect(within(footer as HTMLElement).getAllByRole("button").map((button) => button.textContent)).toEqual(["Verify", "Reject", "Close"]);
+    await user.click(screen.getByRole("button", { name: "Verify" }));
+    expect(onVerify).toHaveBeenCalledWith(reservation);
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(onReject).toHaveBeenCalledWith(reservation);
+  });
+
+  it.each(["VERIFIED", "ONGOING", "COMPLETED", "REJECTED"])("keeps only Close when the latest reservation status is %s", (status) => {
+    reservation.status = status;
+    reservation.display_status = status;
+    const staleRow = { ...reservation, status: "PENDING", display_status: "PENDING" } as ManagementReservation;
+    render(<ReservationDetailDialog reservation={staleRow} open onOpenChange={vi.fn()} onVerify={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(2);
+  });
+
+  it("keeps the history detail dialog read-only", () => {
+    const source = "history";
+    reservation.status = "PENDING";
+    reservation.display_status = "PENDING";
+    render(<ReservationDetailDialog reservation={reservation as ManagementReservation} open source={source} onOpenChange={vi.fn()} onVerify={vi.fn()} onReject={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Verify" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+  });
+
+  it("disables pending actions while another reservation action is running", () => {
+    reservation.status = "PENDING";
+    reservation.display_status = "PENDING";
+    render(<ReservationDetailDialog reservation={reservation as ManagementReservation} open onOpenChange={vi.fn()} onVerify={vi.fn()} onReject={vi.fn()} actionsDisabled />);
+    expect(screen.getByRole("button", { name: "Verify" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Close" }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
   });
 });

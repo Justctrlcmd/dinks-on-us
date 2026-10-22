@@ -14,7 +14,20 @@ class SendNewReservationPush implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct(public readonly int $reservationId) {}
+    public int $tries = 3;
+
+    public int $timeout = 30;
+
+    public function __construct(public readonly int $reservationId, public readonly ?int $subscriptionId = null)
+    {
+        $this->onConnection(config('push.queue_connection', 'database'));
+        $this->onQueue('push');
+    }
+
+    public function backoff(): array
+    {
+        return [30, 120];
+    }
 
     public function handle(PushNotificationService $service): void
     {
@@ -23,6 +36,6 @@ class SendNewReservationPush implements ShouldQueue
             return;
         }
 
-        $service->notifyNewReservation($reservation);
+        $service->notifyNewReservation($reservation, $this->subscriptionId);
     }
 }

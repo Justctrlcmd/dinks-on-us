@@ -16,6 +16,26 @@ class DatabaseSeederTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['manager.default.email' => 'manager@example.com', 'manager.default.password' => 'PrivateTestPassword!']);
+    }
+
+    public function test_production_seeding_rejects_default_credentials_before_creating_records(): void
+    {
+        $this->app['env'] = 'production';
+        config(['seeding.allow_production_seed' => true, 'manager.default.password' => 'DinksManager2026!']);
+        try {
+            $this->runSeeder();
+            $this->fail('Default production credentials were accepted.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Configure Manager credentials', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('roles', 0);
+    }
+
     public function test_production_seeding_is_blocked_without_the_explicit_flag(): void
     {
         $this->app['env'] = 'production';

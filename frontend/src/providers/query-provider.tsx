@@ -1,9 +1,10 @@
 "use client";
 
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast-provider";
 import { isApiError } from "@/lib/api";
+import { clearExpiredSessionCache } from "@/lib/session-cache";
 
 function responseMessage(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
@@ -56,5 +57,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       },
     },
   }));
+  useEffect(() => {
+    const clearExpiredSession = () => { void clearExpiredSessionCache(client); };
+    window.addEventListener("auth:unauthorized", clearExpiredSession);
+    return () => window.removeEventListener("auth:unauthorized", clearExpiredSession);
+  }, [client]);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

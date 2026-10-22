@@ -11,7 +11,7 @@ type PublicMetadataOptions = {
 
 export function publicMetadata({ title, description, path, type = "website", publishedTime }: PublicMetadataOptions): Metadata {
   return {
-    title,
+    title: { absolute: siteConfig.name },
     description,
     alternates: { canonical: path },
     openGraph: {

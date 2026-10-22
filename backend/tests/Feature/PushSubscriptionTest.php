@@ -15,8 +15,8 @@ class PushSubscriptionTest extends TestCase
     {
         $user = User::factory()->create();
         $payload = [
-            'endpoint' => 'https://push.example.test/subscription/abc',
-            'keys' => ['p256dh' => 'public-key', 'auth' => 'auth-token'],
+            'endpoint' => 'https://fcm.googleapis.com/fcm/send/abc',
+            'keys' => ['p256dh' => rtrim(strtr(base64_encode("\x04".str_repeat('x', 64)), '+/', '-_'), '='), 'auth' => rtrim(strtr(base64_encode(str_repeat('a', 16)), '+/', '-_'), '=')],
             'content_encoding' => 'aes128gcm',
         ];
 
@@ -56,5 +56,30 @@ class PushSubscriptionTest extends TestCase
             'endpoint' => 'https://push.example.test/subscription/abc',
             'keys' => ['p256dh' => 'public-key', 'auth' => 'auth-token'],
         ])->assertUnauthorized();
+    }
+
+    public function test_internal_untrusted_and_redirect_like_endpoints_are_rejected(): void
+    {
+        $user = User::factory()->create();
+        foreach ([
+            'http://fcm.googleapis.com/fcm/send/abc', 'https://127.0.0.1/secret',
+            'https://169.254.169.254/latest/meta-data/', 'https://[::1]/secret',
+            'https://fcm.googleapis.com.attacker.test/send', 'https://attacker.test/send',
+            'https://fcm.googleapis.com:8443/send', 'https://user@fcm.googleapis.com/send',
+            'https://fcm.googleapis.com/send#fragment',
+        ] as $endpoint) {
+            $this->actingAs($user)->postJson('/api/v1/management/push-subscriptions', [
+                'endpoint' => $endpoint, 'keys' => ['p256dh' => 'invalid', 'auth' => 'invalid'],
+            ])->assertUnprocessable()->assertJsonValidationErrors('endpoint');
+        }
+        $this->assertDatabaseCount('push_subscriptions', 0);
+    }
+
+    public function test_invalid_encryption_keys_are_rejected_for_an_allowed_provider(): void
+    {
+        $this->actingAs(User::factory()->create())->postJson('/api/v1/management/push-subscriptions', [
+            'endpoint' => 'https://web.push.apple.com/test',
+            'keys' => ['p256dh' => 'invalid', 'auth' => 'invalid'],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['keys.p256dh', 'keys.auth']);
     }
 }

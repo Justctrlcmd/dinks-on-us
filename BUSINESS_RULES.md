@@ -29,6 +29,29 @@ Players are **not required to create an account**.
 A player can make a reservation by providing the required customer and payment information.
 
 The system should not require customer authentication before reservation submission.
+Online players must verify access to their email inbox during checkout before
+payment instructions and proof fields unlock. Verification sends a 6-digit code
+and does not create an account, confirm payment, or hold availability. A code
+expires after 10 minutes, allows five incorrect attempts, and may be replaced
+after 60 seconds. Successful verification applies to one checkout for 30 minutes.
+Changing email requires another verification without clearing payment evidence.
+Each new reservation requires verification, including when contact details are
+prefilled. Staff-assisted walk-ins do not require an email code; their email
+verification timestamp remains unset.
+
+Final submission rechecks email verification server-side and consumes it only
+when the reservation commits. Failed submissions preserve the grant until expiry.
+Retries of the same committed booking use the original checkout key and
+idempotency key. Email verification time is separate from staff payment approval.
+The final submit action goes directly to reservation submission without an
+additional email-correctness confirmation dialog.
+
+After a successful public reservation submission, the checkout may remember only
+the customer's name, email address, and contact number in that browser for later
+prefill. The customer can clear these saved details from checkout. Payment method,
+transaction reference, receipt, policy acknowledgment, and reservation selections
+must be entered or chosen again for each reservation. Failed submissions do not
+save customer details.
 
 ---
 
@@ -855,7 +878,12 @@ The API response and on-screen confirmation should communicate that:
 
 # 44. Reservation Status Email Rule
 
-Customer emails are sent only for an explicit reservation status event, and only when a mail provider is configured and `RESERVATION_EMAILS_ENABLED` is explicitly enabled.
+Reservation-status emails are sent only for an explicit reservation status event,
+and only when a mail provider is configured and `RESERVATION_EMAILS_ENABLED` is
+explicitly enabled. The mandatory pre-payment email verification code is a
+separate event and is not disabled by this status-notification setting. If code
+delivery fails, checkout remains locked and the player can retry or contact the
+business; the system must not silently bypass verification.
 
 Current expected notification events:
 
@@ -908,6 +936,15 @@ NO_SHOW
 ```
 
 Operational reservations should remain outside History.
+
+The Reservations table prioritizes past bookings that still need handling:
+unresolved bookings whose current slots have all ended appear first, oldest
+booking date and end time first. Bookings happening now follow, then the nearest
+upcoming bookings, using the business timezone. Use each reservation's next actual
+current court slot, including add-ons, rather than its submission date or a gap
+between booked hours. Apply this ordering across the full filtered list before
+pagination. Equal schedules use the newest submission first. Finalized records
+remain in History; sorting does not change a reservation's status.
 
 ---
 

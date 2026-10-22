@@ -1,8 +1,10 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationCheckout } from "@/components/public/reservation/reservation-checkout";
 import { NormalizedApiError } from "@/lib/api";
+import { loadReservationCustomerDetails } from "@/lib/reservation-customer-details";
 import { RESERVATION_DRAFT_STORAGE_KEY } from "@/types/reservation";
 
 const mocks = vi.hoisted(() => {
@@ -25,6 +27,8 @@ const mocks = vi.hoisted(() => {
 
   return {
     submitReservationMock: vi.fn(),
+    sendCodeMock: vi.fn(),
+    verifyCodeMock: vi.fn(),
     toastErrorMock: vi.fn(),
     reservationOptionsRefetchMock: vi.fn(),
     defaultPaymentMethods,
@@ -45,6 +49,14 @@ const mocks = vi.hoisted(() => {
       equipment_confirmation: "Equipment is checked for your schedule.",
     },
   };
+});
+
+const savedDetailsStorage = new Map<string, string>();
+vi.stubGlobal("localStorage", {
+  getItem: (key: string) => savedDetailsStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => { savedDetailsStorage.set(key, value); },
+  removeItem: (key: string) => { savedDetailsStorage.delete(key); },
+  clear: () => { savedDetailsStorage.clear(); },
 });
 
 vi.mock("@/components/common/toast-provider", () => ({
@@ -104,10 +116,36 @@ vi.mock("@/hooks/mutations/use-reservation-mutations", () => ({
   useSubmitReservation: () => ({ mutate: vi.fn(), mutateAsync: mocks.submitReservationMock, isPending: false }),
 }));
 
+vi.mock("@/services/reservations/reservation-email-verification-service", () => ({
+  sendReservationEmailCode: mocks.sendCodeMock,
+  verifyReservationEmailCode: mocks.verifyCodeMock,
+}));
+
+function renderCheckout() {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  return render(<ReservationCheckout />, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
+
+async function verifyEmail(user: ReturnType<typeof userEvent.setup>) {
+  const email = screen.getByRole("textbox", { name: "Email address" });
+  if (!(email as HTMLInputElement).value) await user.type(email, "mark@example.com");
+  await user.click(screen.getByRole("button", { name: "Send code" }));
+  await user.type(await screen.findByRole("textbox", { name: "Verification code" }), "123456");
+  await user.click(screen.getByRole("button", { name: "Verify email" }));
+  await screen.findByText("Email verified");
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Email address" })).toBeEnabled());
+}
+
 beforeEach(() => {
+  window.localStorage.clear();
+  mocks.sendCodeMock.mockReset();
+  mocks.verifyCodeMock.mockReset();
+  mocks.sendCodeMock.mockImplementation(async (input) => ({ data: { email: input.customer_email, code_expires_at: new Date(Date.now() + 600_000).toISOString(), resend_available_at: new Date(Date.now() + 60_000).toISOString() } }));
+  mocks.verifyCodeMock.mockImplementation(async (input) => ({ data: { email: input.customer_email, verified_at: new Date().toISOString(), verification_expires_at: new Date(Date.now() + 1_800_000).toISOString() } }));
   mocks.toastErrorMock.mockReset();
   mocks.submitReservationMock.mockReset();
   mocks.reservationOptionsRefetchMock.mockReset();
+  mocks.reservationOptionsRefetchMock.mockResolvedValue({ data: mocks.reservationOptions, isError: false });
   mocks.submitReservationMock.mockResolvedValue({ data: { id: 1, reference_number: "RSV-100", status: "PENDING" } });
   mocks.paymentMethods.splice(0, mocks.paymentMethods.length, ...mocks.defaultPaymentMethods);
   mocks.reservationOptions.slots[0].price = 500;
@@ -133,13 +171,14 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   window.sessionStorage.clear();
+  window.localStorage.clear();
   vi.restoreAllMocks();
 });
 
 describe("ReservationCheckout", () => {
   it("shows the full cost breakdown and enables submission after acknowledgment", async () => {
     const user = userEvent.setup();
-    render(<ReservationCheckout />);
+    renderCheckout();
 
     const summary = screen.getByRole("heading", { name: "1 court slot" }).closest("section");
     expect(summary).not.toBeNull();
@@ -159,6 +198,9 @@ describe("ReservationCheckout", () => {
     const submit = screen.getByRole("button", { name: "Submit reservation" });
     expect(submit).toBeDisabled();
 
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
+    expect(screen.queryByRole("img", { name: "GCash payment QR code" })).not.toBeInTheDocument();
+    await verifyEmail(user);
     expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toHaveTextContent("GCash");
     expect(screen.getByRole("img", { name: "GCash payment QR code" })).toHaveAttribute("src", expect.stringContaining("gcash.png"));
     expect(screen.getByText("09123456789")).toBeInTheDocument();
@@ -182,7 +224,7 @@ describe("ReservationCheckout", () => {
 
   it("opens checkout policy links in a dialog without losing entered details", async () => {
     const user = userEvent.setup();
-    render(<ReservationCheckout />);
+    renderCheckout();
 
     const nameInput = screen.getByRole("textbox", { name: "Full name" });
     await user.type(nameInput, "Mark Justin Sayson");
@@ -197,14 +239,14 @@ describe("ReservationCheckout", () => {
 
   it("shows an empty state when checkout is opened without a selection", () => {
     window.sessionStorage.clear();
-    render(<ReservationCheckout />);
+    renderCheckout();
 
     expect(screen.getByRole("heading", { name: "No reservation selected yet" })).toBeInTheDocument();
   });
 
   it("disables payment evidence when no payment method is available", () => {
     mocks.paymentMethods.splice(0);
-    render(<ReservationCheckout />);
+    renderCheckout();
 
     expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
     expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toBeDisabled();
@@ -215,26 +257,28 @@ describe("ReservationCheckout", () => {
 
   it("shows inline validation errors when required fields are missing", async () => {
     const user = userEvent.setup();
-    render(<ReservationCheckout />);
+    renderCheckout();
 
+    await verifyEmail(user);
     await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
     await user.click(screen.getByRole("button", { name: "Submit reservation" }));
 
     expect(screen.getByText("Enter your full name.")).toBeInTheDocument();
-    expect(screen.getByText("Enter a valid email address.")).toBeInTheDocument();
+    expect(screen.queryByText("Enter a valid email address.")).not.toBeInTheDocument();
     expect(screen.getByText("Enter your mobile number.")).toBeInTheDocument();
     expect(screen.getByText("Enter the transaction reference number.")).toBeInTheDocument();
     expect(screen.getByText("Select a payment proof image.")).toBeInTheDocument();
     expect(mocks.toastErrorMock).toHaveBeenCalledWith("Please complete all required fields before submitting.");
   });
 
-  it("requires email confirmation before sending the reservation", async () => {
+  it("verifies email before payment and submits directly without confirmation", async () => {
     const user = userEvent.setup();
-    render(<ReservationCheckout />);
+    renderCheckout();
 
     await user.type(screen.getByRole("textbox", { name: "Full name" }), "Mark Justin Sayson");
     await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
     await user.type(screen.getByRole("textbox", { name: "Mobile number" }), "09123456789");
+    await verifyEmail(user);
     await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-12345");
     const receiptInput = document.getElementById("payment-receipt");
     expect(receiptInput).toBeInstanceOf(HTMLInputElement);
@@ -242,48 +286,72 @@ describe("ReservationCheckout", () => {
     await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
     await user.click(screen.getByRole("button", { name: "Submit reservation" }));
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Is this email address correct?" })).toBeInTheDocument();
-    expect(screen.getByText("mark@example.com")).toBeInTheDocument();
-    expect(mocks.submitReservationMock).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "Yes, submit reservation" }));
-
-    expect(mocks.submitReservationMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.submitReservationMock).toHaveBeenCalledTimes(1));
     const submittedInput = mocks.submitReservationMock.mock.calls[0][0].input as FormData;
     expect(submittedInput.get("quoted_amount")).toBe("700.00");
+    expect(submittedInput.get("checkout_key")).toBe(mocks.verifyCodeMock.mock.calls[0][0].checkout_key);
     expect(await screen.findByText("If you do not see our email, please check your spam or junk folder.")).toBeInTheDocument();
+    expect(loadReservationCustomerDetails()).toEqual({
+      customer_name: "Mark Justin Sayson",
+      customer_email: "mark@example.com",
+      customer_contact_number: "09123456789",
+    });
     expect(screen.getByRole("link", { name: "Message Us on Facebook" })).toHaveAttribute("href", "https://www.facebook.com/dinksonus");
   });
 
-  it("refreshes availability and closes confirmation when selected times were just booked", async () => {
+  it("prefills saved contact details on a later visit and lets the customer forget them", async () => {
+    window.localStorage.setItem("dinks-on-us:reservation-customer-details", JSON.stringify({
+      customer_name: "Maria Santos",
+      customer_email: "maria@example.com",
+      customer_contact_number: "09171234567",
+      payment_reference_number: "should-not-be-used",
+    }));
+    const user = userEvent.setup();
+    renderCheckout();
+
+    expect(await screen.findByRole("button", { name: "Forget saved details" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Full name" })).toHaveValue("Maria Santos");
+    expect(screen.getByRole("textbox", { name: "Email address" })).toHaveValue("maria@example.com");
+    expect(screen.getByRole("textbox", { name: "Mobile number" })).toHaveValue("09171234567");
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: "Forget saved details" }));
+    expect(loadReservationCustomerDetails()).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Full name" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Email address" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Mobile number" })).toHaveValue("");
+  });
+
+  it("refreshes availability and preserves checkout when selected times were just booked", async () => {
     const user = userEvent.setup();
     mocks.submitReservationMock.mockRejectedValue(new NormalizedApiError({
       status: 409,
       code: "RESERVATION_SLOTS_UNAVAILABLE",
       message: "Some of your selected times were just booked. Please choose another available time.",
     }));
-    render(<ReservationCheckout />);
+    renderCheckout();
 
     await user.type(screen.getByRole("textbox", { name: "Full name" }), "Mark Justin Sayson");
     await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
     await user.type(screen.getByRole("textbox", { name: "Mobile number" }), "09123456789");
+    await verifyEmail(user);
     await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-12345");
     const receiptInput = document.getElementById("payment-receipt");
     expect(receiptInput).toBeInstanceOf(HTMLInputElement);
     await user.upload(receiptInput as HTMLInputElement, new File(["receipt"], "receipt.png", { type: "image/png" }));
     await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
     await user.click(screen.getByRole("button", { name: "Submit reservation" }));
-    await user.click(screen.getByRole("button", { name: "Yes, submit reservation" }));
 
-    await waitFor(() => expect(mocks.reservationOptionsRefetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.reservationOptionsRefetchMock).toHaveBeenCalledTimes(2));
+    expect(loadReservationCustomerDetails()).toBeNull();
     expect(screen.queryByRole("heading", { name: "Is this email address correct?" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Full name" })).toHaveValue("Mark Justin Sayson");
   });
 
   it("refreshes configured prices and blocks a selection that became unavailable", () => {
     mocks.reservationOptions.slots[0].price = 600;
-    const { rerender } = render(<ReservationCheckout />);
+    const { rerender } = renderCheckout();
 
     expect(screen.getByText(/Pricing changed after your selection/)).toBeInTheDocument();
     expect(screen.getByText("₱800", { selector: "dd" })).toBeInTheDocument();
@@ -293,4 +361,122 @@ describe("ReservationCheckout", () => {
     expect(screen.getByText(/no longer available/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit reservation" })).toBeDisabled();
   });
+  it("rejects an invalid email before sending any code", async () => {
+    const user = userEvent.setup();
+    renderCheckout();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "invalid");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    expect(screen.getByText("Enter a valid email address.")).toBeInTheDocument();
+    expect(mocks.sendCodeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps payment locked after delivery failure or an incorrect code", async () => {
+    const user = userEvent.setup();
+    mocks.sendCodeMock.mockRejectedValueOnce(new Error("Delivery failed"));
+    renderCheckout();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send code" })).toBeEnabled());
+    expect(screen.queryByRole("textbox", { name: "Verification code" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    await user.type(await screen.findByRole("textbox", { name: "Verification code" }), "111111");
+    mocks.verifyCodeMock.mockRejectedValueOnce(new Error("Incorrect code"));
+    await user.click(screen.getByRole("button", { name: "Verify email" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Verify email" })).toBeEnabled());
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Resend in/ })).toBeDisabled();
+    expect(screen.queryByRole("img", { name: "GCash payment QR code" })).not.toBeInTheDocument();
+    expect(mocks.submitReservationMock).not.toHaveBeenCalled();
+  });
+
+  it("requires reverification after an email edit and preserves payment evidence", async () => {
+    const user = userEvent.setup();
+    renderCheckout();
+    await verifyEmail(user);
+    await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-KEPT");
+    const receipt = new File(["receipt"], "receipt.png", { type: "image/png" });
+    await user.upload(document.getElementById("payment-receipt") as HTMLInputElement, receipt);
+    const originalKey = mocks.verifyCodeMock.mock.calls[0][0].checkout_key;
+    await user.clear(screen.getByRole("textbox", { name: "Email address" }));
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "other@example.com");
+    expect(screen.queryByText("Email verified")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toHaveValue("TX-KEPT");
+    expect((document.getElementById("payment-receipt") as HTMLInputElement).files?.item(0)).toBe(receipt);
+    expect(screen.queryByRole("img", { name: "GCash payment QR code" })).not.toBeInTheDocument();
+    await verifyEmail(user);
+    expect(mocks.verifyCodeMock.mock.calls[1][0].checkout_key).not.toBe(originalKey);
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toHaveValue("TX-KEPT");
+  });
+
+  it("keeps unavailable selections locked after successful email verification", async () => {
+    const user = userEvent.setup();
+    mocks.reservationOptions.unavailable_slots.push({ court_id: 1, start_hour: 7 });
+    renderCheckout();
+    await verifyEmail(user);
+    expect(mocks.reservationOptionsRefetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
+    expect(screen.queryByRole("img", { name: "GCash payment QR code" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit reservation" })).toBeDisabled();
+  });
+
+  it("keeps payment locked when the verification grant is already expired", async () => {
+    const user = userEvent.setup();
+    mocks.verifyCodeMock.mockImplementation(async (input) => ({ data: { email: input.customer_email, verified_at: new Date().toISOString(), verification_expires_at: new Date(Date.now() - 1000).toISOString() } }));
+    renderCheckout();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    await user.type(await screen.findByRole("textbox", { name: "Verification code" }), "123456");
+    await user.click(screen.getByRole("button", { name: "Verify email" }));
+    expect(await screen.findByText(/Email verification has expired/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
+  });
+
+  it("recovers a lost submission response with the same key even when its times now look reserved", async () => {
+    const user = userEvent.setup();
+    mocks.submitReservationMock.mockRejectedValueOnce(new Error("Connection lost"));
+    const { rerender } = renderCheckout();
+    await user.type(screen.getByRole("textbox", { name: "Full name" }), "Sample Player");
+    await user.type(screen.getByRole("textbox", { name: "Mobile number" }), "09123456789");
+    await verifyEmail(user);
+    await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-RETRY");
+    await user.upload(document.getElementById("payment-receipt") as HTMLInputElement, new File(["receipt"], "receipt.png", { type: "image/png" }));
+    await user.click(screen.getByRole("checkbox", { name: /Reservation acknowledgment/ }));
+    await user.click(screen.getByRole("button", { name: "Submit reservation" }));
+    const retry = await screen.findByRole("button", { name: "Retry reservation submission" });
+    const original = mocks.submitReservationMock.mock.calls[0][0];
+    mocks.reservationOptions.unavailable_slots.push({ court_id: 1, start_hour: 7 });
+    rerender(<ReservationCheckout />);
+    expect(retry).toBeEnabled();
+    await user.click(retry);
+    expect(await screen.findByRole("heading", { name: "Reservation received" })).toBeInTheDocument();
+    expect(mocks.submitReservationMock.mock.calls[1][0].idempotencyKey).toBe(original.idempotencyKey);
+    expect(mocks.submitReservationMock.mock.calls[1][0].input.get("checkout_key")).toBe(original.input.get("checkout_key"));
+    expect(mocks.verifyCodeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the code field and verifies with Enter without submitting the booking", async () => {
+    const user = userEvent.setup();
+    renderCheckout();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    const input = await screen.findByRole("textbox", { name: "Verification code" });
+    await waitFor(() => expect(input).toHaveFocus());
+    await user.type(input, "123456{Enter}");
+    expect(await screen.findByText("Email verified")).toBeInTheDocument();
+    expect(mocks.submitReservationMock).not.toHaveBeenCalled();
+  });
+
+  it("relocks payment when verification expires without clearing the payment reference", async () => {
+    const user = userEvent.setup();
+    mocks.verifyCodeMock.mockImplementation(async (input) => ({ data: { email: input.customer_email, verified_at: new Date().toISOString(), verification_expires_at: new Date(Date.now() + 500).toISOString() } }));
+    renderCheckout();
+    await verifyEmail(user);
+    await user.type(screen.getByRole("textbox", { name: "Transaction reference number" }), "TX-KEPT");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toBeDisabled(), { timeout: 2500 });
+    expect(screen.getByRole("textbox", { name: "Transaction reference number" })).toHaveValue("TX-KEPT");
+    expect(screen.queryByRole("img", { name: "GCash payment QR code" })).not.toBeInTheDocument();
+  });
+
 });

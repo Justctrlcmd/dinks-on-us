@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\PaymentProofStorageService;
+use App\Support\ManagerCredentials;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,7 @@ class ResetDemoSystemCommand extends Command
 
     /** @var list<string> */
     private const RESET_TABLES = [
+        'reservation_email_verifications',
         'reservation_slot_locks',
         'reservation_refunds',
         'reservation_schedule_histories',
@@ -47,6 +49,8 @@ class ResetDemoSystemCommand extends Command
         'courts',
         'push_subscriptions',
         'sessions',
+        'jobs',
+        'failed_jobs',
         'role_modules',
         'users',
         'roles',
@@ -176,16 +180,7 @@ class ResetDemoSystemCommand extends Command
     /** @return array{name: string, email: string, password: string} */
     private function managerConfiguration(): array
     {
-        $manager = config('manager.default');
-        $name = trim((string) ($manager['name'] ?? ''));
-        $email = trim((string) ($manager['email'] ?? ''));
-        $password = (string) ($manager['password'] ?? '');
-
-        if ($name === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL) || $password === '') {
-            throw new RuntimeException('Manager credentials must be configured before resetting the system.');
-        }
-
-        return compact('name', 'email', 'password');
+        return ManagerCredentials::configured(app()->isProduction());
     }
 
     /** @return array<string, int> */

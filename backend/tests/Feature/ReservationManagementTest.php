@@ -8,6 +8,7 @@ use App\Models\CourtConfiguration;
 use App\Models\PaymentMethod;
 use App\Models\RentalEquipment;
 use App\Models\Reservation;
+use App\Models\ReservationEmailVerification;
 use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -15,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ReservationManagementTest extends TestCase
@@ -55,7 +57,14 @@ class ReservationManagementTest extends TestCase
 
     private function submissionPayload(int $hour = 9): array
     {
+        $checkoutKey = (string) Str::uuid();
+        ReservationEmailVerification::query()->create([
+            'checkout_key_hash' => hash('sha256', $checkoutKey), 'email' => 'juan@example.com',
+            'verified_at' => now(), 'verification_expires_at' => now()->addMinutes(30),
+        ]);
+
         return [
+            'checkout_key' => $checkoutKey,
             'customer_name' => 'Juan Dela Cruz', 'customer_email' => 'juan@example.com',
             'customer_contact_number' => '09123456789', 'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => $hour]],
             'equipment' => [], 'additional_players' => 1, 'payment_method_id' => $this->paymentMethod->id,
@@ -100,6 +109,7 @@ class ReservationManagementTest extends TestCase
         $this->getJson("/api/v1/public/reservation-options?date={$this->date}&hours[]=10&hours[]=11")->assertOk()->assertJsonPath('data.equipment.0.available_quantity', 0);
         $this->getJson("/api/v1/public/reservation-options?date={$this->date}&hours[]=24")->assertUnprocessable();
         $court = Court::query()->create(['court_number' => 2, 'is_active' => true]);
+        $input['checkout_key'] = $this->submissionPayload()['checkout_key'];
         $input['slots'][0]['court_id'] = $court->id;
         $input['equipment'][0]['quantity'] = 1;
         $input['quoted_amount'] = 630;
@@ -193,6 +203,7 @@ class ReservationManagementTest extends TestCase
         $input['quoted_amount'] = 750;
         $first = $this->post('/api/v1/public/reservations', $input)->assertCreated()->json('data');
         $court = Court::query()->create(['court_number' => 2, 'is_active' => true]);
+        $input['checkout_key'] = $this->submissionPayload()['checkout_key'];
         $input['slots'][0] = ['court_id' => $court->id, 'date' => $this->date, 'start_hour' => 11];
         $this->post('/api/v1/public/reservations', $input)->assertCreated();
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$first['id']}/verify")->assertOk();
@@ -254,8 +265,9 @@ class ReservationManagementTest extends TestCase
     {
         $headers = ['Accept' => 'application/json', 'Idempotency-Key' => 'reservation-submit-001'];
 
-        $this->post('/api/v1/public/reservations', $this->submissionPayload(), $headers)->assertCreated();
-        $this->post('/api/v1/public/reservations', $this->submissionPayload(), $headers)
+        $payload = $this->submissionPayload();
+        $this->post('/api/v1/public/reservations', $payload, $headers)->assertCreated();
+        $this->post('/api/v1/public/reservations', $payload, $headers)
             ->assertOk()
             ->assertJsonPath('data.reference_number', 'RF-001');
 

@@ -22,7 +22,10 @@ import { PageHeader } from "@/components/common/page-header";
 import { PortalMetricCard } from "@/components/portal/portal-metric-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ReservationDetailDialog } from "@/forms/reservations/reservation-dialogs";
+import { canAccessPortalModule } from "@/config/navigation";
+import { RejectReservationDialog, ReservationActionConfirmationDialog, ReservationDetailDialog } from "@/forms/reservations/reservation-dialogs";
+import { useVerifyReservation } from "@/hooks/mutations/use-reservation-mutations";
+import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useDashboard } from "@/hooks/queries/use-dashboard";
 import {
   addDays,
@@ -32,7 +35,9 @@ import {
 } from "@/lib/date";
 import { formatHourRange } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type { DashboardSlot, DashboardSlotStatus } from "@/types/dashboard";
+import type { ManagementReservation } from "@/types/reservation";
 
 const currency = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -396,6 +401,10 @@ export function PortalHomeView() {
   const [selectedReservationId, setSelectedReservationId] = useState<
     number | null
   >(null);
+  const [pendingAction, setPendingAction] = useState<{ kind: "verify" | "reject"; reservation: ManagementReservation } | null>(null);
+  const currentUser = useCurrentUser();
+  const verifyMutation = useVerifyReservation();
+  const canManageReservations = Boolean(currentUser.data && canAccessPortalModule(currentUser.data, "RESERVATION"));
   const query = useDashboard(weekStart, selectedDate);
   const data = query.data;
   const weekEnd = data?.week.end ?? addDays(weekStart, 6);
@@ -410,6 +419,17 @@ export function PortalHomeView() {
     const nextWeek = addDays(weekStart, amount);
     setWeekStart(nextWeek);
     setSelectedDate(nextWeek);
+  }
+
+  function reviewPendingAction(kind: "verify" | "reject", reservation: ManagementReservation) {
+    if (!canManageReservations || reservation.status !== "PENDING" || verifyMutation.isPending) return;
+    setSelectedReservationId(null);
+    setPendingAction({ kind, reservation });
+  }
+
+  function verifyPendingReservation() {
+    if (!canManageReservations || pendingAction?.kind !== "verify" || verifyMutation.isPending || isMutationRateLimited(verifyMutation)) return;
+    verifyMutation.mutate(pendingAction.reservation.id, { onSuccess: () => setPendingAction(null) });
   }
 
   return (
@@ -515,7 +535,30 @@ export function PortalHomeView() {
         onOpenChange={(open) => {
           if (!open) setSelectedReservationId(null);
         }}
+        actionsDisabled={verifyMutation.isPending}
+        onVerify={canManageReservations ? (reservation) => reviewPendingAction("verify", reservation) : undefined}
+        onReject={canManageReservations ? (reservation) => reviewPendingAction("reject", reservation) : undefined}
       />
+      {canManageReservations && pendingAction?.kind === "reject" ? (
+        <RejectReservationDialog
+          reservation={pendingAction.reservation}
+          open
+          onOpenChange={(open) => { if (!open) setPendingAction(null); }}
+        />
+      ) : null}
+      <ReservationActionConfirmationDialog
+        open={canManageReservations && pendingAction?.kind === "verify"}
+        onOpenChange={(open) => { if (!open) setPendingAction(null); }}
+        title="Verify this reservation?"
+        description="This accepts the submitted payment and confirms the booking."
+        confirmLabel={mutationButtonLabel("Verifying…", "Yes, verify", verifyMutation)}
+        pending={verifyMutation.isPending}
+        disabled={!canManageReservations || isMutationRateLimited(verifyMutation)}
+        onConfirm={verifyPendingReservation}
+      >
+        <p className="font-semibold">{pendingAction?.reservation.reference_number}</p>
+        <p className="text-muted-foreground">{pendingAction?.reservation.customer.name}</p>
+      </ReservationActionConfirmationDialog>
     </div>
   );
 }

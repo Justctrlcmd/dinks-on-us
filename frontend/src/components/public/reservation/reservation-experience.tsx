@@ -34,7 +34,7 @@ import {
   todayInTimeZone,
   weekStartFor,
 } from "@/lib/date";
-import { formatHourRange } from "@/lib/time";
+import { formatCompactHourRange, formatHourRange } from "@/lib/time";
 import { equipmentForSchedule } from "@/lib/equipment-availability";
 import { cn } from "@/lib/utils";
 import type { ReservationOptions } from "@/types/court-pricing";
@@ -740,7 +740,7 @@ function StickyReservationBar({
             </p>
             <p className="mt-1 truncate text-sm text-white/70">
               {firstSlot.courtName}:{" "}
-              {formatHourRange(firstSlot.startHour, firstSlot.endHour)} (
+              {formatCompactHourRange(firstSlot.startHour, firstSlot.endHour)} (
               {currency.format(firstSlot.price)})
               {selectedSlots.length > 1
                 ? ` · +${selectedSlots.length - 1} more`

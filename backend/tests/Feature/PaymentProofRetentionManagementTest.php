@@ -17,6 +17,27 @@ class PaymentProofRetentionManagementTest extends TestCase
 
     private User $manager;
 
+    public function test_excessive_cleanup_ranges_are_rejected_before_deleting_any_proofs(): void
+    {
+        $reservation = $this->createReservation('2026-08-01', Reservation::STATUS_COMPLETED);
+        $rows = array_fill(0, 1001, [
+            'reservation_id' => $reservation->id, 'payment_method_name' => 'Test', 'channel' => 'EWALLET',
+            'kind' => 'INITIAL', 'status' => 'VERIFIED', 'amount' => 100,
+            'proof_path' => 'reservation-payment-proofs/keep.webp', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        ReservationPayment::query()->insert($rows);
+        Storage::disk('local')->put('reservation-payment-proofs/keep.webp', 'keep');
+
+        $this->actingAs($this->manager)->getJson('/api/v1/management/payment-proof-retention/preview?from=2026-08-01&to=2026-08-01')
+            ->assertUnprocessable()->assertJsonValidationErrors('to');
+        $this->postJson('/api/v1/management/payment-proof-retention/delete', [
+            'from' => '2026-08-01', 'to' => '2026-08-01', 'confirm' => true, 'current_password' => 'password',
+        ])->assertUnprocessable()->assertJsonValidationErrors('to');
+        Storage::disk('local')->assertExists('reservation-payment-proofs/keep.webp');
+        $this->assertSame(1001, ReservationPayment::query()->whereNotNull('proof_path')->count());
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

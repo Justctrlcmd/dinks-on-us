@@ -11,6 +11,7 @@ use App\Models\PaymentMethod;
 use App\Models\PolicySection;
 use App\Models\RentalEquipment;
 use App\Models\Reservation;
+use App\Models\ReservationSlot;
 use App\Models\ReservationSlotLock;
 use App\Models\User;
 use App\Support\BusinessClock;
@@ -32,6 +33,7 @@ class ReservationService
     public function __construct(
         private readonly PaymentProofStorageService $proofStorage,
         private readonly EquipmentAvailabilityService $equipmentAvailability,
+        private readonly ReservationEmailVerificationService $emailVerification,
     ) {}
 
     /** @param array<string, mixed> $input */
@@ -40,14 +42,23 @@ class ReservationService
         if ($idempotencyKey) {
             $existing = Reservation::query()->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
+                $this->emailVerification->forSubmission($input, $existing->id);
+
                 return $existing->fresh(self::DETAIL_RELATIONS);
             }
         }
 
+        $this->emailVerification->forSubmission($input, idempotencyKey: $idempotencyKey);
         $proofPath = $this->proofStorage->store($proof);
 
         try {
             return DB::transaction(function () use ($input, $proofPath, $idempotencyKey): Reservation {
+                $verification = $this->emailVerification->forSubmission($input, lock: true, idempotencyKey: $idempotencyKey);
+                if ($verification->reservation_id !== null) {
+                    $this->proofStorage->delete($proofPath);
+
+                    return Reservation::query()->findOrFail($verification->reservation_id)->fresh(self::DETAIL_RELATIONS);
+                }
                 $slots = collect($input['slots'])->sortBy(fn (array $slot): string => sprintf('%010d-%02d', $slot['court_id'], $slot['start_hour']))->values()->all();
                 $date = $slots[0]['date'];
                 $configuration = CourtConfiguration::query()->with('ratePeriods')->lockForUpdate()->find(1);
@@ -85,12 +96,14 @@ class ReservationService
                     'idempotency_key' => $idempotencyKey,
                     'source' => 'ONLINE', 'booking_date' => $date, 'customer_name' => $input['customer_name'],
                     'customer_email' => $input['customer_email'], 'customer_contact_number' => $input['customer_contact_number'],
+                    'customer_email_verified_at' => $verification->verified_at,
                     'status' => Reservation::STATUS_PENDING, 'original_additional_players' => $input['additional_players'],
                     'additional_player_unit_amount' => $configuration->additional_player_price, 'original_amount' => $originalAmount,
                     'final_amount' => $originalAmount, 'policy_snapshot' => $this->policySnapshot(),
                     'policy_accepted_at' => now(), 'submitted_at' => now(),
                 ]);
                 $reservation->update(['reference_number' => 'RF-'.str_pad((string) $reservation->id, 3, '0', STR_PAD_LEFT)]);
+                $verification->update(['reservation_id' => $reservation->id]);
 
                 foreach ($pricedSlots as $slotData) {
                     $slot = $reservation->slots()->create([...$slotData, 'kind' => 'ORIGINAL', 'is_current' => true]);
@@ -118,6 +131,8 @@ class ReservationService
                 $this->proofStorage->delete($proofPath);
                 $existing = Reservation::query()->where('idempotency_key', $idempotencyKey)->first();
                 if ($existing) {
+                    $this->emailVerification->forSubmission($input, $existing->id);
+
                     return $existing->fresh(self::DETAIL_RELATIONS);
                 }
             }
@@ -251,7 +266,26 @@ class ReservationService
     /** @param array<string, mixed> $filters @return array{paginator: LengthAwarePaginator, kpis: array<string, int>} */
     public function operationalList(array $filters): array
     {
-        $query = Reservation::query()->operational()->with(['currentSlots.court'])->latest('submitted_at')->latest('id');
+        $now = BusinessClock::now();
+        $today = $now->toDateString();
+        // Only actual current slots count: elapsed hours and gaps must not make
+        // a multi-slot reservation appear earlier than its next court time.
+        $scheduleOrder = ReservationSlot::query()
+            ->select('reservation_id')
+            ->selectRaw('MIN(CASE WHEN date > ? OR (date = ? AND end_hour > ?) THEN start_hour END) as next_start_hour', [$today, $today, $now->hour])
+            ->selectRaw('MAX(end_hour) as last_end_hour')
+            ->where('is_current', true)
+            ->groupBy('reservation_id');
+        $query = Reservation::query()->operational()
+            ->leftJoinSub($scheduleOrder, 'schedule_order', 'schedule_order.reservation_id', '=', 'reservations.id')
+            ->select('reservations.*')
+            ->with(['currentSlots.court'])
+            // Unresolved elapsed bookings need attention before current/upcoming visits.
+            ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('reservations.booking_date')
+            ->orderByRaw('COALESCE(schedule_order.next_start_hour, schedule_order.last_end_hour)')
+            ->latest('reservations.submitted_at')
+            ->latest('reservations.id');
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $query->where(function ($query) use ($search): void {
                 $query->where('reference_number', 'like', "%{$search}%")
@@ -740,21 +774,23 @@ class ReservationService
     private function assertNoClosureOrLock(array $slots, ?int $ignoreReservationId = null): void
     {
         foreach ($slots as $slot) {
+            // Court locks serialize writers; locking reads must also bypass an
+            // older MySQL REPEATABLE READ snapshot established by pricing reads.
             $closures = AvailabilityClosure::query()->active()->whereDate('date', $slot['date'])
                 ->where(function ($query) use ($slot): void {
                     $query->where('type', AvailabilityClosure::TYPE_ENTIRE_OPERATION)
-                        ->orWhere(function ($query) use ($slot): void {
-                            $query->where('type', AvailabilityClosure::TYPE_COURT_TIME)->where('court_id', $slot['court_id'])
-                                ->whereHas('periods', fn ($periods) => $periods->where('start_hour', '<=', $slot['start_hour'])->where('end_hour', '>', $slot['start_hour']));
-                        });
-                })->exists();
-            if ($closures) {
+                        ->orWhere('court_id', $slot['court_id']);
+                })
+                ->with(['periods' => fn ($periods) => $periods->lockForUpdate()])
+                ->lockForUpdate()->get();
+            if ($closures->contains(fn (AvailabilityClosure $closure): bool => $closure->type === AvailabilityClosure::TYPE_ENTIRE_OPERATION
+                || $closure->periods->contains(fn ($period): bool => $period->start_hour <= $slot['start_hour'] && $period->end_hour > $slot['start_hour']))) {
                 throw new ReservationConflictException('One or more selected court times are closed. Choose another time.');
             }
 
             $lock = ReservationSlotLock::query()->where('court_id', $slot['court_id'])->whereDate('date', $slot['date'])->where('start_hour', $slot['start_hour'])
                 ->when($ignoreReservationId, fn ($query) => $query->whereHas('reservationSlot', fn ($slotQuery) => $slotQuery->where('reservation_id', '!=', $ignoreReservationId)))
-                ->exists();
+                ->lockForUpdate()->first(['id']);
             if ($lock) {
                 throw new ReservationConflictException(
                     'Some of your selected times were just booked. Please choose another available time.',

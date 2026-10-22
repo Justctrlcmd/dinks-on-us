@@ -38,6 +38,10 @@ class ReportFilterRequest extends FormRequest
                 $validator->errors()->add('to', 'The end date must be on or after the start date.');
             }
 
+            if ($from->diffInDays($to) > 365) {
+                $validator->errors()->add('to', 'Choose a report range of at most 366 days.');
+            }
+
             if ($to->greaterThan($today)) {
                 $validator->errors()->add('to', 'Reports cannot include future dates.');
             }

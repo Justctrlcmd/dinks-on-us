@@ -21,6 +21,12 @@ class LoginRequest extends FormRequest
      */
     public function rules(): array
     {
+        // An existing session is checked by the controller, without authenticating
+        // submitted credentials again or switching to another account.
+        if ($this->user('web')) {
+            return [];
+        }
+
         return [
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { philippineMobileNumberSchema } from "./contact-number-schema";
+import { reservationEmailSchema } from "./reservation-email-verification-schema";
 
 export const RESERVATION_RECEIPT_ACCEPT = "image/jpeg,image/png,image/webp";
 export const RESERVATION_RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
@@ -11,7 +12,7 @@ function isFileList(value: unknown): value is FileList {
 
 export const reservationCheckoutSchema = z.object({
   customer_name: z.string().trim().min(1, "Enter your full name.").max(180, "Keep your name under 180 characters."),
-  customer_email: z.email("Enter a valid email address.").trim().max(180, "Keep your email under 180 characters."),
+  customer_email: reservationEmailSchema,
   customer_contact_number: philippineMobileNumberSchema("Enter your mobile number."),
   payment_method_id: z.string().trim().min(1, "Choose a payment method."),
   payment_reference_number: z.string().trim().min(1, "Enter the transaction reference number.").max(180, "Keep the transaction reference under 180 characters."),

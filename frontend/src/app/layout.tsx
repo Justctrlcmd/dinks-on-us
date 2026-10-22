@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import { LocalBusinessJsonLd } from "@/components/public/local-business-json-ld";
 import { siteConfig } from "@/config/site";
@@ -8,7 +9,7 @@ import { AppProviders } from "@/providers/app-providers";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: { default: siteConfig.name, template: `%s · ${siteConfig.name}` },
+  title: siteConfig.name,
   description: siteConfig.description,
   metadataBase: new URL(siteConfig.url),
   applicationName: siteConfig.name,
@@ -35,5 +36,6 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en-PH" suppressHydrationWarning><body className="min-h-svh antialiased"><LocalBusinessJsonLd /><AppProviders>{children}</AppProviders></body></html>;
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  return <html lang="en-PH" suppressHydrationWarning><body className="min-h-svh antialiased"><LocalBusinessJsonLd /><AppProviders nonce={nonce}>{children}</AppProviders></body></html>;
 }

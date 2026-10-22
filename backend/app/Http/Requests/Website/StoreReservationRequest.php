@@ -29,6 +29,7 @@ class StoreReservationRequest extends FormRequest
         return [
             'customer_name' => ['required', 'string', 'max:180'],
             'customer_email' => ['required', 'email:rfc', 'max:180'],
+            'checkout_key' => ['required', 'string', 'min:32', 'max:100', 'regex:/^[A-Za-z0-9._~-]+$/'],
             'customer_contact_number' => ['required', 'string', 'size:11', 'regex:/^09[0-9]{9}$/'],
             'idempotency_key' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._~-]+$/'],
             'slots' => ['required', 'array', 'min:1', 'max:48'],

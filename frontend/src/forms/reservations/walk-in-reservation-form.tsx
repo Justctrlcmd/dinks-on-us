@@ -18,7 +18,7 @@ import { equipmentForSchedule } from "@/lib/equipment-availability";
 import { useReservationOptions } from "@/hooks/queries/use-court-pricing";
 import { usePublicPaymentMethods } from "@/hooks/queries/use-payment-methods";
 import { formatDateOnly, todayInTimeZone } from "@/lib/date";
-import { formatHourRange } from "@/lib/time";
+import { ReservationSlotLabel, ReservationSummaryLine } from "@/forms/reservations/reservation-summary-line";
 import {
   expandReservationRanges,
   ReservationQuantityStepper,
@@ -201,11 +201,9 @@ export function WalkInReservationForm() {
         <Card className="gap-4 border-primary/35 p-4 sm:p-5" aria-labelledby="walk-in-summary-title">
           <SectionHeading id="walk-in-summary-title" title="Summary breakdown" description="The backend rechecks availability and calculates the authoritative amount when submitted." />
           <div className="grid gap-2 text-sm">
+            <p className="text-xs text-muted-foreground">{formatDateOnly(date)}</p>
             {selectedSlotDetails.map((slot) => (
-              <div key={`${slot.court_id}-${slot.start_hour}`} className="flex flex-wrap justify-between gap-2 border-b py-2">
-                <span>{slot.courtName} · {formatDateOnly(slot.date)} · {formatHourRange(slot.start_hour, slot.endHour)}</span>
-                <strong>{currency.format(slot.amount)}</strong>
-              </div>
+              <ReservationSummaryLine key={`${slot.court_id}-${slot.start_hour}`} label={<ReservationSlotLabel courtName={slot.courtName} date={slot.date} startHour={slot.start_hour} endHour={slot.endHour} />} amount={slot.amount} className="border-b py-2" />
             ))}
             {additionalPlayers > 0 ? <div className="flex justify-between gap-3"><span>Additional players · {additionalPlayers} × {currency.format(playerUnitAmount)}</span><strong>{currency.format(playerAmount)}</strong></div> : null}
             {selectedEquipment.map((item) => <div key={item.id} className="flex justify-between gap-3"><span>{item.name} · {quantityFor(item.id)} × {currency.format(item.price)}</span><strong>{currency.format(quantityFor(item.id) * item.price)}</strong></div>)}
