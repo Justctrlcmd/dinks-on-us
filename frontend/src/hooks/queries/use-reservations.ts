@@ -21,6 +21,6 @@ export function usePendingReservationCount(enabled = true) {
   });
 }
 
-export function useReservation(id: number | null) {
-  return useQuery({ queryKey: reservationKeys.detail(id ?? 0), queryFn: ({ signal }) => getReservation(id as number, signal).then((response) => response.data), enabled: id !== null });
+export function useReservation(id: number | null, options: { refetchOnMount?: boolean | "always" } = {}) {
+  return useQuery({ queryKey: reservationKeys.detail(id ?? 0), queryFn: ({ signal }) => getReservation(id as number, signal).then((response) => response.data), enabled: id !== null, refetchOnMount: options.refetchOnMount });
 }

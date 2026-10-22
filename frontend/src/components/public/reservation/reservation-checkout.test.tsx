@@ -389,6 +389,27 @@ describe("ReservationCheckout", () => {
     expect(mocks.submitReservationMock).not.toHaveBeenCalled();
   });
 
+  it("honors the server wait after delivery fails so retrying does not immediately hit the resend limit", async () => {
+    const user = userEvent.setup();
+    mocks.sendCodeMock.mockRejectedValueOnce(new NormalizedApiError({
+      status: 503, code: "EMAIL_DELIVERY_UNAVAILABLE", message: "We could not send your verification code.", retryAfterSeconds: 1,
+    }));
+    renderCheckout();
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "mark@example.com");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    const retry = await screen.findByRole("button", { name: "Try again in 0:01" });
+    expect(retry).toBeDisabled();
+    await user.click(retry);
+    expect(mocks.sendCodeMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("combobox", { name: "E-wallet or Bank" })).toBeDisabled();
+    expect(screen.queryByRole("textbox", { name: "Verification code" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send code" })).toBeEnabled(), { timeout: 2_000 });
+    expect(mocks.sendCodeMock).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    expect(await screen.findByRole("textbox", { name: "Verification code" })).toBeInTheDocument();
+    expect(mocks.sendCodeMock).toHaveBeenCalledTimes(2);
+  });
+
   it("requires reverification after an email edit and preserves payment evidence", async () => {
     const user = userEvent.setup();
     renderCheckout();

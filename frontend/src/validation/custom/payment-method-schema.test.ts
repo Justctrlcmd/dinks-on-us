@@ -17,6 +17,16 @@ const fields = {
 };
 
 describe("paymentMethodSchema", () => {
+  it.each(["abc", "123abc", "1e10", "+123", "123.45", "001 234", "123-456", "123\n", "１２３"])("rejects non-digit account number %j", (account_number) => {
+    const result = paymentMethodSchema(false).safeParse({ ...fields, account_number });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0].message).toBe("Use numbers only for the account number.");
+  });
+
+  it("preserves leading zeros in account numbers", () => {
+    const result = paymentMethodSchema(false).parse({ ...fields, account_number: "0011223344" });
+    expect(result.account_number).toBe("0011223344");
+  });
   it("requires a QR image when creating a payment method", () => {
     const result = paymentMethodSchema(true).safeParse({ ...fields, qr_image: fileList() });
     expect(result.success).toBe(false);
@@ -39,5 +49,7 @@ describe("paymentMethodSchema", () => {
 
   it("allows an edit to keep the current QR image", () => {
     expect(paymentMethodSchema(false).safeParse({ ...fields, qr_image: fileList() }).success).toBe(true);
+    expect(paymentMethodSchema(false).safeParse(fields).success).toBe(true);
+    expect(paymentMethodSchema(true).safeParse(fields).success).toBe(false);
   });
 });

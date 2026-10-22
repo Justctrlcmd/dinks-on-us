@@ -5,11 +5,10 @@ namespace App\Http\Requests\Management;
 use App\Http\Requests\Concerns\NormalizesInput;
 use App\Support\BusinessClock;
 use App\Support\Security\ImageUploadRules;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class StoreWalkInReservationRequest extends FormRequest
+class StoreWalkInReservationRequest extends ReservationActionRequest
 {
     use NormalizesInput;
 
@@ -29,6 +28,8 @@ class StoreWalkInReservationRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...parent::rules(),
+            'quoted_amount' => ['required_with:idempotency_key', 'numeric', 'min:0', 'decimal:0,2'],
             'customer_name' => ['required', 'string', 'max:180'],
             'customer_email' => ['required', 'email:rfc', 'max:180'],
             'customer_contact_number' => ['required', 'string', 'size:11', 'regex:/^09[0-9]{9}$/'],
@@ -82,6 +83,7 @@ class StoreWalkInReservationRequest extends FormRequest
     public function messages(): array
     {
         return [
+            ...parent::messages(),
             'payment_proof.mimes' => 'The receipt must be a JPG, PNG, or WebP image.',
             'payment_proof.max' => 'The receipt must not be larger than 5 MB.',
             'payment_proof.required' => 'Select a receipt image for this payment method.',

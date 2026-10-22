@@ -8,10 +8,10 @@ export function paymentMethodSchema(requireQrImage: boolean) {
   return z.object({
     name: z.string().trim().min(1, "Enter the e-wallet or bank name.").max(100, "Keep the name under 100 characters."),
     account_name: z.string().trim().min(1, "Enter the account name.").max(150, "Keep the account name under 150 characters."),
-    account_number: z.string().trim().min(1, "Enter the account number.").max(100, "Keep the account number under 100 characters."),
+    account_number: z.string().min(1, "Enter the account number.").max(100, "Keep the account number under 100 characters.").regex(/^[0-9]+$/, "Use numbers only for the account number."),
     qr_image: z.custom<FileList | undefined>((value) => value === undefined || (typeof value === "object" && value !== null), {
       message: "Select a QR image.",
-    }),
+    }).optional(),
   }).superRefine((values, context) => {
     const file = values.qr_image?.item(0) ?? undefined;
 

@@ -98,9 +98,12 @@ class ResetDemoSystemCommandTest extends TestCase
         $this->assertTrue($manager->role->is_full_access);
         $this->assertSame(1, Role::query()->count());
 
-        foreach (['courts', 'events', 'faqs', 'gallery_images', 'gallery_tabs', 'payment_methods', 'audit_logs', 'sessions', 'policy_sections', 'jobs', 'failed_jobs'] as $table) {
+        foreach (['courts', 'events', 'faqs', 'gallery_images', 'gallery_tabs', 'payment_methods', 'audit_logs', 'sessions', 'policy_rules', 'policy_subheaders', 'jobs', 'failed_jobs'] as $table) {
             $this->assertSame(0, DB::table($table)->count(), "{$table} should be empty after reset.");
         }
+        $this->assertDatabaseCount('policy_sections', 4);
+        $this->actingAs($manager)->getJson('/api/v1/management/policy-sections')
+            ->assertOk()->assertJsonCount(4, 'data')->assertJsonCount(0, 'data.0.subheaders');
 
         Storage::disk('local')->assertMissing('reservation-payment-proofs/demo.webp');
         Storage::disk('public')->assertMissing('events/demo.webp');

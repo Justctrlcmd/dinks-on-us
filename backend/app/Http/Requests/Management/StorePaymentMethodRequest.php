@@ -27,7 +27,7 @@ class StorePaymentMethodRequest extends FormRequest
             'name' => ['required', 'string', 'max:100'],
             'qr_image' => ImageUploadRules::required(),
             'account_name' => ['required', 'string', 'max:150'],
-            'account_number' => ['required', 'string', 'max:100'],
+            'account_number' => ['required', 'string', 'max:100', 'regex:/\A[0-9]+\z/'],
         ];
     }
 
@@ -37,6 +37,7 @@ class StorePaymentMethodRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'account_number.regex' => 'Use numbers only for the account number.',
             'qr_image.required' => 'Select a QR image.',
             'qr_image.image' => 'The QR image must be a valid image file.',
             'qr_image.mimes' => 'The QR image must be a JPG, PNG, or WebP file.',

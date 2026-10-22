@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ErrorState } from "@/components/common/error-state";
+import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
 import { PolicyRuleFormDialog } from "@/forms/policy/policy-rule-form-dialog";
@@ -263,5 +264,5 @@ function PolicyBoard({ section }: { section: PolicySection }) {
 
 export function PolicyManagementView() {
   const query = useManagementPolicies();
-  return <div className="grid gap-8"><PageHeader title="Rules & Policies" description="Manage the policies displayed to customers and control their public display order." />{query.isPending ? <LoadingState message="Loading policy boards…" /> : query.isError ? <ErrorState title="We couldn't load the policy boards." onRetry={() => void query.refetch()} /> : query.data.map((section) => <PolicyBoard key={`${section.id}-${section.updated_at}-${section.subheaders.map((subheader) => `${subheader.id}-${subheader.updated_at}-${subheader.rules.map((rule) => `${rule.id}-${rule.updated_at}`).join(",")}`).join("|")}`} section={section} />)}</div>;
+  return <div className="grid gap-8"><PageHeader title="Rules & Policies" description="Manage the policies displayed to customers and control their public display order." />{query.isPending ? <LoadingState message="Loading policy boards…" /> : query.isError ? <ErrorState title="We couldn't load the policy boards." onRetry={() => void query.refetch()} /> : query.data.length === 0 ? <EmptyState title="Policy sections are unavailable." description="Please contact your administrator to restore the policy sections." action={<Button variant="outline" onClick={() => void query.refetch()}>Try again</Button>} /> : query.data.map((section) => <PolicyBoard key={`${section.id}-${section.updated_at}-${section.subheaders.map((subheader) => `${subheader.id}-${subheader.updated_at}-${subheader.rules.map((rule) => `${rule.id}-${rule.updated_at}`).join(",")}`).join("|")}`} section={section} />)}</div>;
 }

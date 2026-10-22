@@ -52,7 +52,7 @@
                             <p><strong>Reason:</strong> {{ $reservation->cancellation_reason }}</p>
                             @endif
                             @if ($event === 'no_show')
-                            <p>Your reservation was marked as a no-show. Any amount already paid is retained and is not refundable.</p>
+                            <p>Your reservation was marked as a no-show. Any amount remaining after recorded refunds is retained and is not refundable.</p>
                             @endif
                             @php
                             $courtTotal = (float) $reservation->currentSlots->sum('unit_amount');
@@ -61,9 +61,19 @@
                             $additionalPlayersTotal = ((int) $reservation->original_additional_players * (float) $reservation->additional_player_unit_amount) + (float) $additionalPlayerAdjustments->sum('total_amount');
                             $equipmentItems = $reservation->equipmentItems->where('is_active', true);
                             $equipmentTotal = (float) $equipmentItems->sum(fn ($equipment) => (float) $equipment->unit_amount * (int) $equipment->quantity);
-                            $outstanding = max(0, (float) $reservation->final_amount - (float) $reservation->amount_paid);
+                            // Older queued snapshots must not read later refund records.
+                            $refundedAmount = $reservation->relationLoaded('refunds')
+                                ? round((float) $reservation->refunds->where('status', 'COMPLETED')->sum('amount'), 2)
+                                : 0;
+                            $netPaid = max(0, round((float) $reservation->amount_paid - $refundedAmount, 2));
+                            $outstanding = in_array($event, ['cancelled', 'rejected', 'no_show'], true) ? 0 : max(0, (float) $reservation->final_amount - $netPaid);
                             $refundableCredit = max(0, (float) $reservation->refundable_credit);
-                            $reschedulePayment = $reservation->payments->where('kind', 'RESCHEDULE')->sortByDesc('id')->first();
+                            $reschedulePaymentAmount = $reservation->relationLoaded('scheduleHistories')
+                                ? $reservation->scheduleHistories->sortByDesc('id')->first()?->payment_amount
+                                : null;
+                            $rescheduleRefundAmount = $reservation->relationLoaded('scheduleHistories')
+                                ? $reservation->scheduleHistories->sortByDesc('id')->first()?->refund_amount
+                                : null;
                             $slotsByCourt = $reservation->currentSlots
                                 ->sortBy(fn ($slot) => sprintf('%s-%03d-%03d', $slot->date->format('Y-m-d'), $slot->court->court_number, $slot->start_hour))
                                 ->groupBy(fn ($slot) => $slot->date->format('Y-m-d').'-'.$slot->court_id);
@@ -157,10 +167,26 @@
                                     <td style="padding:6px 0"><strong>Amount paid</strong></td>
                                     <td align="right" style="padding:6px 0"><strong>₱{{ number_format((float) $reservation->amount_paid, 2) }}</strong></td>
                                 </tr>
-                                @if ($event === 'rescheduled' && $reschedulePayment)
+                                @if ($refundedAmount > 0)
+                                <tr>
+                                    <td style="padding:6px 0"><strong>Total refunded</strong></td>
+                                    <td align="right" style="padding:6px 0"><strong>₱{{ number_format($refundedAmount, 2) }}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:6px 0"><strong>Paid after refunds</strong></td>
+                                    <td align="right" style="padding:6px 0"><strong>₱{{ number_format($netPaid, 2) }}</strong></td>
+                                </tr>
+                                @endif
+                                @if ($event === 'rescheduled' && (float) $rescheduleRefundAmount > 0)
+                                <tr>
+                                    <td style="padding:6px 0;color:#1e6f78"><strong>Refunded this reschedule</strong></td>
+                                    <td align="right" style="padding:6px 0;color:#1e6f78"><strong>₱{{ number_format((float) $rescheduleRefundAmount, 2) }}</strong></td>
+                                </tr>
+                                @endif
+                                @if ($event === 'rescheduled' && (float) $reschedulePaymentAmount > 0)
                                 <tr>
                                     <td style="padding:6px 0"><strong>Additional payment</strong></td>
-                                    <td align="right" style="padding:6px 0"><strong>₱{{ number_format((float) $reschedulePayment->amount, 2) }}</strong></td>
+                                    <td align="right" style="padding:6px 0"><strong>₱{{ number_format((float) $reschedulePaymentAmount, 2) }}</strong></td>
                                 </tr>
                                 @endif
                                 @if (in_array($event, ['rescheduled', 'completed'], true))
@@ -182,7 +208,7 @@
                                 @elseif ($event === 'no_show')
                                 <tr>
                                     <td style="padding:6px 0;color:#a33a3a"><strong>Non-refundable amount retained</strong></td>
-                                    <td align="right" style="padding:6px 0;color:#a33a3a"><strong>₱{{ number_format((float) $reservation->amount_paid, 2) }}</strong></td>
+                                    <td align="right" style="padding:6px 0;color:#a33a3a"><strong>₱{{ number_format($netPaid, 2) }}</strong></td>
                                 </tr>
                                 @elseif ($refundableCredit > 0)
                                 <tr>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRateLimitedMutation } from "@/hooks/mutations/use-rate-limited-mutation";
+import { isApiError } from "@/lib/api";
+import { startRateLimitCooldown } from "@/lib/rate-limit-cooldown";
 import { sendReservationEmailCode, verifyReservationEmailCode } from "@/services/reservations/reservation-email-verification-service";
 
 export function useReservationEmailVerification(email: string, refreshAvailability: () => Promise<unknown>) {
@@ -11,7 +13,14 @@ export function useReservationEmailVerification(email: string, refreshAvailabili
   if (checkout && checkout.email !== normalizedEmail) setCheckout(null);
   const checkoutKey = checkout?.email === normalizedEmail ? checkout.key : null;
   const [now, setNow] = useState(() => Date.now());
-  const sendMutation = useRateLimitedMutation("reservation-email-send", { mutationFn: sendReservationEmailCode });
+  const sendMutation = useRateLimitedMutation("reservation-email-send", {
+    mutationFn: sendReservationEmailCode,
+    onError: (error) => {
+      if (isApiError(error) && error.status === 503 && error.code === "EMAIL_DELIVERY_UNAVAILABLE" && error.retryAfterSeconds) {
+        startRateLimitCooldown("reservation-email-send", error.retryAfterSeconds);
+      }
+    },
+  });
   const verifyMutation = useRateLimitedMutation("reservation-email-verify", {
     mutationFn: verifyReservationEmailCode,
     onSuccess: async () => { await refreshAvailability(); },

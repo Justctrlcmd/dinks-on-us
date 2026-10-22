@@ -27,6 +27,16 @@ class UpdateCourtConfigurationRequest extends FormRequest
         ];
     }
 
+    public function messages(): array
+    {
+        return [
+            'weekday_rates.required' => 'Add at least one weekday price period.',
+            'weekday_rates.min' => 'Add at least one weekday price period.',
+            'weekend_rates.required' => 'Add at least one weekend price period.',
+            'weekend_rates.min' => 'Add at least one weekend price period.',
+        ];
+    }
+
     public function after(): array
     {
         return [function (Validator $validator): void {

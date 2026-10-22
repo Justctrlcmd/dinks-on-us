@@ -5,11 +5,51 @@ namespace Tests\Feature;
 use App\Models\PolicySection;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PolicyManagementTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_missing_policy_sections_are_restored_without_overwriting_existing_content(): void
+    {
+        $kept = PolicySection::query()->with('subheaders.rules')->where('slug', 'court-rules')->firstOrFail();
+        $kept->subheaders->first()->rules->first()->update(['content' => 'Keep this custom policy.']);
+        $before = $kept->fresh('subheaders.rules')->toArray();
+        $missing = PolicySection::query()->where('slug', 'cancellation-policy')->firstOrFail();
+        foreach ($missing->subheaders as $subheader) {
+            $subheader->rules()->delete();
+        }
+        $missing->subheaders()->delete();
+        $missing->delete();
+
+        $repair = require database_path('migrations/2026_10_22_000002_restore_missing_policy_sections.php');
+        $repair->up();
+        $repair->up();
+        $repair->down();
+
+        $this->assertDatabaseCount('policy_sections', 4);
+        $this->assertSame($before, $kept->fresh('subheaders.rules')->toArray());
+        $restored = PolicySection::query()->where('slug', 'cancellation-policy')->firstOrFail();
+        $this->assertSame('Cancellation Policy', $restored->name);
+        $this->assertSame(0, $restored->subheaders()->count());
+    }
+
+    public function test_repair_restores_empty_policy_boards_for_a_previously_reset_database(): void
+    {
+        DB::table('policy_rules')->delete();
+        DB::table('policy_subheaders')->delete();
+        PolicySection::query()->delete();
+
+        $repair = require database_path('migrations/2026_10_22_000002_restore_missing_policy_sections.php');
+        $repair->up();
+
+        $this->actingAs(User::factory()->create())->getJson('/api/v1/management/policy-sections')
+            ->assertOk()->assertJsonCount(4, 'data')
+            ->assertJsonPath('data.0.slug', 'court-rules')
+            ->assertJsonCount(0, 'data.0.subheaders');
+    }
 
     public function test_the_four_fixed_sections_are_seeded_and_returned_in_public_order(): void
     {

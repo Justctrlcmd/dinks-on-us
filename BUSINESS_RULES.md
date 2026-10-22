@@ -252,6 +252,13 @@ PENDING
 
 A verified reservation may be rescheduled repeatedly by the Manager. `RESCHEDULED` is a derived operational marker backed by schedule history; the stored status remains `VERIFIED` and retains the verified action set.
 
+Marking a reservation Ongoing is allowed only when its current booking date equals
+today in the configured business timezone (Asia/Manila). This applies to online,
+walk-in, and rescheduled bookings. Past and future dates are rejected. Court start
+and end hours do not restrict this action: any time on that booking date is
+eligible. Staff still manually confirms actual arrival/play; the clock never
+automatically changes status.
+
 ---
 
 # 12. Final Reservation Status Rule
@@ -352,7 +359,7 @@ Each payment method may contain:
 
 * Name
 * Account name
-* Account number or identifier
+* Account or wallet number containing digits only (leading zeros are preserved)
 * QR code image
 * Active / inactive status
 
@@ -638,7 +645,7 @@ FAQ entries are public question-and-answer cards. Each card can be created, edit
 
 Gallery images belong to a gallery tab. Management can add, edit, delete, and drag tabs into their public order, then add, edit, move, delete, and drag images within the selected tab. Newly created tabs and images are appended to the end. The public and management galleries use only the configured tabs and do not generate an **All** tab. Deleting a gallery tab permanently deletes its contained images and stored image files.
 
-Rules and policy are maintained as three public sections: **Reservation**, **Reschedule**, and **Cancel**. Each section contains individual bullets that can be added, edited, deleted, and reordered. The public reservation experience must display those bullets in their configured order.
+Rules and policy are maintained as four fixed public sections: **Court Rules**, **Reservation**, **Reschedule**, and **Cancellation**. Each section contains subheaders and individual bullets that can be added, edited, deleted, and reordered. The public reservation experience must display those bullets in their configured order. Fixed sections remain available after a demo reset, while their editable subheaders and rules are cleared. Repairing missing sections must preserve existing content and must not invent or republish deleted policy text.
 
 ---
 
@@ -656,18 +663,29 @@ Only the Manager may reschedule a verified reservation. A reservation may be res
 
 The new target slots must all be available before the reschedule succeeds.
 
-The replacement schedule must contain exactly the same number of base one-hour
-slots as the reservation originally booked. Existing `ADD_ON` court slots move
-to the new booking date at their same court and start hour, are revalidated, and
-are repriced under the new date's configured rate. A conflict in any replacement
-or migrated add-on slot blocks the complete reschedule.
+The replacement schedule must contain exactly as many one-hour slots as the
+reservation currently holds, including all previously purchased court add-ons.
+Every current slot can move to a different court/hour on the single replacement
+date. Previous add-ons are not automatically pinned to their old court/hour.
+All replacement slots are revalidated and repriced under the new date's rates.
+Historical slot rows, payments, and adjustments remain intact; replacements are
+marked `RESCHEDULED`. Newly purchased court slots remain separate add-ons until
+they join the replacement count on the next reschedule.
 
 A reschedule may also include new court-time, additional-player, and equipment
-add-ons. The backend recalculates the full reservation. Existing refundable
-credit covers the amount due first. Any remaining positive balance must be paid
-immediately by Cash or an active e-wallet/bank method; online payment requires a
-transaction number and proof. A lower total remains recorded as refundable
-credit.
+add-ons. The backend recalculates the full updated reservation, including those
+purchases. Compare it with cumulative verified payments minus completed refunds.
+Any positive balance must be collected immediately by Cash or an active
+e-wallet/bank method; online payment requires a transaction number and proof.
+When the updated total is lower, the Manager must return the excess outside the
+website and confirm receipt of the exact displayed refund before saving.
+The same transaction records a completed refund, preserves the schedule change,
+and leaves zero reusable credit. Equal totals need no payment or refund.
+Existing players, equipment, and payment records carry forward. Later add-ons,
+reschedules, completion, cancellation limits, and no-show revenue exclude money
+already refunded. Moving purchased slots does not charge for them again.
+Legacy unsettled credit is not automatically marked refunded; a later reschedule
+must explicitly settle any excess remaining after the updated total is calculated.
 
 ---
 
@@ -819,6 +837,10 @@ The system should not automatically mark a reservation as no-show based only on 
 
 Authorized Staff or Manager determines when the business's no-show policy has been met.
 
+Any previous reschedule credit is forfeited when the reservation becomes a
+no-show. The system retains the collected amount and creates no refund due.
+Historical no-show details must not present a remaining refundable credit.
+
 The exact grace period remains subject to client confirmation.
 
 ---
@@ -892,8 +914,9 @@ Current expected notification events:
 * Reservation rescheduled
 
 The reschedule email shows the newly active court, date, time, and prices. It
-describes any refundable credit or additional payment as already settled during
-the reschedule. Cancellation, completion, and no-show actions also send customer
+shows any refund completed by this reschedule and any additional payment
+collected by this reschedule, along with cumulative payments, completed refunds,
+and the amount remaining against the reservation. Cancellation, completion, and no-show actions also send customer
 emails when enabled: cancellation confirms the refunded amount, completion shows
 the final updated total including recorded add-ons, and no-show confirms that an
 amount already paid is non-refundable. Public online submission and add-ons do
@@ -1341,3 +1364,35 @@ This document represents the current business rules agreed during system plannin
 Rules marked as **Pending Client Rules** are temporary assumptions and should be reviewed after the next client meeting.
 
 Any future change to reservation behavior, pricing, cancellation, rescheduling, payment handling, roles, or availability should update this document before implementation changes are made.
+
+## Staff review consistency
+
+Staff review the latest schedule, total paid, balance, and refund before an
+add-on, reschedule, completion, or cancellation. Current staff submissions include
+the reviewed monetary amounts; if they differ from the transactional calculation,
+the system rejects the action and requires a fresh review instead of silently
+recording a different payment/refund. This also applies to the total collected
+for a new walk-in.
+
+Operational reports count a completed reservation as having purchased extra court
+time even if later reschedules replaced its add-on slot rows. Credits and refunds
+remain visible in details even when there were no add-on purchases. Cancellation
+shows the refund recorded; completion shows any refund due.
+
+A reschedule email's additional payment and refund belong only to that reschedule.
+Later reschedules must not repeat an earlier operation's payment or refund as
+newly settled; cumulative payment/refund history remains visible.
+
+## Concurrent staff actions and retries
+
+Each successful reservation change advances a revision. Current staff financial
+actions must submit the revision and amounts shown during review. A booking change
+invalidates that review even if it leaves the price unchanged. Newly submitted
+walk-ins have no existing revision, but still submit their reviewed total.
+
+Current staff actions use one retry key per purchase/action attempt. A matching
+retry recovers the existing result without another charge, refund, add-on, status
+transition, audit event, or customer email. Reusing a key with changed business or
+payment evidence is rejected; staff review the recorded booking before making
+another change. Failed transactions do not consume their retry keys. Existing
+clients without a retry header remain compatible during coordinated rollout.

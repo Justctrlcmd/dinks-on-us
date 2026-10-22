@@ -212,6 +212,7 @@ class ReservationManagementTest extends TestCase
         $this->assertDatabaseHas('reservation_slot_locks', ['court_id' => $this->court->id, 'start_hour' => 10]);
         $this->assertDatabaseMissing('reservation_slot_locks', ['court_id' => $this->court->id, 'start_hour' => 11]);
         $this->assertDatabaseCount('reservation_schedule_histories', 0);
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
         $this->postJson("/api/v1/management/reservations/{$first['id']}/start")->assertOk();
         $this->postJson("/api/v1/management/reservations/{$first['id']}/add-ons", ['slots' => $replacement, 'payment_channel' => 'CASH'])->assertConflict();
         $this->assertDatabaseCount('reservation_adjustments', 0);
@@ -453,6 +454,7 @@ class ReservationManagementTest extends TestCase
         $completed = $this->submit(9);
         $equipment = RentalEquipment::query()->create(['name' => 'Ball', 'price' => 30, 'total_quantity' => 20, 'is_active' => true]);
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$completed['id']}/verify")->assertOk();
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$completed['id']}/start")->assertOk();
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$completed['id']}/add-ons", [
             'additional_players' => 2,
@@ -518,6 +520,241 @@ class ReservationManagementTest extends TestCase
                 && str_contains($html, 'Settled')
                 && ! str_contains($html, 'Balance due');
         });
+    }
+
+    public function test_same_price_edits_require_the_revision_staff_actually_reviewed(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $move = ['slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 10]],
+            'expected_revision' => $current['revision'], 'quoted_amount' => 600, 'quoted_payment_amount' => 0];
+        $updated = $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $move, ['Idempotency-Key' => 'staff-first-move-key'])
+            ->assertOk()->assertJsonPath('data.amounts.paid', 600)->json('data');
+        $this->assertSame($current['revision'] + 1, $updated['revision']);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $move, ['Idempotency-Key' => 'staff-first-move-key'])
+            ->assertOk()->assertJsonPath('data.revision', $updated['revision']);
+        Mail::assertSent(ReservationStatusMail::class, 2);
+        $move['slots'][0]['start_hour'] = 11;
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $move, ['Idempotency-Key' => 'staff-other-move-key'])
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseCount('reservation_schedule_histories', 1);
+        $this->assertDatabaseCount('reservation_action_receipts', 1);
+        $this->assertDatabaseHas('reservation_slot_locks', ['date' => $this->date, 'start_hour' => 10, 'court_id' => $this->court->id]);
+        $this->assertDatabaseMissing('reservation_slot_locks', ['date' => $this->date, 'start_hour' => 11, 'court_id' => $this->court->id]);
+    }
+
+    public function test_staff_add_on_retry_returns_the_committed_result_without_another_purchase(): void
+    {
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $input = ['additional_players' => 1, 'payment_channel' => 'CASH', 'expected_revision' => $current['revision'], 'quoted_amount' => 700, 'quoted_payment_amount' => 100];
+        $headers = ['Idempotency-Key' => 'staff-addon-retry-key'];
+        $first = $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $input, $headers)->assertOk()->json('data');
+        // A response was lost. The exact retry must pass before the stale-revision check.
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $input, $headers)->assertOk()
+            ->assertJsonPath('data.revision', $first['revision'])->assertJsonPath('data.amounts.paid', 700)->assertJsonCount(2, 'data.payments');
+        $this->assertDatabaseCount('reservation_adjustments', 1);
+        $this->assertDatabaseCount('reservation_action_receipts', 1);
+        // Receipt matching does not confuse refreshed review metadata with a new purchase.
+        $input['expected_revision'] = $first['revision'];
+        $input['quoted_amount'] = 800;
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $input, $headers)->assertOk()->assertJsonPath('data.amounts.paid', 700);
+        $input['additional_players'] = 2;
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $input, $headers)
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REQUEST_KEY_REUSED');
+        $this->assertDatabaseCount('reservation_payments', 2);
+    }
+
+    public function test_walk_in_retry_does_not_store_another_receipt_payment_or_email(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+        $input = [...$this->walkInPayload(), 'quoted_amount' => 700, 'payment_channel' => 'EWALLET_BANK', 'payment_method_id' => $this->paymentMethod->id,
+            'payment_reference_number' => 'WALKIN-RETRY', 'payment_proof' => UploadedFile::fake()->image('walk-in.png')];
+        $headers = ['Idempotency-Key' => 'staff-walk-in-retry'];
+        $first = $this->actingAs($this->manager)->post('/api/v1/management/reservations/walk-in', $input, $headers)->assertCreated()->json('data');
+        $files = Storage::disk('local')->allFiles();
+        $this->post('/api/v1/management/reservations/walk-in', $input, $headers)->assertCreated()
+            ->assertJsonPath('data.id', $first['id'])->assertJsonPath('data.revision', $first['revision']);
+        $this->assertDatabaseCount('reservations', 1);
+        $this->assertDatabaseCount('reservation_payments', 1);
+        $this->assertSame($files, Storage::disk('local')->allFiles());
+        Mail::assertSent(ReservationStatusMail::class, 1);
+        $input['payment_proof'] = UploadedFile::fake()->image('changed.png', 200, 200);
+        $this->post('/api/v1/management/reservations/walk-in', $input, $headers)
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REQUEST_KEY_REUSED');
+        $this->assertSame($files, Storage::disk('local')->allFiles());
+    }
+
+    public function test_revision_check_includes_free_additions_and_failed_attempts_do_not_consume_a_key(): void
+    {
+        CourtConfiguration::query()->findOrFail(1)->update(['additional_player_price' => 0]);
+        $input = $this->submissionPayload(9);
+        $input['quoted_amount'] = 500;
+        $id = $this->post('/api/v1/public/reservations', $input)->assertCreated()->json('data.id');
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $free = ['additional_players' => 1, 'expected_revision' => $current['revision'], 'quoted_amount' => 500, 'quoted_payment_amount' => 0];
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $free, ['Idempotency-Key' => 'free-add-on-first-key'])->assertOk();
+        $retryKey = ['Idempotency-Key' => 'free-add-on-stale-key'];
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $free, $retryKey)->assertConflict();
+        $this->assertDatabaseCount('reservation_action_receipts', 1);
+        $free['expected_revision']++;
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", $free, $retryKey)->assertOk()
+            ->assertJsonPath('data.amounts.paid', 500)->assertJsonCount(1, 'data.payments');
+        $this->assertDatabaseCount('reservation_adjustments', 2);
+        $this->assertDatabaseCount('reservation_action_receipts', 2);
+    }
+
+    public function test_financial_actions_with_a_retry_key_require_a_revision_and_receipts_are_actor_scoped(): void
+    {
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", ['additional_players' => 1, 'payment_channel' => 'CASH'], ['Idempotency-Key' => 'revision-required-key'])
+            ->assertUnprocessable()->assertJsonValidationErrors('expected_revision');
+        $key = ['Idempotency-Key' => 'different-actors-key'];
+        $first = $this->postJson('/api/v1/management/reservations/walk-in', [...$this->walkInPayload(12), 'quoted_amount' => 700], $key)->assertCreated()->json('data.id');
+        $other = User::factory()->create();
+        $second = $this->actingAs($other)->postJson('/api/v1/management/reservations/walk-in', [...$this->walkInPayload(13), 'quoted_amount' => 700], $key)->assertCreated()->json('data.id');
+        $this->assertNotSame($first, $second);
+        $this->assertDatabaseCount('reservation_action_receipts', 2);
+    }
+
+    public function test_finalization_retries_do_not_duplicate_refunds_settlements_or_status_emails(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $verifyKey = ['Idempotency-Key' => 'verify-reservation-key'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify", [], $verifyKey)->assertOk()->json('data');
+        $this->postJson("/api/v1/management/reservations/{$id}/verify", [], $verifyKey)->assertOk()->assertJsonPath('data.revision', $current['revision']);
+        $cancel = ['expected_revision' => $current['revision'], 'reason' => 'Flooding', 'refund_type' => 'FULL', 'quoted_refund_amount' => 600];
+        $key = ['Idempotency-Key' => 'cancel-reservation-key'];
+        $result = $this->postJson("/api/v1/management/reservations/{$id}/cancel", $cancel, $key)->assertOk()->json('data');
+        $this->postJson("/api/v1/management/reservations/{$id}/cancel", $cancel, $key)->assertOk()->assertJsonPath('data.revision', $result['revision']);
+        $this->assertDatabaseCount('reservation_refunds', 1);
+        Mail::assertSent(ReservationStatusMail::class, 2);
+        $completed = $this->submit(10);
+        $id = $completed['id'];
+        $this->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
+        $current = $this->postJson("/api/v1/management/reservations/{$id}/start", [], ['Idempotency-Key' => 'start-reservation-key'])->assertOk()->json('data');
+        $complete = ['expected_revision' => $current['revision'], 'quoted_amount' => 600, 'quoted_payment_amount' => 0];
+        $key = ['Idempotency-Key' => 'complete-reservation-key'];
+        $this->postJson("/api/v1/management/reservations/{$id}/complete", $complete, $key)->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/complete", $complete, $key)->assertOk()->assertJsonCount(1, 'data.payments');
+        $this->assertDatabaseCount('reservation_action_receipts', 4);
+    }
+
+    public function test_retry_receipts_do_not_bypass_current_manager_authorization(): void
+    {
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $input = ['expected_revision' => $current['revision'], 'reason' => 'Flooding', 'refund_type' => 'FULL', 'quoted_refund_amount' => 600];
+        $headers = ['Idempotency-Key' => 'manager-cancel-retry'];
+        $this->postJson("/api/v1/management/reservations/{$id}/cancel", $input, $headers)->assertOk();
+        $role = Role::factory()->create(['is_full_access' => false]);
+        $role->modules()->create(['module' => 'RESERVATION']);
+        $this->manager->update(['role_id' => $role->id]);
+        $this->actingAs($this->manager->fresh())->postJson("/api/v1/management/reservations/{$id}/cancel", $input, $headers)->assertForbidden();
+        $this->assertDatabaseCount('reservation_refunds', 1);
+    }
+
+    public function test_staff_review_quotes_prevent_silent_repricing_and_roll_back_tentative_changes(): void
+    {
+        $walkIn = [...$this->walkInPayload(), 'quoted_amount' => 600];
+        $this->actingAs($this->manager)->postJson('/api/v1/management/reservations/walk-in', $walkIn)
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseCount('reservations', 0);
+        $walkIn['quoted_amount'] = 700;
+        $walkIn['slots'][0]['start_hour'] = 15;
+        $this->postJson('/api/v1/management/reservations/walk-in', $walkIn)->assertCreated()
+            ->assertJsonPath('data.amounts.paid', 700);
+
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $this->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", [
+            'additional_players' => 1, 'payment_channel' => 'CASH', 'quoted_amount' => 650, 'quoted_payment_amount' => 50,
+        ])->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseCount('reservation_adjustments', 0);
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", [
+            'additional_players' => 1, 'payment_channel' => 'CASH', 'quoted_amount' => 700, 'quoted_payment_amount' => 100,
+        ])->assertOk()->assertJsonPath('data.amounts.paid', 700);
+
+        $move = ['slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 18]],
+            'payment_channel' => 'CASH', 'quoted_amount' => 700, 'quoted_payment_amount' => 0];
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $move)
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseCount('reservation_schedule_histories', 0);
+        $this->assertDatabaseHas('reservation_slot_locks', ['date' => $this->date, 'start_hour' => 9, 'court_id' => $this->court->id]);
+        $this->assertDatabaseMissing('reservation_slot_locks', ['date' => $this->date, 'start_hour' => 18, 'court_id' => $this->court->id]);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [...$move, 'quoted_amount' => 800, 'quoted_payment_amount' => 100])
+            ->assertOk()->assertJsonPath('data.amounts.paid', 800);
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/complete", ['quoted_amount' => 800, 'quoted_payment_amount' => 100, 'payment_channel' => 'CASH'])
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseHas('reservations', ['id' => $id, 'status' => 'ONGOING', 'amount_paid' => 800]);
+        $this->postJson("/api/v1/management/reservations/{$id}/complete", ['quoted_amount' => 800, 'quoted_payment_amount' => 0])
+            ->assertOk()->assertJsonCount(3, 'data.payments');
+    }
+
+    public function test_full_refund_does_not_silently_increase_after_another_payment(): void
+    {
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", ['additional_players' => 1, 'payment_channel' => 'CASH'])->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/cancel", [
+            'reason' => 'Flooding', 'refund_type' => 'FULL', 'quoted_refund_amount' => 600,
+        ])->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseCount('reservation_refunds', 0);
+        $this->assertDatabaseHas('reservations', ['id' => $id, 'status' => 'VERIFIED']);
+        $this->postJson("/api/v1/management/reservations/{$id}/cancel", [
+            'reason' => 'Flooding', 'refund_type' => 'FULL', 'quoted_refund_amount' => 700,
+        ])->assertOk()->assertJsonPath('data.refunds.0.amount', 700);
+    }
+
+    public function test_later_reschedule_email_does_not_repeat_an_earlier_additional_payment(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        // Keep the clock fixed: two operations may share an identical timestamp.
+        $this->freezeTime();
+        foreach ([18, 19] as $hour) {
+            $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+                'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => $hour]],
+                'payment_channel' => 'CASH',
+            ])->assertOk()->assertJsonPath('data.amounts.paid', 700);
+        }
+        $mails = Mail::sent(ReservationStatusMail::class, fn ($mail): bool => $mail->event === 'rescheduled');
+        $this->assertCount(2, $mails);
+        $this->assertStringContainsString('Additional payment', $mails->first()->render());
+        $this->assertStringNotContainsString('Additional payment', $mails->last()->render());
+        $this->assertDatabaseCount('reservation_payments', 2);
+    }
+
+    public function test_no_show_forfeits_previous_reschedule_credit_without_creating_a_refund(): void
+    {
+        $created = $this->submit(18);
+        $id = $created['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $legacy = Reservation::query()->findOrFail($id);
+        $legacy->adjustments()->create(['type' => 'RESCHEDULE_CREDIT', 'description' => 'Legacy credit', 'quantity' => 1, 'unit_amount' => -100, 'total_amount' => -100]);
+        $legacy->update(['adjustment_amount' => -100, 'final_amount' => 600, 'refundable_credit' => 100]);
+        $this->postJson("/api/v1/management/reservations/{$id}/no-show")
+            ->assertOk()->assertJsonPath('data.amounts.refundable_credit', 0)->assertJsonPath('data.amounts.paid', 700);
+        $this->getJson("/api/v1/management/history/{$id}")->assertOk()->assertJsonPath('data.amounts.refundable_credit', 0);
+        $this->assertDatabaseCount('reservation_refunds', 0);
+        // Older no-show records must also be presented according to the policy.
+        Reservation::query()->whereKey($id)->update(['refundable_credit' => 100]);
+        $this->getJson("/api/v1/management/history/{$id}")->assertOk()->assertJsonPath('data.amounts.refundable_credit', 0);
     }
 
     public function test_authorized_staff_can_create_a_verified_walk_in_with_a_configured_non_cash_method(): void
@@ -700,12 +937,68 @@ class ReservationManagementTest extends TestCase
         $this->actingAs($this->manager)->get("/api/v1/management/reservation-payments/{$paymentId}/proof")->assertOk();
     }
 
+    public function test_mark_ongoing_rejects_other_dates_and_keeps_failed_attempts_uncommitted(): void
+    {
+        $id = $this->submit(9)['id'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $headers = ['Idempotency-Key' => 'booking-day-start-test'];
+        foreach ([-1, 1] as $dayOffset) {
+            $this->travelTo(CarbonImmutable::parse($this->date.' 12:00:00', 'Asia/Manila')->addDays($dayOffset));
+            $this->postJson("/api/v1/management/reservations/{$id}/start", [], $headers)
+                ->assertConflict()->assertJsonPath('message', 'Only reservations booked for today can be marked ongoing.');
+            $this->assertDatabaseHas('reservations', ['id' => $id, 'status' => 'VERIFIED', 'revision' => $current['revision'], 'started_at' => null]);
+            $this->assertDatabaseCount('reservation_action_receipts', 0);
+            $this->assertDatabaseMissing('reservation_status_histories', ['reservation_id' => $id, 'to_status' => 'ONGOING']);
+        }
+        $this->travelTo(CarbonImmutable::parse($this->date.' 12:00:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start", [], $headers)->assertOk()->assertJsonPath('data.status', 'ONGOING');
+    }
+
+    public function test_mark_ongoing_uses_manila_date_without_restricting_booked_hours_and_replays_after_midnight(): void
+    {
+        $id = $this->submit(9)['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        // Manila is already on the booking day while UTC is still yesterday.
+        $this->travelTo(CarbonImmutable::parse($this->date.' 00:05:00', 'Asia/Manila'));
+        $headers = ['Idempotency-Key' => 'midnight-start-retry-key'];
+        $started = $this->postJson("/api/v1/management/reservations/{$id}/start", [], $headers)
+            ->assertOk()->assertJsonPath('data.status', 'ONGOING')->json('data');
+        // Starting is allowed after the booked hour as well as before it.
+        $laterId = $this->submit(18)['id'];
+        $this->postJson("/api/v1/management/reservations/{$laterId}/verify")->assertOk();
+        $this->travelTo(CarbonImmutable::parse($this->date.' 23:59:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$laterId}/start")->assertOk()->assertJsonPath('data.status', 'ONGOING');
+        $this->travelTo(CarbonImmutable::parse($this->date.' 00:01:00', 'Asia/Manila')->addDay());
+        $this->postJson("/api/v1/management/reservations/{$id}/start", [], $headers)
+            ->assertOk()->assertJsonPath('data.revision', $started['revision']);
+        $this->assertSame(1, Reservation::query()->findOrFail($id)->statusHistories()->where('to_status', 'ONGOING')->count());
+    }
+
+    public function test_mark_ongoing_uses_the_latest_rescheduled_date_and_applies_to_walk_ins(): void
+    {
+        $id = $this->submit(9)['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $newDate = CarbonImmutable::parse($this->date)->addDay()->toDateString();
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 9]],
+        ])->assertOk();
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertConflict();
+        $this->travelTo(CarbonImmutable::parse($newDate.' 08:00:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
+        $walkIn = $this->walkInPayload(12);
+        $walkIn['slots'][0]['date'] = $newDate;
+        $walkInId = $this->postJson('/api/v1/management/reservations/walk-in', $walkIn)->assertCreated()->json('data.id');
+        $this->postJson("/api/v1/management/reservations/{$walkInId}/start")->assertOk()->assertJsonPath('data.status', 'ONGOING');
+    }
+
     public function test_verified_reservation_can_be_started_given_add_ons_and_completed_with_add_on_payment(): void
     {
         $created = $this->submit();
         $equipment = RentalEquipment::query()->create(['name' => 'Ball', 'price' => 30, 'total_quantity' => 20, 'is_active' => true]);
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/verify")
             ->assertOk()->assertJsonPath('data.status', 'VERIFIED')->assertJsonPath('data.amounts.paid', 600);
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/start")
             ->assertOk()->assertJsonPath('data.status', 'ONGOING');
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/add-ons", ['additional_players' => 2, 'equipment' => [['id' => $equipment->id, 'quantity' => 1]], 'payment_channel' => 'CASH'])
@@ -745,6 +1038,7 @@ class ReservationManagementTest extends TestCase
     {
         $created = $this->submit(17);
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/verify")->assertOk();
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/start")->assertOk();
 
         $missingDetails = [
@@ -776,22 +1070,142 @@ class ReservationManagementTest extends TestCase
         Storage::disk('local')->assertExists($payment->proof_path);
     }
 
-    public function test_manager_can_reschedule_repeatedly_and_cheaper_slot_creates_credit(): void
+    public function test_reschedule_refund_requires_exact_review_and_acknowledgment_and_rolls_back_on_failure(): void
+    {
+        $id = $this->submit(18)['id'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $input = ['slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]],
+            'expected_revision' => $current['revision'], 'quoted_amount' => 600, 'quoted_payment_amount' => 0];
+        $headers = ['Idempotency-Key' => 'refund-review-test-key'];
+        foreach ([[], ['quoted_refund_amount' => 100], ['quoted_refund_amount' => 100, 'refund_settled' => false], ['refund_settled' => true]] as $missing) {
+            $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [...$input, ...$missing], $headers)
+                ->assertUnprocessable()->assertJsonValidationErrors('refund_settled');
+            $this->assertDatabaseCount('reservation_refunds', 0);
+            $this->assertDatabaseCount('reservation_schedule_histories', 0);
+            $this->assertDatabaseCount('reservation_action_receipts', 0);
+            $this->assertDatabaseHas('reservation_slot_locks', ['court_id' => $this->court->id, 'start_hour' => 18, 'date' => $this->date]);
+        }
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [...$input, 'quoted_refund_amount' => 99, 'refund_settled' => true], $headers)
+            ->assertConflict()->assertJsonPath('code', 'RESERVATION_REVIEW_CHANGED');
+        $this->assertDatabaseCount('reservation_refunds', 0);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [...$input, 'quoted_refund_amount' => 100, 'refund_settled' => true], $headers)
+            ->assertOk()->assertJsonPath('data.amounts.net_paid', 600)->assertJsonPath('data.amounts.refundable_credit', 0);
+    }
+
+    public function test_refund_retry_is_recorded_once_and_cannot_pay_for_later_add_ons_or_completion(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+        $id = $this->submit(18)['id'];
+        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
+        $input = ['slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]],
+            'expected_revision' => $current['revision'], 'quoted_amount' => 600, 'quoted_payment_amount' => 0,
+            'quoted_refund_amount' => 100, 'refund_settled' => true];
+        $headers = ['Idempotency-Key' => 'settled-reschedule-refund-key'];
+        $updated = $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $input, $headers)
+            ->assertOk()->assertJsonPath('data.amounts.paid', 700)->assertJsonPath('data.amounts.refunded', 100)
+            ->assertJsonPath('data.amounts.net_paid', 600)->assertJsonPath('data.amounts.refundable_credit', 0)
+            ->assertJsonPath('data.refunds.0.status', 'COMPLETED')->json('data');
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $input, $headers)
+            ->assertOk()->assertJsonPath('data.revision', $updated['revision']);
+        // A lost response followed by a detail refresh no longer shows a refund.
+        // It must still recover this attempt rather than write another schedule.
+        $reviewedRetry = [...$input, 'expected_revision' => $updated['revision'], 'quoted_refund_amount' => 0];
+        unset($reviewedRetry['refund_settled']);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", $reviewedRetry, $headers)
+            ->assertOk()->assertJsonPath('data.revision', $updated['revision'])->assertJsonPath('data.reschedule_count', 1);
+        $this->assertDatabaseCount('reservation_refunds', 1);
+        Mail::assertSent(ReservationStatusMail::class, 2); // Verification and one reschedule.
+        $mail = Mail::sent(ReservationStatusMail::class, fn ($mail): bool => $mail->event === 'rescheduled')->sole();
+        $this->assertStringContainsString('Refunded this reschedule', $mail->render());
+        $this->assertStringNotContainsString('Refundable credit', $mail->render());
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 10]],
+        ])->assertOk()->assertJsonPath('data.amounts.refunded', 100)->assertJsonPath('data.amounts.net_paid', 600);
+        $laterMail = Mail::sent(ReservationStatusMail::class, fn ($mail): bool => $mail->event === 'rescheduled')->last();
+        $this->assertStringNotContainsString('Refunded this reschedule', $laterMail->render());
+        $this->assertDatabaseCount('reservation_refunds', 1);
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", ['additional_players' => 1])->assertUnprocessable();
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", ['additional_players' => 1, 'payment_channel' => 'CASH'])
+            ->assertOk()->assertJsonPath('data.amounts.paid', 800)->assertJsonPath('data.amounts.net_paid', 700)
+            ->assertJsonPath('data.amounts.refundable_credit', 0)->assertJsonPath('data.payments.1.amount', 100);
+        $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/complete")->assertOk()
+            ->assertJsonPath('data.amounts.outstanding', 0)->assertJsonCount(1, 'data.refunds')->assertJsonCount(2, 'data.payments');
+        $this->getJson("/api/v1/management/history/{$id}")->assertOk()->assertJsonPath('data.amounts.net_paid', 700);
+        $today = now('Asia/Manila')->toDateString();
+        $this->getJson("/api/v1/management/reports/revenue?from={$today}&to={$today}")
+            ->assertOk()->assertJsonPath('data.metrics.recognized_revenue', 700);
+    }
+
+    public function test_reschedule_refund_is_net_of_new_purchases_and_can_settle_legacy_credit(): void
+    {
+        $id = $this->submit(18)['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        // The cheaper court saves 100, but one new player costs 100: nothing to refund.
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]], 'additional_players' => 1,
+        ])->assertOk()->assertJsonPath('data.amounts.refundable_credit', 0)->assertJsonPath('data.amounts.final', 700);
+        $this->assertDatabaseCount('reservation_refunds', 0);
+        // An old, unpaid credit is not silently marked refunded by deployment.
+        $legacy = Reservation::query()->findOrFail($id);
+        $legacy->adjustments()->create(['type' => 'RESCHEDULE_CREDIT', 'description' => 'Legacy credit', 'quantity' => 1, 'unit_amount' => -50, 'total_amount' => -50]);
+        $legacy->update(['adjustment_amount' => -50, 'final_amount' => 650, 'refundable_credit' => 50]);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 10]],
+            'quoted_refund_amount' => 50, 'refund_settled' => true,
+        ])->assertOk()->assertJsonPath('data.amounts.net_paid', 650)->assertJsonPath('data.amounts.refundable_credit', 0);
+        $this->assertDatabaseHas('reservation_refunds', ['reservation_id' => $id, 'amount' => 50, 'status' => 'COMPLETED']);
+    }
+
+    public function test_cancellation_cannot_return_money_already_refunded_during_reschedule(): void
+    {
+        config(['reservations.emails_enabled' => true]);
+        $id = $this->submit(18)['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]],
+            'quoted_refund_amount' => 100, 'refund_settled' => true,
+        ])->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/cancel", ['reason' => 'Flooding', 'refund_type' => 'CUSTOM', 'refund_amount' => 700])->assertUnprocessable();
+        $this->postJson("/api/v1/management/reservations/{$id}/cancel", ['reason' => 'Flooding', 'refund_type' => 'FULL', 'quoted_refund_amount' => 600])
+            ->assertOk()->assertJsonPath('data.amounts.refunded', 700)->assertJsonPath('data.amounts.net_paid', 0)
+            ->assertJsonPath('data.amounts.outstanding', 0)->assertJsonPath('data.refunds.1.amount', 600);
+        $mail = Mail::sent(ReservationStatusMail::class, fn ($mail): bool => $mail->event === 'cancelled')->sole();
+        $this->assertStringNotContainsString('Balance due', $mail->render());
+    }
+
+    public function test_no_show_revenue_uses_only_money_retained_after_reschedule_refunds(): void
+    {
+        $id = $this->submit(18)['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]],
+            'quoted_refund_amount' => 100, 'refund_settled' => true,
+        ])->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/no-show")->assertOk()->assertJsonPath('data.amounts.net_paid', 600);
+        $today = now('Asia/Manila')->toDateString();
+        $this->getJson("/api/v1/management/reports/revenue?from={$today}&to={$today}")
+            ->assertOk()->assertJsonPath('data.metrics.recognized_revenue', 600);
+    }
+
+    public function test_manager_can_reschedule_repeatedly_and_cheaper_slot_is_refunded_once(): void
     {
         $created = $this->submit(18);
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/verify")->assertOk();
 
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/reschedule", [
             'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]],
-        ])->assertOk()->assertJsonPath('data.display_status', 'RESCHEDULED')->assertJsonPath('data.amounts.refundable_credit', 100);
+            'refund_settled' => true, 'quoted_refund_amount' => 100,
+        ])->assertOk()->assertJsonPath('data.display_status', 'RESCHEDULED')->assertJsonPath('data.amounts.refundable_credit', 0)->assertJsonPath('data.amounts.refunded', 100)->assertJsonPath('data.amounts.net_paid', 600);
 
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/reschedule", [
-            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 18]],
-        ])->assertOk()->assertJsonPath('data.reschedule_count', 2)->assertJsonPath('data.amounts.refundable_credit', 0);
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 18]], 'payment_channel' => 'CASH',
+        ])->assertOk()->assertJsonPath('data.amounts.net_paid', 700)->assertJsonPath('data.amounts.paid', 800)->assertJsonPath('data.reschedule_count', 2)->assertJsonPath('data.amounts.refundable_credit', 0);
         $this->assertDatabaseCount('reservation_schedule_histories', 2);
     }
 
-    public function test_reschedule_moves_existing_add_on_court_slots_and_locks_to_the_new_date(): void
+    public function test_reschedule_moves_all_current_court_slots_and_locks_to_the_selected_times(): void
     {
         $created = $this->submit(9);
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/verify")->assertOk();
@@ -802,24 +1216,162 @@ class ReservationManagementTest extends TestCase
 
         $newDate = now('Asia/Manila')->addDays(8)->toDateString();
         $response = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/reschedule", [
-            'slots' => [['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 9]],
+            'slots' => [
+                ['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 11],
+                ['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 12],
+            ],
         ])->assertOk();
 
         $response->assertJsonPath('data.booking_date', $newDate)
             ->assertJsonCount(2, 'data.slots');
         $this->assertDatabaseHas('reservation_slots', ['reservation_id' => $created['id'], 'date' => $this->date, 'start_hour' => 10, 'kind' => 'ADD_ON', 'is_current' => false]);
-        $this->assertDatabaseHas('reservation_slots', ['reservation_id' => $created['id'], 'date' => $newDate, 'start_hour' => 10, 'kind' => 'ADD_ON', 'is_current' => true]);
+        $this->assertDatabaseHas('reservation_slots', ['reservation_id' => $created['id'], 'date' => $newDate, 'start_hour' => 12, 'kind' => 'RESCHEDULED', 'is_current' => true]);
         $this->assertDatabaseMissing('reservation_slot_locks', ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 10]);
-        $this->assertDatabaseHas('reservation_slot_locks', ['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 10]);
+        $this->assertDatabaseMissing('reservation_slot_locks', ['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 10]);
+        $this->assertDatabaseHas('reservation_slot_locks', ['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 12]);
     }
 
-    public function test_existing_credit_can_fully_cover_an_add_on_without_payment_details(): void
+    public function test_repeated_rescheduling_keeps_all_purchased_slots_players_equipment_and_payments(): void
+    {
+        CourtConfiguration::query()->findOrFail(1)->ratePeriods()->update(['price' => 1]);
+        $equipment = RentalEquipment::query()->create(['name' => 'Included paddle', 'price' => 0, 'total_quantity' => 2, 'is_active' => true]);
+        $input = $this->submissionPayload(17);
+        $input['slots'][] = ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 18];
+        $input['additional_players'] = 0;
+        $input['quoted_amount'] = 2;
+        $id = $this->post('/api/v1/public/reservations', $input)->assertCreated()->json('data.id');
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $court = Court::query()->create(['court_number' => 2, 'is_active' => true]);
+        $slots = fn (array $hours, int $courtId): array => array_map(fn (int $hour): array => ['court_id' => $courtId, 'date' => $this->date, 'start_hour' => $hour], $hours);
+
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => $slots([17, 18], $this->court->id), 'add_on_slots' => $slots([19, 20], $this->court->id),
+            'additional_players' => 1, 'equipment' => [['id' => $equipment->id, 'quantity' => 1]], 'payment_channel' => 'CASH',
+        ])->assertOk()->assertJsonCount(4, 'data.slots')->assertJsonPath('data.amounts.final', 104)->assertJsonPath('data.amounts.paid', 104);
+
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => $slots([8, 9, 10, 11], $court->id),
+        ])->assertOk()->assertJsonCount(4, 'data.slots')->assertJsonCount(2, 'data.payments')
+            ->assertJsonPath('data.amounts.final', 104)->assertJsonPath('data.amounts.paid', 104)
+            ->assertJsonPath('data.amounts.outstanding', 0)->assertJsonPath('data.equipment.0.quantity', 1)
+            ->assertJsonPath('data.reschedule_count', 2);
+        $this->assertDatabaseMissing('reservation_slot_locks', ['court_id' => $this->court->id, 'date' => $this->date]);
+        $this->assertDatabaseHas('reservation_slots', ['reservation_id' => $id, 'start_hour' => 19, 'kind' => 'ADD_ON', 'is_current' => false]);
+
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => $slots([8, 9, 10, 11], $court->id), 'add_on_slots' => $slots([12], $court->id), 'payment_channel' => 'CASH',
+        ])->assertOk()->assertJsonCount(5, 'data.slots')->assertJsonCount(3, 'data.payments')
+            ->assertJsonPath('data.amounts.final', 105)->assertJsonPath('data.amounts.paid', 105);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => $slots([13, 14, 15, 16, 17], $court->id),
+        ])->assertOk()->assertJsonCount(5, 'data.slots')->assertJsonCount(3, 'data.payments')
+            ->assertJsonPath('data.amounts.original', 2)->assertJsonPath('data.amounts.final', 105)
+            ->assertJsonPath('data.amounts.paid', 105)->assertJsonPath('data.amounts.refundable_credit', 0)
+            ->assertJsonPath('data.reschedule_count', 4);
+        $reservation = Reservation::query()->findOrFail($id);
+        $this->assertSame(1, $reservation->adjustments()->where('type', 'ADDITIONAL_PLAYER')->sum('quantity'));
+        $this->assertSame(1, $reservation->equipmentItems()->where('is_active', true)->count());
+        $this->assertSame(5, $reservation->currentSlots()->count());
+        $this->assertSame(105.0, (float) $reservation->payments()->where('status', 'VERIFIED')->sum('amount'));
+
+        // Carry the same booking through API -> persisted ledger -> history and reports.
+        $firstOperationDate = now('Asia/Manila')->toDateString();
+        $this->travelTo(CarbonImmutable::parse($this->date.' 21:30:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/complete")
+            ->assertOk()->assertJsonPath('data.status', 'COMPLETED')->assertJsonCount(3, 'data.payments')
+            ->assertJsonPath('data.amounts.final', 105)->assertJsonPath('data.amounts.paid', 105);
+        $this->getJson('/api/v1/management/reservations')->assertOk()->assertJsonCount(0, 'data.reservations');
+        $this->getJson("/api/v1/management/history/{$id}")->assertOk()
+            ->assertJsonCount(5, 'data.slots')->assertJsonCount(4, 'data.schedule_history')
+            ->assertJsonPath('data.amounts.paid', 105);
+        $filters = "from={$firstOperationDate}&to={$this->date}";
+        $this->getJson("/api/v1/management/reports/revenue?{$filters}")->assertOk()
+            ->assertJsonPath('data.metrics.recognized_revenue', 105);
+        $this->getJson("/api/v1/management/reports/payments?{$filters}")->assertOk()
+            ->assertJsonPath('data.verified_payments.amount', 105)->assertJsonPath('data.verified_payments.count', 3);
+        $this->getJson("/api/v1/management/reports/operations?{$filters}")->assertOk()
+            ->assertJsonPath('data.extensions.reservations_with_extension', 1);
+        $this->getJson("/api/v1/management/reports/court-utilization?{$filters}")->assertOk()
+            ->assertJsonPath('data.summary.completed_hours', 5);
+        $this->postJson("/api/v1/management/reservations/{$id}/complete")->assertConflict();
+        $this->assertSame(3, $reservation->payments()->count());
+    }
+
+    public function test_repricing_all_current_slots_refunds_then_collects_the_actual_new_balance(): void
+    {
+        $created = $this->submit(9);
+        $id = $created['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 18]], 'payment_channel' => 'CASH',
+        ])->assertOk()->assertJsonPath('data.amounts.paid', 1200);
+        foreach ([[[10, 11], null, 1100, 1200, 100], [[18, 19], 'CASH', 1300, 1400, 0]] as [$hours, $channel, $total, $paid, $credit]) {
+            $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+                'slots' => array_map(fn ($hour): array => ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => $hour], $hours),
+                'payment_channel' => $channel, 'quoted_refund_amount' => $credit, 'refund_settled' => $credit > 0,
+            ])->assertOk()->assertJsonPath('data.amounts.final', $total)->assertJsonPath('data.amounts.paid', $paid)
+                ->assertJsonPath('data.amounts.refundable_credit', 0)->assertJsonPath('data.amounts.net_paid', $total)->assertJsonPath('data.amounts.outstanding', 0);
+        }
+        $this->assertSame(200.0, (float) Reservation::query()->findOrFail($id)->payments()->where('kind', 'RESCHEDULE')->sole()->amount);
+    }
+
+    public function test_previous_add_ons_can_raise_the_replacement_count_above_the_per_action_purchase_limit(): void
+    {
+        CourtConfiguration::query()->findOrFail(1)->ratePeriods()->update(['price' => 1]);
+        $courts = [$this->court];
+        foreach ([2, 3, 4] as $number) {
+            $courts[] = Court::query()->create(['court_number' => $number, 'is_active' => true]);
+        }
+        $slots = [];
+        foreach ($courts as $court) {
+            foreach (range(7, 21) as $hour) {
+                $slots[] = ['court_id' => $court->id, 'date' => $this->date, 'start_hour' => $hour];
+            }
+        }
+        $slots = array_slice($slots, 0, 49);
+        $id = $this->actingAs($this->manager)->postJson('/api/v1/management/reservations/walk-in', [
+            ...$this->walkInPayload(), 'slots' => array_slice($slots, 0, 48), 'additional_players' => 0,
+        ])->assertCreated()->json('data.id');
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", [
+            'slots' => [$slots[48]], 'payment_channel' => 'CASH',
+        ])->assertOk()->assertJsonCount(49, 'data.slots');
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", ['slots' => $slots])
+            ->assertOk()->assertJsonCount(49, 'data.slots')->assertJsonPath('data.amounts.final', 49)
+            ->assertJsonPath('data.amounts.paid', 49)->assertJsonCount(2, 'data.payments');
+    }
+
+    public function test_stale_replacement_counts_and_conflicts_preserve_current_slots_and_payments(): void
+    {
+        $id = $this->submit(9)['id'];
+        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/add-ons", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 10]], 'payment_channel' => 'CASH',
+        ])->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 11]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('slots');
+        $this->submit(11);
+        $this->postJson("/api/v1/management/reservations/{$id}/reschedule", [
+            'slots' => [
+                ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 11],
+                ['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 12],
+            ],
+        ])->assertConflict();
+        $reservation = Reservation::query()->findOrFail($id);
+        $this->assertSame([9, 10], $reservation->currentSlots()->orderBy('start_hour')->pluck('start_hour')->all());
+        $this->assertSame(1100.0, (float) $reservation->amount_paid);
+        $this->assertSame(0, $reservation->scheduleHistories()->count());
+        $this->assertSame(2, $reservation->payments()->count());
+    }
+
+    public function test_legacy_unsettled_credit_can_still_cover_an_add_on_without_payment_details(): void
     {
         $created = $this->submit(18);
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/verify")->assertOk();
-        $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/reschedule", [
-            'slots' => [['court_id' => $this->court->id, 'date' => $this->date, 'start_hour' => 9]],
-        ])->assertOk()->assertJsonPath('data.amounts.refundable_credit', 100);
+        $legacy = Reservation::query()->findOrFail($created['id']);
+        $legacy->adjustments()->create(['type' => 'RESCHEDULE_CREDIT', 'description' => 'Legacy credit', 'quantity' => 1, 'unit_amount' => -100, 'total_amount' => -100]);
+        $legacy->update(['adjustment_amount' => -100, 'final_amount' => 600, 'refundable_credit' => 100]);
 
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$created['id']}/add-ons", [
             'additional_players' => 1,

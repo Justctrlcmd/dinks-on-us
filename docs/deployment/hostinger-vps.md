@@ -221,8 +221,8 @@ php artisan system:reset-demo --force
 Read its deletion summary and type `WIPE DINKS ON US PRODUCTION` only if this is
 the intended environment. Production refuses the repository's default password
 and `.test` Manager email. The command removes business/content records, pending
-and failed jobs, managed uploads, sessions and other users, then recreates only
-the configured Manager. Configure courts, rates, equipment and payment methods
+and failed jobs, managed uploads, sessions and other users, preserves empty fixed
+policy boards, then recreates the configured Manager. Configure courts, rates, equipment and payment methods
 again, or deliberately use the separately guarded default-data seeder described
 in `PRODUCTION.md`. Verify the blank state before `php artisan up` and restarting
 workers. File deletion cannot be rolled back by the database transaction.

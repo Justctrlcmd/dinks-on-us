@@ -29,6 +29,17 @@ describe("API helpers", () => {
     await expect(publicFetch("/api/v1/health")).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
   });
 
+  it("preserves a delivery failure retry delay without replaying the send request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: false, message: "Email delivery unavailable.", code: "EMAIL_DELIVERY_UNAVAILABLE", data: null, errors: null, meta: null,
+    }), { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "45" } })));
+    const { publicFetch } = await import("./api");
+    await expect(publicFetch("/api/v1/public/reservation-email/send", { method: "POST" })).rejects.toMatchObject({
+      status: 503, code: "EMAIL_DELIVERY_UNAVAILABLE", retryAfterSeconds: 45,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("normalizes a failed CSRF initialization", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
     const { publicFetch } = await import("./api");

@@ -3,12 +3,13 @@
 namespace App\Http\Requests\Management;
 
 use App\Http\Requests\Concerns\NormalizesInput;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class CancelReservationRequest extends FormRequest
+class CancelReservationRequest extends ReservationActionRequest
 {
+    protected bool $requiresRevision = true;
+
     use NormalizesInput;
 
     protected function prepareForValidation(): void
@@ -19,6 +20,8 @@ class CancelReservationRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...parent::rules(),
+            'quoted_refund_amount' => ['required_with:idempotency_key', 'numeric', 'min:0', 'decimal:0,2'],
             'reason' => ['required', 'string', 'max:1500'],
             'refund_type' => ['required', Rule::in(['FULL', 'CUSTOM'])],
             'refund_amount' => ['nullable', 'numeric', 'min:0'],

@@ -101,7 +101,9 @@ return Application::configure(basePath: dirname(__DIR__))
             $retryAfter = max(1, (int) ($exception->getHeaders()['Retry-After'] ?? 60));
 
             return $apiFailure(
-                "You've made several requests in a short time. Please try again shortly.",
+                $request->routeIs('public.reservation-email.send')
+                    ? "Please wait {$retryAfter} seconds before requesting another verification code. Check your inbox and spam folder."
+                    : "You've made several requests in a short time. Please try again shortly.",
                 'TOO_MANY_REQUESTS',
                 429,
                 headers: ['Retry-After' => (string) $retryAfter],

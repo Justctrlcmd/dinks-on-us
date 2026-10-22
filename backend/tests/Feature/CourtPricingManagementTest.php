@@ -13,6 +13,15 @@ class CourtPricingManagementTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_empty_rate_lists_show_clear_price_period_instructions(): void
+    {
+        $this->actingAs(User::factory()->create())->putJson('/api/v1/management/court-configuration', [
+            ...$this->configurationPayload(), 'weekday_rates' => [], 'weekend_rates' => [],
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.weekday_rates.0', 'Add at least one weekday price period.')
+            ->assertJsonPath('errors.weekend_rates.0', 'Add at least one weekend price period.');
+    }
+
     private function configurationPayload(): array
     {
         return [

@@ -262,6 +262,12 @@ Compact density never overrides accessibility: labels, errors, focus rings,
 keyboard operation, readable type, sufficient contrast, and mobile touch areas
 remain mandatory.
 
+Rescheduling starts from a freshly loaded current booking, with all current court
+times preselected, including previous add-ons. Show the total already paid and
+current total before editing. Existing players and equipment are carried forward;
+the add-on controls explicitly add new quantities. Details show the whole current
+reservation together, with historical add-on charges and payment records below.
+
 - Use a Primary Navy desktop sidebar with a clear active state. Maintain the
   existing collapsible desktop rail and mobile sheet pattern.
 - Use Warm Sand as the workspace background and Soft White for content panels.
@@ -359,3 +365,70 @@ shell, responsive navigation, dialogs, tables, toasts, and module workspaces are
 implemented. New interface work should extend these established patterns and
 verify light mode, dark mode, keyboard operation, responsive layouts, and all
 loading, empty, error, disabled, and success states.
+
+### Reservation review freshness
+
+Add-ons, completion, and cancellation use the same successful-detail-refresh gate
+as rescheduling. Show shared loading/error states before exposing financial
+controls; block stale-status actions. Refreshed booking data clears an outdated
+confirmation. Add-ons also wait for pricing/availability and disable review while
+those options are refreshing. A server review conflict refreshes booking/options
+and asks staff to review again. Credits/refunds remain visible without add-ons;
+use “Refund recorded” after cancellation and “Refund due” after completion.
+
+Current financial confirmations carry the revision of the booking shown. A stale
+revision refreshes the form even if the price stayed the same. Retried successful
+actions explicitly say the request was already recorded. If payment/details
+changed during an unconfirmed retry, close the old confirmation and refresh the
+booking so staff review the recorded action before making another purchase;
+walk-in entry returns to Reservations. Keep retry keys out of visible controls.
+
+A successful reschedule, add-on, completion, or cancellation closes both its
+confirmation and the editing dialog as
+soon as the API confirms the save. The reservation/table refresh continues after
+closing; it must not leave the editing form visible as though another submission
+were needed. A booking becoming Completed or Cancelled after its own successful
+action must not flash the changed-status warning. Failed saves keep the editing
+form available for correction/review.
+
+The reservation detail's Updated total card shows original charges, add-ons, and
+other adjustments in separate full-width rows at every breakpoint, with each
+label at the left and its amount at the right, above a single emphasized
+“Total paid” footer. That footer uses
+the cumulative amount paid, not the final charge. The current reservation summary
+continues to show the final charge and any outstanding balance or credit.
+
+The reschedule date defaults to today's date in Asia/Manila whenever the dialog
+opens, even when the existing booking is in the past or future. Keep the existing
+booking date visible in Current booking; its slots and amounts stay the comparison
+baseline. Staff may choose another permitted date, with availability and pricing
+checked for that replacement date.
+
+
+### Immediate reschedule refunds
+
+A cheaper reschedule shows “Refund to settle now” after including any new
+purchases in the updated total. The existing confirmation dialog explains that
+the Manager must return that exact amount before confirming, requires an
+unchecked “I confirm the customer has received ₱…” checkbox, and uses “Confirm
+refund and reschedule”. Back/review resets the acknowledgment; pending saves
+disable it. Other reschedules keep the normal confirmation without a refund
+checkbox. Place the refund acknowledgment card below the schedule and totals,
+immediately after “Refund to settle now”, with spacing before the card. Success
+closes both dialogs.
+
+Show gross payments, completed refunds, and “Paid after refunds” separately when
+there have been refunds. The Total paid footer continues to mean gross collected.
+Refunded funds never appear as spendable credit on a later purchase. Legacy
+unsettled credit remains visible until it is consumed or explicitly settled.
+Cancellation's full/custom refund limits use the amount still held. Customer
+emails show the current operation's refund separately from cumulative refunds.
+
+
+### Mark ongoing on the booking date
+
+Keep Mark ongoing visible but disabled when the verified reservation's current
+booking date differs from today in Asia/Manila. Explain that it is available only
+on the reservation date. The confirmation submission rechecks the date, and the
+API remains authoritative. Apply the rule to both desktop and mobile menus and
+to rescheduled bookings. Do not use booked start/end hours to enable the action.
