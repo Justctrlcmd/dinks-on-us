@@ -137,4 +137,29 @@ describe("reservation service", () => {
     expect(body.get("payment_reference_number")).toBe("RESCHEDULE-100");
     expect(body.get("payment_proof")).toBe(proof);
   });
+
+  it("sends combined reservation filters through authenticated reads with cancellation", async () => {
+    const { getReservations } = await import("./reservation-service");
+    const signal = new AbortController().signal;
+    authFetch.mockClear();
+
+    getReservations({ page: 2, search: "  RF-001  ", search_by: "reference_number", booking_date: "2026-10-23", status: "RESCHEDULED" }, signal);
+
+    expect(authFetch).toHaveBeenCalledWith(
+      "/api/v1/management/reservations?page=2&per_page=10&search=RF-001&search_by=reference_number&booking_date=2026-10-23&status=RESCHEDULED",
+      { signal },
+    );
+  });
+
+  it("keeps legacy unfiltered reads compatible and encodes search text as one parameter", async () => {
+    const { getReservations } = await import("./reservation-service");
+    authFetch.mockClear();
+    getReservations({ page: 1, search: " ", status: "" });
+    expect(authFetch).toHaveBeenLastCalledWith("/api/v1/management/reservations?page=1&per_page=10", { signal: undefined });
+    getReservations({ page: 1, search: "RF-001&status=COMPLETED#%_", search_by: "reference_number", status: "" });
+    const url = new URL(authFetch.mock.lastCall![0], "https://example.test");
+    expect(url.searchParams.get("search")).toBe("RF-001&status=COMPLETED#%_");
+    expect(url.searchParams.has("status")).toBe(false);
+    expect(url.searchParams.has("booking_date")).toBe(false);
+  });
 });

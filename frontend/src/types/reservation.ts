@@ -77,7 +77,13 @@ export type PendingReservationSummary = {
   latest_online_submission_id: number | null;
   latest_online_submission_at: string | null;
 };
-export type ReservationFilters = { page: number; search: string; status: "" | ReservationStatus };
+export type ReservationFilters = {
+  page: number;
+  search: string;
+  search_by?: "all" | "reference_number";
+  booking_date?: string;
+  status: "" | ReservationStatus;
+};
 export type FinalReservationStatus = Extract<ReservationStatus, "COMPLETED" | "CANCELLED" | "REJECTED" | "NO_SHOW">;
 export type ReservationSource = "ONLINE" | "WALK_IN";
 export type HistoryKpis = { completed: number; cancelled: number; rejected: number; no_show: number };

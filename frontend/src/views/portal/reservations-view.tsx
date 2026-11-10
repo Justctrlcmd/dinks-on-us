@@ -16,6 +16,7 @@ import {
 } from "react-icons/fi";
 import { ErrorState } from "@/components/common/error-state";
 import { EmptyState } from "@/components/common/empty-state";
+import { CalendarDatePicker } from "@/components/common/calendar-date-picker";
 import { SelectWithLabel } from "@/components/common/forms/select-with-label";
 import { PageHeader } from "@/components/common/page-header";
 import { Pagination } from "@/components/common/pagination";
@@ -201,8 +202,11 @@ export function ReservationsView() {
   const [filters, setFilters] = useState<ReservationFilters>({
     page: 1,
     search: "",
+    search_by: "reference_number",
+    booking_date: "",
     status: "",
   });
+  const [filterBy, setFilterBy] = useState<"reference_number" | "date">("date");
   const [searchInput, setSearchInput] = useState("");
   const [selected, setSelected] = useState<ManagementReservation | null>(null);
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -353,40 +357,76 @@ export function ReservationsView() {
         <div
           role="search"
           aria-label="Filter reservations"
-          className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_220px]"
+          className="grid grid-cols-2 items-center gap-3 xl:grid-cols-[minmax(180px,1fr)_170px_170px]"
         >
-          <label className="relative block">
-            <FiSearch
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
+          <div className="col-span-2 min-w-0 xl:col-span-1">
+            {filterBy === "reference_number" ? (
+              <label className="relative block">
+                <FiSearch
+                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  type="search"
+                  aria-label="Search reservations"
+                  value={searchInput}
+                  maxLength={180}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Reference ID, e.g. RF-001"
+                  className="h-10 pl-9"
+                />
+              </label>
+            ) : (
+              <div>
+                <label htmlFor="reservation-booking-date" className="sr-only">Filter reservations by booking date</label>
+                <CalendarDatePicker
+                  id="reservation-booking-date"
+                  value={filters.booking_date || undefined}
+                  placeholder="All booking dates"
+                  onChange={(booking_date) => setFilters((current) => ({ ...current, page: 1, booking_date }))}
+                  onClear={() => setFilters((current) => ({ ...current, page: 1, booking_date: "" }))}
+                />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <SelectWithLabel
+              id="reservation-filter-by"
+              ariaLabel="Filter reservations by"
+              value={filterBy}
+              options={[
+                { value: "reference_number", label: "Reference ID" },
+                { value: "date", label: "Date" },
+              ]}
+              onValueChange={(value) => {
+                if (value === "reference_number" || value === "date") {
+                  setFilterBy(value);
+                  setSearchInput("");
+                  setFilters((current) => ({ ...current, page: 1, search: "", booking_date: "" }));
+                }
+              }}
             />
-            <Input
-              type="search"
-              aria-label="Search reservations"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Reference, customer, contact, or payment reference"
-              className="h-10 pl-9"
+          </div>
+          <div className="min-w-0">
+            <SelectWithLabel
+              id="reservation-status"
+              ariaLabel="Filter reservations by status"
+              value={filters.status || "ALL"}
+              options={[{ value: "ALL", label: "All statuses" }, ...statusFilters]}
+              onValueChange={(value) => {
+                if (value) {
+                  setFilters((current) => ({
+                    ...current,
+                    page: 1,
+                    status:
+                      value === "ALL"
+                        ? ""
+                        : (value as ReservationFilters["status"]),
+                  }));
+                }
+              }}
             />
-          </label>
-          <SelectWithLabel
-            id="reservation-status"
-            ariaLabel="Filter reservations by status"
-            value={filters.status || "ALL"}
-            options={[{ value: "ALL", label: "All statuses" }, ...statusFilters]}
-            onValueChange={(value) => {
-              if (value) {
-                setFilters((current) => ({
-                  ...current,
-                  page: 1,
-                  status:
-                    value === "ALL"
-                      ? ""
-                      : (value as ReservationFilters["status"]),
-                }));
-              }
-            }}
-          />
+          </div>
         </div>
       </Card>
       <Card className="gap-0 py-0">

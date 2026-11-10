@@ -1051,11 +1051,13 @@ Requires:
 RESERVATION
 ```
 
-Suggested filters:
+Supported filters:
 
 ```text
 status
 search
+search_by=all|reference_number
+booking_date=YYYY-MM-DD
 page
 per_page=10
 ```
@@ -1079,6 +1081,15 @@ email
 contact number
 payment reference
 ```
+
+`search_by` defaults to `all`, preserving existing search behavior. Choosing
+`reference_number` limits `search` to a literal substring of the reservation
+Reference ID; SQL wildcard characters are treated as text. `booking_date` matches
+the current booking date exactly, including after rescheduling, and accepts past
+dates for unresolved bookings. It never matches submission timestamps or replaced
+schedule history. Search, booking date, and status combine before pagination;
+KPI counts remain overall counts. Invalid search modes, malformed dates, and
+search text over 180 characters return the standard `422` validation envelope.
 
 ---
 

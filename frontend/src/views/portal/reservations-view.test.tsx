@@ -148,4 +148,97 @@ describe("ReservationsView pagination", () => {
     expect(screen.getAllByText("RF-11")).toHaveLength(2);
     expect(getReservationsMock.mock.lastCall?.[0].page).toBe(2);
   });
+
+  it("switches a single filter selector between reference and date beside status", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-22T16:30:00Z"));
+    const user = userEvent.setup();
+    await goToLastPage();
+
+    expect(screen.getAllByRole("combobox")).toHaveLength(2);
+    expect(screen.getAllByRole("combobox")[0]).toHaveAccessibleName("Filter reservations by");
+    expect(screen.getAllByRole("combobox")[1]).toHaveAccessibleName("Filter reservations by status");
+    expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("Date");
+    expect(screen.queryByText("Filter by:")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter reservations by booking date" })).toHaveTextContent("All booking dates");
+    screen.getByRole("combobox", { name: "Filter reservations by" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Reference ID" }));
+    expect(screen.getByPlaceholderText("Reference ID, e.g. RF-001")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Filter reservations by booking date" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "Search reservations" }), "RF-001");
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toMatchObject({ page: 1, search: "RF-001", search_by: "reference_number" }));
+
+    screen.getByRole("combobox", { name: "Filter reservations by status" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Pending" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toMatchObject({ search: "RF-001", status: "PENDING" }));
+    screen.getByRole("combobox", { name: "Filter reservations by" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Date" }));
+    expect(screen.queryByRole("searchbox", { name: "Search reservations" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Filter reservations by booking date" }));
+    // Past unresolved bookings remain selectable, even though Manila's today is Oct 23.
+    await user.click(screen.getByRole("gridcell", { name: "Thursday, October 22, 2026" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", booking_date: "2026-10-22", status: "PENDING" }));
+
+    await user.click(screen.getByRole("button", { name: "Filter reservations by booking date" }));
+    await user.click(screen.getByRole("button", { name: "Clear date" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", booking_date: "", status: "PENDING" }));
+
+    screen.getByRole("combobox", { name: "Filter reservations by status" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "All statuses" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", booking_date: "", status: "" }));
+    expect(screen.getByRole("button", { name: "Filter reservations by booking date" })).toHaveTextContent("All booking dates");
+  });
+
+  it("keeps dates in separate cache entries and allows keyboard date selection", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-22T16:30:00Z"));
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={client}><ReservationsView /></QueryClientProvider>);
+    await screen.findAllByText("RF-1");
+
+    for (const day of ["Friday, October 23, 2026", "Saturday, October 24, 2026"]) {
+      screen.getByRole("button", { name: "Filter reservations by booking date" }).focus();
+      await user.keyboard("{Enter}");
+      screen.getByRole("gridcell", { name: day }).focus();
+      await user.keyboard("{Enter}");
+    }
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0].booking_date).toBe("2026-10-24"));
+    const cachedDates = client.getQueryCache().findAll({ queryKey: reservationKeys.all }).map((query) => (query.queryKey[2] as ReservationFilters)?.booking_date);
+    expect(cachedDates).toEqual(expect.arrayContaining(["2026-10-23", "2026-10-24"]));
+    expect(screen.getByRole("button", { name: "Filter reservations by booking date" })).toHaveTextContent("Oct 24, 2026");
+    screen.getByRole("combobox", { name: "Filter reservations by" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Reference ID" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0].booking_date).toBe(""));
+    expect(screen.getByRole("searchbox", { name: "Search reservations" })).toHaveValue("");
+  });
+
+  it.each(["clear", "switch"])("cancels a pending debounced search on %s", async (action) => {
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={client}><ReservationsView /></QueryClientProvider>);
+    await screen.findAllByText("RF-1");
+    screen.getByRole("combobox", { name: "Filter reservations by" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Reference ID" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search reservations" }), "RF-999");
+    if (action === "clear") {
+      await user.clear(screen.getByRole("searchbox", { name: "Search reservations" }));
+    } else {
+      screen.getByRole("combobox", { name: "Filter reservations by" }).focus();
+      await user.keyboard("{ArrowDown}");
+      await user.click(await screen.findByRole("option", { name: "Date" }));
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    expect(getReservationsMock.mock.lastCall?.[0].search).toBe("");
+    if (action === "clear") {
+      expect(screen.getByRole("searchbox", { name: "Search reservations" })).toHaveValue("");
+    } else {
+      expect(screen.queryByRole("searchbox", { name: "Search reservations" })).not.toBeInTheDocument();
+    }
+  });
 });

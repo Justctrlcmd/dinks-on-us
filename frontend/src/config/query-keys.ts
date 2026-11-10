@@ -72,7 +72,7 @@ export const teamAccessKeys = {
 
 export const reservationKeys = {
   all: ["reservations"] as const,
-  list: (filters: { page: number; search: string; status: string }) => [...reservationKeys.all, "list", filters] as const,
+  list: (filters: import("@/types/reservation").ReservationFilters) => [...reservationKeys.all, "list", filters] as const,
   pendingCount: () => [...reservationKeys.all, "pending-count"] as const,
   detail: (id: number) => [...reservationKeys.all, "detail", id] as const,
 };

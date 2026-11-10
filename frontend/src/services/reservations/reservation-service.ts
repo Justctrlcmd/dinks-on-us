@@ -13,6 +13,8 @@ export const submitReservation = ({ input, idempotencyKey }: { input: FormData; 
 export const getReservations = (filters: ReservationFilters, signal?: AbortSignal) => {
   const params = new URLSearchParams({ page: String(filters.page), per_page: "10" });
   if (filters.search.trim()) params.set("search", filters.search.trim());
+  if (filters.search_by && filters.search_by !== "all") params.set("search_by", filters.search_by);
+  if (filters.booking_date) params.set("booking_date", filters.booking_date);
   if (filters.status) params.set("status", filters.status);
   return authFetch<ReservationListData>(`/api/v1/management/reservations?${params}`, { signal });
 };
