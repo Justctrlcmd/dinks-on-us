@@ -294,14 +294,23 @@ class ReservationService
             ->orderByRaw('COALESCE(schedule_order.next_start_hour, schedule_order.last_end_hour)')
             ->latest('reservations.submitted_at')
             ->latest('reservations.id');
-        if ($search = trim((string) ($filters['search'] ?? ''))) {
-            $query->where(function ($query) use ($search): void {
-                $query->where('reference_number', 'like', "%{$search}%")
-                    ->orWhere('customer_name', 'like', "%{$search}%")
-                    ->orWhere('customer_email', 'like', "%{$search}%")
-                    ->orWhere('customer_contact_number', 'like', "%{$search}%")
-                    ->orWhereHas('payments', fn ($payments) => $payments->where('reference_number', 'like', "%{$search}%"));
-            });
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            if (($filters['search_by'] ?? 'all') === 'reference_number') {
+                $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
+                $query->whereRaw("reservations.reference_number LIKE ? ESCAPE '!'", [$pattern]);
+            } else {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('reference_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_email', 'like', "%{$search}%")
+                        ->orWhere('customer_contact_number', 'like', "%{$search}%")
+                        ->orWhereHas('payments', fn ($payments) => $payments->where('reference_number', 'like', "%{$search}%"));
+                });
+            }
+        }
+        if ($bookingDate = $filters['booking_date'] ?? null) {
+            $query->where('reservations.booking_date', $bookingDate);
         }
         if ($status = $filters['status'] ?? null) {
             if ($status === 'RESCHEDULED') {

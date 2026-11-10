@@ -969,6 +969,14 @@ between booked hours. Apply this ordering across the full filtered list before
 pagination. Equal schedules use the newest submission first. Finalized records
 remain in History; sorting does not change a reservation's status.
 
+Staff can narrow Reservations by reservation Reference ID and an exact current
+booking date, together with the existing status filter. Reference-only search
+matches all or part of the reservation reference, not customer or payment
+references. The date is a calendar date in the business timezone, not the
+submission date or a replaced schedule date; past unresolved bookings remain
+searchable. Filters apply before pagination and retain the operational ordering.
+The KPI cards continue to show overall operational counts.
+
 ---
 
 # 47. History Immutability Rule
