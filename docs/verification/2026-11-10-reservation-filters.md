@@ -3,9 +3,12 @@
 Reservations has one **Reference ID / Date** selector to the left of Status,
 defaulting to Date, without a visible Filter by label or a separate clear button.
 Only the selected mode's input is shown: a reference search or a booking-date
-calendar. Switching modes clears the previous mode's value while preserving
-Status. Staff can clear the date in the calendar, erase the reference input, or
-select All statuses. Filter changes return to page one, and clearing
+calendar. The selection also sorts the full table before pagination. Date shows
+current and upcoming bookings first, followed by recently ended bookings.
+Reference ID shows the lowest number first. Switching modes clears the previous
+mode's value while preserving Status. Staff can clear the date in the calendar,
+erase the reference input, or select All statuses. Filter changes return to page
+one, and clearing
 or switching modes also cancels pending search input.
 
 The API continues to support combined reference, date, and status filters before
@@ -14,7 +17,7 @@ pagination for compatibility; the simplified view selects one search mode at a t
 Reference-only search accepts full or partial reservation references and treats
 SQL wildcard characters literally. It does not match customer or payment fields.
 Dates match the current booking date, including after rescheduling. Past unresolved
-bookings remain searchable. Operational ordering, overall KPI counts, History
+bookings remain searchable. Overall KPI counts, History
 separation, permissions, and reservation actions retain their existing behavior.
 Legacy clients may omit both new query parameters. No schema or dependency
 changes are required.

@@ -143,10 +143,10 @@ describe("reservation service", () => {
     const signal = new AbortController().signal;
     authFetch.mockClear();
 
-    getReservations({ page: 2, search: "  RF-001  ", search_by: "reference_number", booking_date: "2026-10-23", status: "RESCHEDULED" }, signal);
+    getReservations({ page: 2, search: "  RF-001  ", search_by: "reference_number", booking_date: "2026-10-23", sort: "reference_number", status: "RESCHEDULED" }, signal);
 
     expect(authFetch).toHaveBeenCalledWith(
-      "/api/v1/management/reservations?page=2&per_page=10&search=RF-001&search_by=reference_number&booking_date=2026-10-23&status=RESCHEDULED",
+      "/api/v1/management/reservations?page=2&per_page=10&search=RF-001&search_by=reference_number&booking_date=2026-10-23&sort=reference_number&status=RESCHEDULED",
       { signal },
     );
   });

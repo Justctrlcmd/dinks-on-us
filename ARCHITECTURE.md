@@ -123,12 +123,12 @@ before this check, preserving an earlier successful start across midnight.
 The Reservations action menu mirrors the calendar-date condition using the
 shared Philippine-date helper; the backend remains authoritative.
 
-The operational reservation list sorts on the server before pagination using
-`BusinessClock`: unresolved elapsed bookings first, oldest date and end time
-first, then current court slots, followed by the next upcoming slots. Only current
-schedule slots count, including add-ons; finalized records stay in History. The
-open table refreshes every minute and on window focus so ordering follows the
-business clock without a manual reload.
+The operational reservation list sorts on the server before pagination. The
+portal sends the selected sort as part of its query key and API request. Date
+uses `BusinessClock` and current court slots to put current and upcoming
+bookings first and recently ended bookings next. Reference ID uses the numeric
+part of the reservation reference. Clients that omit `sort` receive the existing
+overdue-first order. The open table refreshes every minute and on window focus.
 If finalizing a booking removes the current page, the Reservations view returns
 to the last available page after receiving the updated pagination metadata.
 

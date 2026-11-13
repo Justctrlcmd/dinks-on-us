@@ -204,9 +204,9 @@ export function ReservationsView() {
     search: "",
     search_by: "reference_number",
     booking_date: "",
+    sort: "booking_date",
     status: "",
   });
-  const [filterBy, setFilterBy] = useState<"reference_number" | "date">("date");
   const [searchInput, setSearchInput] = useState("");
   const [selected, setSelected] = useState<ManagementReservation | null>(null);
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -311,7 +311,7 @@ export function ReservationsView() {
     <div className="grid gap-5">
       <PageHeader
         title="Reservations"
-        description="Past bookings needing attention appear first, oldest first, followed by current and upcoming visits."
+        description={filters.sort === "reference_number" ? "Reference IDs are listed from lowest to highest." : "Current and upcoming bookings appear first, followed by recently ended bookings."}
         actionsClassName="absolute right-0 top-0"
         actions={
           <Button
@@ -360,7 +360,7 @@ export function ReservationsView() {
           className="grid grid-cols-2 items-center gap-3 xl:grid-cols-[minmax(180px,1fr)_170px_170px]"
         >
           <div className="col-span-2 min-w-0 xl:col-span-1">
-            {filterBy === "reference_number" ? (
+            {filters.sort === "reference_number" ? (
               <label className="relative block">
                 <FiSearch
                   className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -392,17 +392,16 @@ export function ReservationsView() {
           <div className="min-w-0">
             <SelectWithLabel
               id="reservation-filter-by"
-              ariaLabel="Filter reservations by"
-              value={filterBy}
+              ariaLabel="Sort reservations by"
+              value={filters.sort}
               options={[
                 { value: "reference_number", label: "Reference ID" },
-                { value: "date", label: "Date" },
+                { value: "booking_date", label: "Date" },
               ]}
               onValueChange={(value) => {
-                if (value === "reference_number" || value === "date") {
-                  setFilterBy(value);
+                if (value === "reference_number" || value === "booking_date") {
                   setSearchInput("");
-                  setFilters((current) => ({ ...current, page: 1, search: "", booking_date: "" }));
+                  setFilters((current) => ({ ...current, page: 1, sort: value, search: "", booking_date: "" }));
                 }
               }}
             />

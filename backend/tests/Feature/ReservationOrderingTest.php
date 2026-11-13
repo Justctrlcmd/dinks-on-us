@@ -133,4 +133,39 @@ class ReservationOrderingTest extends TestCase
         $tied = $this->booking('2026-10-22', [12], Reservation::STATUS_VERIFIED);
         $this->assertSame([$tied->id, $next->id], array_slice($this->ids(), 0, 2));
     }
+
+    public function test_date_sort_shows_current_and_nearest_upcoming_then_most_recently_ended(): void
+    {
+        $yesterday = $this->booking('2026-10-21', [23]);
+        $early = $this->booking('2026-10-22', [8]);
+        $recent = $this->booking('2026-10-22', [10]);
+        $current = $this->booking('2026-10-22', [11]);
+        $upcoming = $this->booking('2026-10-22', [12]);
+        $tomorrow = $this->booking('2026-10-23', [7]);
+
+        $this->assertSame(
+            [$current->id, $upcoming->id, $tomorrow->id, $recent->id, $early->id, $yesterday->id],
+            $this->ids('?sort=booking_date'),
+        );
+    }
+
+    public function test_reference_sort_is_numeric_across_pages_and_works_without_search(): void
+    {
+        $expected = [];
+        foreach (range(1001, 990) as $number) {
+            $booking = $this->booking('2026-10-23', [7]);
+            $booking->update(['reference_number' => 'RF-'.$number]);
+            array_unshift($expected, $booking->id);
+        }
+        $earlierBooking = $this->booking('2026-10-21', [7], Reservation::STATUS_VERIFIED);
+        $earlierBooking->update(['reference_number' => 'RF-001']);
+        $withoutReference = $this->booking('2026-10-21', [8]);
+        $withoutReference->update(['reference_number' => null]);
+        $expected[] = $withoutReference->id;
+
+        $this->assertSame($earlierBooking->id, $this->ids('?sort=reference_number')[0]);
+        $this->assertSame(array_slice($expected, 0, 10), $this->ids('?sort=reference_number&status=PENDING'));
+        $this->assertSame(array_slice($expected, 10), $this->ids('?sort=reference_number&status=PENDING&page=2'));
+        $this->getJson('/api/v1/management/reservations?sort=customer_email')->assertJsonValidationErrors('sort');
+    }
 }
