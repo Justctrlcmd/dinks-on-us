@@ -205,6 +205,7 @@ export function ReservationsView() {
     search_by: "reference_number",
     booking_date: "",
     sort: "booking_date",
+    direction: "desc",
     status: "",
   });
   const [searchInput, setSearchInput] = useState("");
@@ -311,7 +312,7 @@ export function ReservationsView() {
     <div className="grid gap-5">
       <PageHeader
         title="Reservations"
-        description={filters.sort === "reference_number" ? "Reference IDs are listed from lowest to highest." : "Current and upcoming bookings appear first, followed by recently ended bookings."}
+        description="View and sort current reservations."
         actionsClassName="absolute right-0 top-0"
         actions={
           <Button
@@ -357,7 +358,7 @@ export function ReservationsView() {
         <div
           role="search"
           aria-label="Filter reservations"
-          className="grid grid-cols-2 items-center gap-3 xl:grid-cols-[minmax(180px,1fr)_170px_170px]"
+          className="grid grid-cols-2 items-center gap-3 xl:grid-cols-[minmax(180px,1fr)_170px_170px_170px]"
         >
           <div className="col-span-2 min-w-0 xl:col-span-1">
             {filters.sort === "reference_number" ? (
@@ -406,6 +407,17 @@ export function ReservationsView() {
               }}
             />
           </div>
+          <SelectWithLabel
+            id="reservation-sort-direction"
+            ariaLabel="Sort direction"
+            value={filters.direction}
+            options={[{ value: "desc", label: "Descending" }, { value: "asc", label: "Ascending" }]}
+            onValueChange={(value) => {
+              if (value === "asc" || value === "desc") {
+                setFilters((current) => ({ ...current, page: 1, direction: value }));
+              }
+            }}
+          />
           <div className="min-w-0">
             <SelectWithLabel
               id="reservation-status"

@@ -155,10 +155,19 @@ describe("ReservationsView pagination", () => {
     const user = userEvent.setup();
     await goToLastPage();
 
-    expect(screen.getAllByRole("combobox")).toHaveLength(2);
+    expect(screen.getAllByRole("combobox")).toHaveLength(3);
     expect(screen.getAllByRole("combobox")[0]).toHaveAccessibleName("Sort reservations by");
-    expect(screen.getAllByRole("combobox")[1]).toHaveAccessibleName("Filter reservations by status");
+    expect(screen.getAllByRole("combobox")[1]).toHaveAccessibleName("Sort direction");
+    expect(screen.getAllByRole("combobox")[1]).toHaveTextContent("Descending");
+    expect(screen.getAllByRole("combobox")[2]).toHaveAccessibleName("Filter reservations by status");
     expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("Date");
+    screen.getByRole("combobox", { name: "Sort direction" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Ascending" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toMatchObject({ page: 1, direction: "asc" }));
+    screen.getByRole("combobox", { name: "Sort direction" }).focus();
+    await user.keyboard("{ArrowDown}");
+    await user.click(await screen.findByRole("option", { name: "Descending" }));
     expect(getReservationsMock.mock.lastCall?.[0].sort).toBe("booking_date");
     expect(screen.queryByText("Filter by:")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
@@ -183,16 +192,16 @@ describe("ReservationsView pagination", () => {
     await user.click(screen.getByRole("button", { name: "Filter reservations by booking date" }));
     // Past unresolved bookings remain selectable, even though Manila's today is Oct 23.
     await user.click(screen.getByRole("gridcell", { name: "Thursday, October 22, 2026" }));
-    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", sort: "booking_date", booking_date: "2026-10-22", status: "PENDING" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", sort: "booking_date", direction: "desc", booking_date: "2026-10-22", status: "PENDING" }));
 
     await user.click(screen.getByRole("button", { name: "Filter reservations by booking date" }));
     await user.click(screen.getByRole("button", { name: "Clear date" }));
-    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", sort: "booking_date", booking_date: "", status: "PENDING" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", sort: "booking_date", direction: "desc", booking_date: "", status: "PENDING" }));
 
     screen.getByRole("combobox", { name: "Filter reservations by status" }).focus();
     await user.keyboard("{ArrowDown}");
     await user.click(await screen.findByRole("option", { name: "All statuses" }));
-    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", sort: "booking_date", booking_date: "", status: "" }));
+    await waitFor(() => expect(getReservationsMock.mock.lastCall?.[0]).toEqual({ page: 1, search: "", search_by: "reference_number", sort: "booking_date", direction: "desc", booking_date: "", status: "" }));
     expect(screen.getByRole("button", { name: "Filter reservations by booking date" })).toHaveTextContent("All booking dates");
   });
 

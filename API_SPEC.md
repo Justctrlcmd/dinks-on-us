@@ -1059,20 +1059,22 @@ search
 search_by=all|reference_number
 booking_date=YYYY-MM-DD
 sort=booking_date|reference_number
+direction=asc|desc
 page
 per_page=10
 ```
 
 The list contains operational records only. `status` accepts `PENDING`, `VERIFIED`, the derived `RESCHEDULED` marker, and `ONGOING`. Final `COMPLETED`, `REJECTED`, `CANCELLED`, and `NO_SHOW` records are available through History instead. Results are limited to 10 per page.
 
-The server sorts the full result before pagination. `sort=booking_date` uses
-the business timezone to list bookings happening now, then the nearest upcoming
-bookings, then ended bookings with the most recently ended first. It uses actual
-current slots, including add-ons. `sort=reference_number` orders by the numeric
-part of the Reference ID from lowest to highest and puts missing references last.
+The server sorts the full result before pagination. `sort=booking_date` lists
+booking dates from latest to earliest. `sort=reference_number` orders the numeric
+part of the Reference ID from highest to lowest and puts missing references last.
 Omitting `sort` uses the existing overdue-first schedule order. All modes break
 ties by newest submission time and then highest reservation ID. Unsupported sort
 values return `422`.
+
+The direction defaults to `desc` and accepts `asc` for either sort. Missing
+references stay last in both directions.
 
 Search should support important values such as:
 

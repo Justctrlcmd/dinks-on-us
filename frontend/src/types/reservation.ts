@@ -83,6 +83,7 @@ export type ReservationFilters = {
   search_by?: "all" | "reference_number";
   booking_date?: string;
   sort?: "booking_date" | "reference_number";
+  direction?: "asc" | "desc";
   status: "" | ReservationStatus;
 };
 export type FinalReservationStatus = Extract<ReservationStatus, "COMPLETED" | "CANCELLED" | "REJECTED" | "NO_SHOW">;

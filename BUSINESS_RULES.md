@@ -961,12 +961,10 @@ NO_SHOW
 Operational reservations should remain outside History.
 
 The Reservations dropdown sorts the full filtered list before pagination. Date
-is the default. It shows bookings happening now, then the nearest upcoming
-bookings, then unresolved bookings whose slots have ended, most recently ended
-first. It uses actual current court slots, including add-ons, in the business
-timezone. Reference ID shows the lowest number first and puts missing references
-last. Equal sort values use the newest submission first. Finalized records remain
-in History.
+is the default and lists booking dates from latest to earliest. Reference ID
+lists the highest number first and puts missing references last. Equal values use
+the newest submission first. Staff can select Ascending or Descending for either
+field. Descending is the default. Finalized records remain in History.
 
 Staff can narrow Reservations by reservation Reference ID and an exact current
 booking date, together with the existing status filter. Reference-only search

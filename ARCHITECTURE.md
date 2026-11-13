@@ -125,10 +125,10 @@ shared Philippine-date helper; the backend remains authoritative.
 
 The operational reservation list sorts on the server before pagination. The
 portal sends the selected sort as part of its query key and API request. Date
-uses `BusinessClock` and current court slots to put current and upcoming
-bookings first and recently ended bookings next. Reference ID uses the numeric
-part of the reservation reference. Clients that omit `sort` receive the existing
-overdue-first order. The open table refreshes every minute and on window focus.
+orders booking dates descending. Reference ID orders its numeric suffix
+descending by default, with an ascending option for either field. Clients that
+omit `sort` receive the existing overdue-first order.
+The open table refreshes every minute and on window focus.
 If finalizing a booking removes the current page, the Reservations view returns
 to the last available page after receiving the updated pagination metadata.
 

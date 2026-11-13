@@ -279,10 +279,13 @@ class ReservationService
             ->with(['currentSlots.court', 'refunds']);
 
         $sort = $filters['sort'] ?? null;
+        $direction = ($filters['direction'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
         if ($sort === 'reference_number') {
-            // Compare the numeric suffix so RF-1000 follows RF-999.
+            // Compare the numeric suffix so RF-1000 precedes RF-999.
             $query->orderByRaw('CASE WHEN reservations.reference_number IS NULL THEN 1 ELSE 0 END')
-                ->orderByRaw('CAST(SUBSTR(reservations.reference_number, 4) AS DECIMAL(29, 0))');
+                ->orderByRaw('CAST(SUBSTR(reservations.reference_number, 4) AS DECIMAL(29, 0)) '.$direction);
+        } elseif ($sort === 'booking_date') {
+            $query->orderBy('reservations.booking_date', $direction);
         } else {
             $now = BusinessClock::now();
             $today = $now->toDateString();
@@ -295,14 +298,8 @@ class ReservationService
                 ->groupBy('reservation_id');
             $query->leftJoinSub($scheduleOrder, 'schedule_order', 'schedule_order.reservation_id', '=', 'reservations.id');
 
-            if ($sort === 'booking_date') {
-                $query->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 1 ELSE 0 END')
-                    ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN reservations.booking_date END DESC')
-                    ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN schedule_order.last_end_hour END DESC');
-            } else {
-                // Preserve the overdue-first order for clients that omit sort.
-                $query->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 0 ELSE 1 END');
-            }
+            // Preserve the overdue-first order for clients that omit sort.
+            $query->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 0 ELSE 1 END');
 
             $query->orderBy('reservations.booking_date')
                 ->orderByRaw('COALESCE(schedule_order.next_start_hour, schedule_order.last_end_hour)');

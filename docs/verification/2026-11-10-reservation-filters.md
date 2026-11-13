@@ -4,9 +4,10 @@ Reservations has one **Reference ID / Date** selector to the left of Status,
 defaulting to Date, without a visible Filter by label or a separate clear button.
 Only the selected mode's input is shown: a reference search or a booking-date
 calendar. The selection also sorts the full table before pagination. Date shows
-current and upcoming bookings first, followed by recently ended bookings.
-Reference ID shows the lowest number first. Switching modes clears the previous
-mode's value while preserving Status. Staff can clear the date in the calendar,
+the latest booking date first. Reference ID shows the highest number first. An
+Ascending/Descending dropdown changes the direction for either field and
+defaults to Descending. Switching modes clears the previous mode's value while
+preserving Status. Staff can clear the date in the calendar,
 erase the reference input, or select All statuses. Filter changes return to page
 one, and clearing
 or switching modes also cancels pending search input.
