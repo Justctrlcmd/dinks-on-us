@@ -252,12 +252,10 @@ PENDING
 
 A verified reservation may be rescheduled repeatedly by the Manager. `RESCHEDULED` is a derived operational marker backed by schedule history; the stored status remains `VERIFIED` and retains the verified action set.
 
-Marking a reservation Ongoing is allowed only when its current booking date equals
-today in the configured business timezone (Asia/Manila). This applies to online,
-walk-in, and rescheduled bookings. Past and future dates are rejected. Court start
-and end hours do not restrict this action: any time on that booking date is
-eligible. Staff still manually confirms actual arrival/play; the clock never
-automatically changes status.
+Authorized staff may manually mark a verified reservation Ongoing regardless of
+its booking date or booked hours. This applies to online, walk-in, and rescheduled
+bookings, including overlooked past bookings. The clock never changes status
+automatically.
 
 ---
 

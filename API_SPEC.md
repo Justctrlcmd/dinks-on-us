@@ -1196,13 +1196,9 @@ VERIFIED → ONGOING
 
 The transition is manually confirmed by Staff or Manager when the customer is at the facility and has started playing. It is never triggered automatically by the clock.
 
-The locked reservation's latest `booking_date` must equal `BusinessClock::today()`
-(Asia/Manila by default). Past/future dates return `409 RESERVATION_CONFLICT`
-with a safe message and no status, timestamp, revision, audit, or retry-receipt
-changes. Booked start/end hours are not checked. This applies equally to walk-ins
-and rescheduled bookings, using their current date rather than historical slots.
-A matching retry of a previously committed start still returns that existing
-result after midnight without performing another transition.
+Booking date and booked hours do not restrict this manual transition. This
+applies to online, walk-in, and rescheduled bookings. A matching retry of a
+previously committed start returns the existing result without another transition.
 
 ---
 

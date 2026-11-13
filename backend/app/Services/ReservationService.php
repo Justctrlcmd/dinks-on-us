@@ -477,9 +477,6 @@ class ReservationService
             $reservation = $this->lockReservation($reservation);
             $this->actionGuard->assertRevision($reservation, $context);
             $this->requireStatus($reservation, Reservation::STATUS_VERIFIED, 'Only verified reservations can be marked ongoing.');
-            if ($reservation->booking_date->toDateString() !== BusinessClock::today()) {
-                throw new ReservationConflictException('Only reservations booked for today can be marked ongoing.');
-            }
             $reservation->update(['status' => Reservation::STATUS_ONGOING, 'started_by_user_id' => $user->id, 'started_at' => now()]);
             $this->recordTransition($reservation, Reservation::STATUS_VERIFIED, Reservation::STATUS_ONGOING, $user);
             $this->audit($user, AuditLog::RESERVATION_STARTED, $reservation, ['status' => Reservation::STATUS_ONGOING]);
