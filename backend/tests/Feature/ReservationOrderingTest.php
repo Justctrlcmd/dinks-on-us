@@ -134,7 +134,7 @@ class ReservationOrderingTest extends TestCase
         $this->assertSame([$tied->id, $next->id], array_slice($this->ids(), 0, 2));
     }
 
-    public function test_date_sort_shows_current_and_nearest_upcoming_then_most_recently_ended(): void
+    public function test_date_sort_shows_latest_booking_date_first(): void
     {
         $yesterday = $this->booking('2026-10-21', [23]);
         $early = $this->booking('2026-10-22', [8]);
@@ -144,9 +144,12 @@ class ReservationOrderingTest extends TestCase
         $tomorrow = $this->booking('2026-10-23', [7]);
 
         $this->assertSame(
-            [$current->id, $upcoming->id, $tomorrow->id, $recent->id, $early->id, $yesterday->id],
+            [$tomorrow->id, $upcoming->id, $current->id, $recent->id, $early->id, $yesterday->id],
             $this->ids('?sort=booking_date'),
         );
+        $ascending = $this->ids('?sort=booking_date&direction=asc');
+        $this->assertSame($yesterday->id, $ascending[0]);
+        $this->assertSame($tomorrow->id, $ascending[5]);
     }
 
     public function test_reference_sort_is_numeric_across_pages_and_works_without_search(): void
@@ -155,7 +158,7 @@ class ReservationOrderingTest extends TestCase
         foreach (range(1001, 990) as $number) {
             $booking = $this->booking('2026-10-23', [7]);
             $booking->update(['reference_number' => 'RF-'.$number]);
-            array_unshift($expected, $booking->id);
+            $expected[] = $booking->id;
         }
         $earlierBooking = $this->booking('2026-10-21', [7], Reservation::STATUS_VERIFIED);
         $earlierBooking->update(['reference_number' => 'RF-001']);
@@ -163,9 +166,12 @@ class ReservationOrderingTest extends TestCase
         $withoutReference->update(['reference_number' => null]);
         $expected[] = $withoutReference->id;
 
-        $this->assertSame($earlierBooking->id, $this->ids('?sort=reference_number')[0]);
+        $this->assertSame($expected[0], $this->ids('?sort=reference_number')[0]);
         $this->assertSame(array_slice($expected, 0, 10), $this->ids('?sort=reference_number&status=PENDING'));
         $this->assertSame(array_slice($expected, 10), $this->ids('?sort=reference_number&status=PENDING&page=2'));
+        $ascending = [...$this->ids('?sort=reference_number&direction=asc&status=PENDING'), ...$this->ids('?sort=reference_number&direction=asc&status=PENDING&page=2')];
+        $this->assertSame([...array_reverse(array_slice($expected, 0, -1)), $withoutReference->id], $ascending);
         $this->getJson('/api/v1/management/reservations?sort=customer_email')->assertJsonValidationErrors('sort');
+        $this->getJson('/api/v1/management/reservations?sort=reference_number&direction=invalid')->assertJsonValidationErrors('direction');
     }
 }

@@ -9,7 +9,7 @@ export function useReservations(filters: ReservationFilters) {
   return useQuery({
     queryKey: reservationKeys.list(filters),
     queryFn: ({ signal }) => getReservations(filters, signal),
-    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[2].sort === filters.sort ? previous : undefined,
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[2].sort === filters.sort && previousQuery?.queryKey[2].direction === filters.direction ? previous : undefined,
     refetchInterval: 60_000,
     refetchOnWindowFocus: "always",
   });
