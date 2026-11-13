@@ -56,7 +56,7 @@ import {
 } from "@/hooks/mutations/use-reservation-mutations";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useReservations } from "@/hooks/queries/use-reservations";
-import { formatDateOnly } from "@/lib/date";
+import { formatDateOnly, todayInTimeZone } from "@/lib/date";
 import { isMutationRateLimited, mutationButtonLabel } from "@/lib/mutation-rate-limit";
 import type {
   ManagementReservation,
@@ -87,12 +87,14 @@ type ConfirmAction = "verify" | "start" | "no-show" | null;
 
 function ReservationActions({
   reservation,
+  today,
   isManager,
   disabled,
   onDialog,
   onConfirm,
 }: {
   reservation: ManagementReservation;
+  today: string;
   isManager: boolean;
   disabled: boolean;
   onDialog: (kind: DialogKind, reservation: ManagementReservation) => void;
@@ -102,6 +104,7 @@ function ReservationActions({
   ) => void;
 }) {
   const verified = reservation.status === "VERIFIED";
+  const isFuture = reservation.booking_date > today;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -140,7 +143,7 @@ function ReservationActions({
         ) : null}
         {verified ? (
           <>
-            <DropdownMenuItem disabled={disabled} onClick={() => onConfirm("start", reservation)}>
+            <DropdownMenuItem disabled={disabled || isFuture} title={isFuture ? "Available on or after the booking date." : undefined} onClick={() => onConfirm("start", reservation)}>
               <FiPlay aria-hidden />
               Mark ongoing
             </DropdownMenuItem>
@@ -209,6 +212,13 @@ export function ReservationsView() {
   const [selected, setSelected] = useState<ManagementReservation | null>(null);
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [today, setToday] = useState(todayInTimeZone);
+  useEffect(() => {
+    const refreshDate = () => setToday(todayInTimeZone());
+    const timer = window.setInterval(refreshDate, 60_000);
+    window.addEventListener("focus", refreshDate);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refreshDate); };
+  }, []);
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setFilters((current) =>
@@ -261,12 +271,13 @@ export function ReservationsView() {
     action: ConfirmAction,
     reservation: ManagementReservation,
   ) {
-    if (actionPending) return;
+    if (actionPending || (action === "start" && reservation.booking_date > todayInTimeZone())) return;
     setSelected(reservation);
     setConfirmAction(action);
   }
   function confirm() {
     if (!selected || !confirmAction || actionPending) return;
+    if (confirmAction === "start" && selected.booking_date > todayInTimeZone()) return;
     const mutation =
       confirmAction === "verify"
         ? verifyMutation
@@ -507,6 +518,7 @@ export function ReservationsView() {
                       <td className="px-4 py-3 text-center align-middle">
                         <ReservationActions
                           reservation={reservation}
+                          today={today}
                           isManager={isManager}
                           disabled={actionPending}
                           onDialog={openDialog}
@@ -538,6 +550,7 @@ export function ReservationsView() {
                   <div className="row-span-2 flex min-h-full flex-col items-end justify-between gap-8">
                     <ReservationActions
                       reservation={reservation}
+                      today={today}
                       isManager={isManager}
                       disabled={actionPending}
                       onDialog={openDialog}
@@ -631,13 +644,13 @@ export function ReservationsView() {
         <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{confirmCopy[0]}</DialogTitle>
-            <DialogDescription>{confirmCopy[1]}</DialogDescription>
+            <DialogDescription>{confirmAction === "start" && selected && selected.booking_date > today ? "Available on or after the booking date." : confirmCopy[1]}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={confirmPending}>Not yet</Button>} />
             <Button
               variant={confirmAction === "no-show" ? "destructive" : "default"}
-              disabled={confirmPending || confirmRateLimited}
+              disabled={confirmPending || confirmRateLimited || (confirmAction === "start" && !!selected && selected.booking_date > today)}
               onClick={confirm}
             >
               {confirmAction === "verify"

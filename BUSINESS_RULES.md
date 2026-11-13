@@ -252,9 +252,10 @@ PENDING
 
 A verified reservation may be rescheduled repeatedly by the Manager. `RESCHEDULED` is a derived operational marker backed by schedule history; the stored status remains `VERIFIED` and retains the verified action set.
 
-Authorized staff may manually mark a verified reservation Ongoing regardless of
-its booking date or booked hours. This applies to online, walk-in, and rescheduled
-bookings, including overlooked past bookings. The clock never changes status
+Authorized staff may manually mark a verified reservation Ongoing on or after
+its current booking date in the business timezone, regardless of booked hours.
+This applies to online, walk-in, and rescheduled bookings, including overlooked
+past bookings. Future bookings cannot be started. The clock never changes status
 automatically.
 
 ---

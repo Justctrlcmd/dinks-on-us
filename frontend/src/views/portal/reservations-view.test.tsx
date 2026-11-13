@@ -71,7 +71,7 @@ describe("ReservationsView pagination", () => {
     expect(screen.getAllByText("RF-11")).toHaveLength(2);
   }
 
-  it.each(["2026-10-22", "2026-10-24"])("allows marking booking %s ongoing when Manila's date is Oct 23", async (date) => {
+  it.each(["2026-10-22", "2026-10-23"])("allows marking booking %s ongoing when Manila's date is Oct 23", async (date) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-22T16:30:00Z"));
     remaining = [{ ...booking(1), status: "VERIFIED", display_status: "VERIFIED", booking_date: date }];
@@ -84,6 +84,19 @@ describe("ReservationsView pagination", () => {
     await user.click(screen.getByRole("menuitem", { name: "Mark ongoing" }));
     await user.click(screen.getByRole("button", { name: "Yes, mark ongoing" }));
     expect(startMock).toHaveBeenCalledWith(1, expect.any(Object));
+  });
+
+  it("disables marking a future reservation ongoing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-22T16:30:00Z"));
+    remaining = [{ ...booking(1), status: "VERIFIED", display_status: "VERIFIED", booking_date: "2026-10-24" }];
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={client}><ReservationsView /></QueryClientProvider>);
+    await screen.findAllByText("RF-1");
+    screen.getAllByRole("button", { name: "Actions for RF-1" })[0].focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Mark ongoing" })).toHaveAttribute("aria-disabled", "true");
+    expect(startMock).not.toHaveBeenCalled();
   });
 
   it("allows a rescheduled booking to be marked ongoing on today's Manila date", async () => {

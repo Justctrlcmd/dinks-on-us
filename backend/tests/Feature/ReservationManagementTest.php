@@ -937,16 +937,22 @@ class ReservationManagementTest extends TestCase
         $this->actingAs($this->manager)->get("/api/v1/management/reservation-payments/{$paymentId}/proof")->assertOk();
     }
 
-    public function test_verified_reservations_can_be_started_before_or_after_the_booking_date(): void
+    public function test_future_reservations_are_blocked_and_past_reservations_can_be_started(): void
     {
         foreach ([-1, 1] as $dayOffset) {
             $this->travelBack();
             $id = $this->submit(9 + $dayOffset)['id'];
             $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
             $this->travelTo(CarbonImmutable::parse($this->date.' 12:00:00', 'Asia/Manila')->addDays($dayOffset));
-            $this->postJson("/api/v1/management/reservations/{$id}/start", [], ['Idempotency-Key' => 'start-other-date-'.$dayOffset])
-                ->assertOk()->assertJsonPath('data.status', 'ONGOING');
-            $this->assertDatabaseHas('reservation_status_histories', ['reservation_id' => $id, 'to_status' => 'ONGOING']);
+            $response = $this->postJson("/api/v1/management/reservations/{$id}/start", [], ['Idempotency-Key' => 'start-other-date-'.$dayOffset]);
+            if ($dayOffset < 0) {
+                $response->assertConflict();
+                $this->assertDatabaseHas('reservations', ['id' => $id, 'status' => 'VERIFIED', 'started_at' => null]);
+                $this->assertDatabaseMissing('reservation_status_histories', ['reservation_id' => $id, 'to_status' => 'ONGOING']);
+            } else {
+                $response->assertOk()->assertJsonPath('data.status', 'ONGOING');
+                $this->assertDatabaseHas('reservation_status_histories', ['reservation_id' => $id, 'to_status' => 'ONGOING']);
+            }
         }
     }
 
@@ -979,8 +985,9 @@ class ReservationManagementTest extends TestCase
             'slots' => [['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 9]],
         ])->assertOk();
         $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
-        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertConflict();
         $this->travelTo(CarbonImmutable::parse($newDate.' 08:00:00', 'Asia/Manila'));
+        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
         $walkIn = $this->walkInPayload(12);
         $walkIn['slots'][0]['date'] = $newDate;
         $walkInId = $this->postJson('/api/v1/management/reservations/walk-in', $walkIn)->assertCreated()->json('data.id');

@@ -427,5 +427,6 @@ emails show the current operation's refund separately from cumulative refunds.
 
 ### Mark ongoing
 
-Mark ongoing remains available for verified bookings regardless of booking date
-or booked hours. Keep the existing confirmation for staff to record the action.
+Mark ongoing is available for verified bookings on or after their booking date.
+For future bookings, disable it and explain when it becomes available. Keep the
+existing confirmation for staff to record the action.
