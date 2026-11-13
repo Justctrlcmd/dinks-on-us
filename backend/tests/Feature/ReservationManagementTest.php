@@ -937,21 +937,17 @@ class ReservationManagementTest extends TestCase
         $this->actingAs($this->manager)->get("/api/v1/management/reservation-payments/{$paymentId}/proof")->assertOk();
     }
 
-    public function test_mark_ongoing_rejects_other_dates_and_keeps_failed_attempts_uncommitted(): void
+    public function test_verified_reservations_can_be_started_before_or_after_the_booking_date(): void
     {
-        $id = $this->submit(9)['id'];
-        $current = $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk()->json('data');
-        $headers = ['Idempotency-Key' => 'booking-day-start-test'];
         foreach ([-1, 1] as $dayOffset) {
+            $this->travelBack();
+            $id = $this->submit(9 + $dayOffset)['id'];
+            $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
             $this->travelTo(CarbonImmutable::parse($this->date.' 12:00:00', 'Asia/Manila')->addDays($dayOffset));
-            $this->postJson("/api/v1/management/reservations/{$id}/start", [], $headers)
-                ->assertConflict()->assertJsonPath('message', 'Only reservations booked for today can be marked ongoing.');
-            $this->assertDatabaseHas('reservations', ['id' => $id, 'status' => 'VERIFIED', 'revision' => $current['revision'], 'started_at' => null]);
-            $this->assertDatabaseCount('reservation_action_receipts', 0);
-            $this->assertDatabaseMissing('reservation_status_histories', ['reservation_id' => $id, 'to_status' => 'ONGOING']);
+            $this->postJson("/api/v1/management/reservations/{$id}/start", [], ['Idempotency-Key' => 'start-other-date-'.$dayOffset])
+                ->assertOk()->assertJsonPath('data.status', 'ONGOING');
+            $this->assertDatabaseHas('reservation_status_histories', ['reservation_id' => $id, 'to_status' => 'ONGOING']);
         }
-        $this->travelTo(CarbonImmutable::parse($this->date.' 12:00:00', 'Asia/Manila'));
-        $this->postJson("/api/v1/management/reservations/{$id}/start", [], $headers)->assertOk()->assertJsonPath('data.status', 'ONGOING');
     }
 
     public function test_mark_ongoing_uses_manila_date_without_restricting_booked_hours_and_replays_after_midnight(): void
@@ -974,7 +970,7 @@ class ReservationManagementTest extends TestCase
         $this->assertSame(1, Reservation::query()->findOrFail($id)->statusHistories()->where('to_status', 'ONGOING')->count());
     }
 
-    public function test_mark_ongoing_uses_the_latest_rescheduled_date_and_applies_to_walk_ins(): void
+    public function test_mark_ongoing_allows_rescheduled_bookings_and_walk_ins_on_other_dates(): void
     {
         $id = $this->submit(9)['id'];
         $this->actingAs($this->manager)->postJson("/api/v1/management/reservations/{$id}/verify")->assertOk();
@@ -983,9 +979,8 @@ class ReservationManagementTest extends TestCase
             'slots' => [['court_id' => $this->court->id, 'date' => $newDate, 'start_hour' => 9]],
         ])->assertOk();
         $this->travelTo(CarbonImmutable::parse($this->date.' 08:00:00', 'Asia/Manila'));
-        $this->postJson("/api/v1/management/reservations/{$id}/start")->assertConflict();
-        $this->travelTo(CarbonImmutable::parse($newDate.' 08:00:00', 'Asia/Manila'));
         $this->postJson("/api/v1/management/reservations/{$id}/start")->assertOk();
+        $this->travelTo(CarbonImmutable::parse($newDate.' 08:00:00', 'Asia/Manila'));
         $walkIn = $this->walkInPayload(12);
         $walkIn['slots'][0]['date'] = $newDate;
         $walkInId = $this->postJson('/api/v1/management/reservations/walk-in', $walkIn)->assertCreated()->json('data.id');

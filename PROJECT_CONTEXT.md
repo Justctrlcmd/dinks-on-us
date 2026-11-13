@@ -23,7 +23,7 @@ Current operating decisions include:
 * Manager-created team accounts cannot open Profile or change their own identity or password; the Manager controls those credentials through Team & Access.
 * Rescheduling is Manager-only, replaces all current court slots (including earlier add-ons), preserves history and prior payments, and settles the resulting balance or refund immediately, with explicit confirmation of customer repayment.
 * Court-time, additional-player, and rental-equipment add-ons are available for Verified and Ongoing reservations.
-* Marking a verified booking Ongoing requires its current booking date to be today in the business timezone; its booked hours do not restrict that manual action.
+* Authorized staff can mark a verified booking Ongoing regardless of its booking date or booked hours.
 
 ---
 

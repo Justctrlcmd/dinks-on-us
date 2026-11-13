@@ -116,12 +116,9 @@ is applied by both court availability previews and final reservation pricing.
 
 Future collection endpoints default to `per_page=10`, allow 10/25/50/100, and cap at 100. Search/filter/sort values require module-specific allowlists; never pass unrestricted sort columns to `orderBy`.
 
-Starting a reservation checks the locked current booking date against
-`BusinessClock::today()` after status/revision validation and before any writes.
-It does not compare start/end hours. A committed idempotent retry is recovered
-before this check, preserving an earlier successful start across midnight.
-The Reservations action menu mirrors the calendar-date condition using the
-shared Philippine-date helper; the backend remains authoritative.
+Starting a reservation requires a verified status and authorized reservation
+module access. Booking date and booked hours do not restrict the manual transition.
+Revision checks, transactional locking, audit records, and idempotent retries apply.
 
 The operational reservation list sorts on the server before pagination. The
 portal sends the selected sort as part of its query key and API request. Date

@@ -425,10 +425,7 @@ Cancellation's full/custom refund limits use the amount still held. Customer
 emails show the current operation's refund separately from cumulative refunds.
 
 
-### Mark ongoing on the booking date
+### Mark ongoing
 
-Keep Mark ongoing visible but disabled when the verified reservation's current
-booking date differs from today in Asia/Manila. Explain that it is available only
-on the reservation date. The confirmation submission rechecks the date, and the
-API remains authoritative. Apply the rule to both desktop and mobile menus and
-to rescheduled bookings. Do not use booked start/end hours to enable the action.
+Mark ongoing remains available for verified bookings regardless of booking date
+or booked hours. Keep the existing confirmation for staff to record the action.
