@@ -960,21 +960,20 @@ NO_SHOW
 
 Operational reservations should remain outside History.
 
-The Reservations table prioritizes past bookings that still need handling:
-unresolved bookings whose current slots have all ended appear first, oldest
-booking date and end time first. Bookings happening now follow, then the nearest
-upcoming bookings, using the business timezone. Use each reservation's next actual
-current court slot, including add-ons, rather than its submission date or a gap
-between booked hours. Apply this ordering across the full filtered list before
-pagination. Equal schedules use the newest submission first. Finalized records
-remain in History; sorting does not change a reservation's status.
+The Reservations dropdown sorts the full filtered list before pagination. Date
+is the default. It shows bookings happening now, then the nearest upcoming
+bookings, then unresolved bookings whose slots have ended, most recently ended
+first. It uses actual current court slots, including add-ons, in the business
+timezone. Reference ID shows the lowest number first and puts missing references
+last. Equal sort values use the newest submission first. Finalized records remain
+in History.
 
 Staff can narrow Reservations by reservation Reference ID and an exact current
 booking date, together with the existing status filter. Reference-only search
 matches all or part of the reservation reference, not customer or payment
 references. The date is a calendar date in the business timezone, not the
 submission date or a replaced schedule date; past unresolved bookings remain
-searchable. Filters apply before pagination and retain the operational ordering.
+searchable. Filters apply before pagination with the selected sort order.
 The KPI cards continue to show overall operational counts.
 
 ---

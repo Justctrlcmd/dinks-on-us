@@ -15,6 +15,7 @@ class ListReservationsRequest extends FormRequest
             'search' => ['nullable', 'string', 'max:180'],
             'search_by' => ['nullable', 'string', Rule::in(['all', 'reference_number'])],
             'booking_date' => ['nullable', 'date_format:Y-m-d'],
+            'sort' => ['nullable', 'string', Rule::in(['booking_date', 'reference_number'])],
             'status' => ['nullable', Rule::in([...Reservation::OPERATIONAL_STATUSES, 'RESCHEDULED'])],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', Rule::in([10])],

@@ -274,26 +274,40 @@ class ReservationService
     /** @param array<string, mixed> $filters @return array{paginator: LengthAwarePaginator, kpis: array<string, int>} */
     public function operationalList(array $filters): array
     {
-        $now = BusinessClock::now();
-        $today = $now->toDateString();
-        // Only actual current slots count: elapsed hours and gaps must not make
-        // a multi-slot reservation appear earlier than its next court time.
-        $scheduleOrder = ReservationSlot::query()
-            ->select('reservation_id')
-            ->selectRaw('MIN(CASE WHEN date > ? OR (date = ? AND end_hour > ?) THEN start_hour END) as next_start_hour', [$today, $today, $now->hour])
-            ->selectRaw('MAX(end_hour) as last_end_hour')
-            ->where('is_current', true)
-            ->groupBy('reservation_id');
         $query = Reservation::query()->operational()
-            ->leftJoinSub($scheduleOrder, 'schedule_order', 'schedule_order.reservation_id', '=', 'reservations.id')
             ->select('reservations.*')
-            ->with(['currentSlots.court', 'refunds'])
-            // Unresolved elapsed bookings need attention before current/upcoming visits.
-            ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 0 ELSE 1 END')
-            ->orderBy('reservations.booking_date')
-            ->orderByRaw('COALESCE(schedule_order.next_start_hour, schedule_order.last_end_hour)')
-            ->latest('reservations.submitted_at')
-            ->latest('reservations.id');
+            ->with(['currentSlots.court', 'refunds']);
+
+        $sort = $filters['sort'] ?? null;
+        if ($sort === 'reference_number') {
+            // Compare the numeric suffix so RF-1000 follows RF-999.
+            $query->orderByRaw('CASE WHEN reservations.reference_number IS NULL THEN 1 ELSE 0 END')
+                ->orderByRaw('CAST(SUBSTR(reservations.reference_number, 4) AS DECIMAL(29, 0))');
+        } else {
+            $now = BusinessClock::now();
+            $today = $now->toDateString();
+            // Only actual current slots count, including for bookings with gaps.
+            $scheduleOrder = ReservationSlot::query()
+                ->select('reservation_id')
+                ->selectRaw('MIN(CASE WHEN date > ? OR (date = ? AND end_hour > ?) THEN start_hour END) as next_start_hour', [$today, $today, $now->hour])
+                ->selectRaw('MAX(end_hour) as last_end_hour')
+                ->where('is_current', true)
+                ->groupBy('reservation_id');
+            $query->leftJoinSub($scheduleOrder, 'schedule_order', 'schedule_order.reservation_id', '=', 'reservations.id');
+
+            if ($sort === 'booking_date') {
+                $query->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 1 ELSE 0 END')
+                    ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN reservations.booking_date END DESC')
+                    ->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN schedule_order.last_end_hour END DESC');
+            } else {
+                // Preserve the overdue-first order for clients that omit sort.
+                $query->orderByRaw('CASE WHEN schedule_order.next_start_hour IS NULL THEN 0 ELSE 1 END');
+            }
+
+            $query->orderBy('reservations.booking_date')
+                ->orderByRaw('COALESCE(schedule_order.next_start_hour, schedule_order.last_end_hour)');
+        }
+        $query->latest('reservations.submitted_at')->latest('reservations.id');
         $search = trim((string) ($filters['search'] ?? ''));
         if ($search !== '') {
             if (($filters['search_by'] ?? 'all') === 'reference_number') {

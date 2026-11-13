@@ -15,6 +15,7 @@ export const getReservations = (filters: ReservationFilters, signal?: AbortSigna
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (filters.search_by && filters.search_by !== "all") params.set("search_by", filters.search_by);
   if (filters.booking_date) params.set("booking_date", filters.booking_date);
+  if (filters.sort) params.set("sort", filters.sort);
   if (filters.status) params.set("status", filters.status);
   return authFetch<ReservationListData>(`/api/v1/management/reservations?${params}`, { signal });
 };

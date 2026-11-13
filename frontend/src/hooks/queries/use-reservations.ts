@@ -6,7 +6,13 @@ import { getPendingReservationSummary, getReservation, getReservations } from "@
 import type { ReservationFilters } from "@/types/reservation";
 
 export function useReservations(filters: ReservationFilters) {
-  return useQuery({ queryKey: reservationKeys.list(filters), queryFn: ({ signal }) => getReservations(filters, signal), placeholderData: (previous) => previous, refetchInterval: 60_000, refetchOnWindowFocus: "always" });
+  return useQuery({
+    queryKey: reservationKeys.list(filters),
+    queryFn: ({ signal }) => getReservations(filters, signal),
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[2].sort === filters.sort ? previous : undefined,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: "always",
+  });
 }
 
 export function usePendingReservationCount(enabled = true) {
