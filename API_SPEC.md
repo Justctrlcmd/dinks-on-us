@@ -1196,8 +1196,9 @@ VERIFIED → ONGOING
 
 The transition is manually confirmed by Staff or Manager when the customer is at the facility and has started playing. It is never triggered automatically by the clock.
 
-Booking date and booked hours do not restrict this manual transition. This
-applies to online, walk-in, and rescheduled bookings. A matching retry of a
+The current booking date must be today or earlier in the business timezone.
+Booked hours do not restrict the transition. Future bookings return `409` with no
+changes. This applies to online, walk-in, and rescheduled bookings. A matching retry of a
 previously committed start returns the existing result without another transition.
 
 ---
